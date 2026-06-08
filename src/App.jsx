@@ -115,7 +115,14 @@ function Setup({onDone}) {
     devise:"FCFA",couleur:"#0A84FF",niveau:"Collège",
     classes:["6ème","5ème","4ème","3ème"],
     matieres:["Mathématiques","Français","Sciences","Anglais","EPS"],
-    fraisInscription:50000,fraisMensuel:15000,
+    fraisParClasse:{},
+    fraisInscriptionParClasse:{},
+    fraisInscription:50000,
+    fraisMensuel:15000,
+    fraisSpeciaux:{"01":0,"02":0},
+    coursDuSoir:false,
+    fraisCoursSOir:10000,
+    typesPaiements:["Mensualité","Inscription","Cantine","Fournitures","Transport","Cours du soir","Autre"],
   });
   const [newClasse,setNewClasse]=useState("");
   const [newMatiere,setNewMatiere]=useState("");
@@ -390,26 +397,78 @@ function Eleves({eleves,setEleves,cfg,showToast}) {
 // ─── Paiements ────────────────────────────────────────────────────────────────
 function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
   const {theme}=useTheme();
-  const {couleur,devise,fraisMensuel,fraisInscription}=cfg;
+  const {couleur,devise,fraisParClasse,fraisInscriptionParClasse,fraisMensuel,fraisInscription,fraisSpeciaux,typesPaiements,coursDuSoir,fraisCoursSOir}=cfg;
   const fmt=(n)=>xof(n,devise);
   const [show,setShow]=useState(false);
   const [fMois,setFMois]=useState("");
-  const [form,setForm]=useState({eleveId:"",type:"Mensualité",montant:fraisMensuel,date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+  const [fType,setFType]=useState("all");
+  const moisCourant=new Date().toISOString().slice(0,7);
+  const moisNum=new Date().toISOString().slice(5,7);
 
-  const filtered=paiements.filter(p=>!fMois||p.mois===fMois);
+  // Frais mensuel selon la classe et le mois
+  const getFraisMensuel=(classe,mois)=>{
+    const mm=mois?mois.slice(5,7):moisNum;
+    if(fraisSpeciaux&&fraisSpeciaux[mm]>0) return fraisSpeciaux[mm];
+    return fraisParClasse?.[classe]||fraisMensuel||0;
+  };
+  const getFraisInscription=(classe)=>fraisInscriptionParClasse?.[classe]||fraisInscription||0;
+
+  const [form,setForm]=useState({
+    eleveId:"",type:(typesPaiements&&typesPaiements[0])||"Mensualité",
+    montant:fraisMensuel||0,date:today(),
+    mois:moisCourant,note:"",coursSoir:false
+  });
+
+  // Auto-calculer le montant selon type + classe + mois
+  const handleType=(type)=>{
+    const eleve=eleves.find(e=>e.id===form.eleveId);
+    let montant=form.montant;
+    if(type==="Mensualité") montant=getFraisMensuel(eleve?.classe,form.mois);
+    else if(type==="Inscription") montant=getFraisInscription(eleve?.classe);
+    else if(type==="Cours du soir") montant=fraisCoursSOir||0;
+    setForm({...form,type,montant});
+  };
+
+  const handleEleve=(eleveId)=>{
+    const eleve=eleves.find(e=>e.id===Number(eleveId));
+    let montant=form.montant;
+    if(form.type==="Mensualité") montant=getFraisMensuel(eleve?.classe,form.mois);
+    else if(form.type==="Inscription") montant=getFraisInscription(eleve?.classe);
+    setForm({...form,eleveId:Number(eleveId),montant});
+  };
+
+  const handleMois=(mois)=>{
+    const eleve=eleves.find(e=>e.id===form.eleveId);
+    let montant=form.montant;
+    if(form.type==="Mensualité") montant=getFraisMensuel(eleve?.classe,mois);
+    setForm({...form,mois,montant});
+  };
+
+  const filtered=paiements.filter(p=>{
+    const typeOk=fType==="all"||p.type===fType;
+    const moisOk=!fMois||p.mois===fMois;
+    return typeOk&&moisOk;
+  });
   const total=filtered.reduce((s,p)=>s+p.montant,0);
 
   const add=()=>{
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
+    if(!form.montant)return showToast("Montant requis",true);
     setPaiements([{...form,id:Date.now(),montant:parseInt(form.montant)},...paiements]);
-    setForm({eleveId:"",type:"Mensualité",montant:fraisMensuel,date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+    const eleve=eleves.find(e=>e.id===form.eleveId);
+    setForm({...form,eleveId:"",note:"",montant:getFraisMensuel(eleve?.classe,form.mois)});
     setShow(false);showToast("Paiement enregistré ✓");
   };
   const del=(id)=>{setPaiements(paiements.filter(p=>p.id!==id));showToast("Supprimé");};
 
-  // Élèves avec impayés ce mois
-  const moisCourant=new Date().toISOString().slice(0,7);
-  const impayes=eleves.filter(e=>e.statut==="Actif"&&paiements.filter(p=>p.eleveId===e.id&&p.mois===moisCourant).reduce((s,p)=>s+p.montant,0)<fraisMensuel);
+  // Impayés ce mois (mensualité seulement)
+  const impayes=eleves.filter(e=>{
+    if(e.statut!=="Actif")return false;
+    const paye=paiements.filter(p=>p.eleveId===e.id&&p.mois===moisCourant&&p.type==="Mensualité").reduce((s,p)=>s+p.montant,0);
+    return paye<getFraisMensuel(e.classe,moisCourant);
+  });
+
+  const TYPES=typesPaiements||["Mensualité","Inscription","Cantine","Fournitures","Transport","Cours du soir","Autre"];
 
   return (
     <div>
@@ -417,18 +476,27 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>💰 Paiements</h1>
         <Btn onClick={()=>setShow(!show)} color={couleur}>{show?"✕ Annuler":"+ Nouveau paiement"}</Btn>
       </div>
+
       {show&&(
         <Card style={{marginBottom:16}}>
+          <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>Nouveau paiement</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
-            <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
-              options={[{v:"",l:"-- Choisir un élève --"},...eleves.map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
-            <Sel label="Type" value={form.type} onChange={e=>setForm({...form,type:e.target.value,montant:e.target.value==="Inscription"?fraisInscription:e.target.value==="Mensualité"?fraisMensuel:form.montant})}
-              options={["Mensualité","Inscription","Cantine","Transport","Autre"]}/>
+            <Sel label="Élève *" value={form.eleveId} onChange={e=>handleEleve(e.target.value)}
+              options={[{v:"",l:"-- Choisir un élève --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
+            <Sel label="Type de paiement" value={form.type} onChange={e=>handleType(e.target.value)}
+              options={TYPES}/>
             <Inp label={`Montant (${devise}) *`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} placeholder="0"/>
             <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
-            <Inp label="Mois concerné" type="month" value={form.mois} onChange={e=>setForm({...form,mois:e.target.value})}/>
+            <Inp label="Mois concerné" type="month" value={form.mois} onChange={e=>handleMois(e.target.value)}/>
             <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Optionnel"/>
           </div>
+          {/* Info montant automatique */}
+          {form.eleveId&&(
+            <div style={{padding:"10px 14px",background:couleur+"11",borderRadius:10,marginBottom:12,fontSize:13,color:theme.textMuted}}>
+              💡 Frais mensuel pour ce mois : <strong style={{color:couleur}}>{fmt(getFraisMensuel(eleves.find(e=>e.id===form.eleveId)?.classe,form.mois))}</strong>
+              {fraisSpeciaux?.[form.mois?.slice(5,7)]>0&&<span style={{color:"#FF9F0A",marginLeft:8}}>⚠️ Tarif spécial {form.mois?.slice(5,7)==="01"?"Janvier":"Février"}</span>}
+            </div>
+          )}
           <Btn onClick={add} color={couleur}>Enregistrer le paiement</Btn>
         </Card>
       )}
@@ -436,31 +504,42 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
       {/* Impayés */}
       {impayes.length>0&&(
         <Card style={{marginBottom:16,borderColor:"rgba(255,69,58,0.3)"}}>
-          <CardTitle color="#FF453A">⚠️ Élèves avec impayés ce mois ({impayes.length})</CardTitle>
+          <CardTitle color="#FF453A">⚠️ Mensualités impayées ce mois ({impayes.length})</CardTitle>
           <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
             {impayes.map(e=>(
               <div key={e.id} style={{padding:"6px 12px",background:"rgba(255,69,58,0.1)",borderRadius:99,border:"1px solid rgba(255,69,58,0.3)"}}>
                 <span style={{color:"#FF453A",fontSize:12,fontWeight:600}}>{e.prenom} {e.nom} — {e.classe}</span>
+                <span style={{color:"#FF9F0A",fontSize:11,marginLeft:6}}>({fmt(getFraisMensuel(e.classe,moisCourant))})</span>
               </div>
             ))}
           </div>
         </Card>
       )}
 
-      <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center"}}>
-        <Inp label="" value={fMois} onChange={e=>setFMois(e.target.value)} type="month" placeholder="Filtrer par mois"/>
-        <div style={{marginLeft:"auto",color:theme.textMuted,fontSize:13}}>Total : <strong style={{color:"#30D158"}}>{fmt(total)}</strong></div>
+      <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
+        <input type="month" value={fMois} onChange={e=>setFMois(e.target.value)}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}/>
+        <select value={fType} onChange={e=>setFType(e.target.value)}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+          <option value="all">Tous types</option>
+          {TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+        </select>
+        <div style={{marginLeft:"auto",color:theme.textMuted,fontSize:13}}>
+          Total : <strong style={{color:"#30D158"}}>{fmt(total)}</strong> — {filtered.length} paiement{filtered.length!==1?"s":""}
+        </div>
       </div>
+
       <TableWrap>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr>{["Élève","Type","Mois","Montant","Date","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+          <thead><tr>{["Élève","Classe","Type","Mois","Montant","Date","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
           <tbody>
-            {filtered.length===0&&<tr><Td colSpan={6} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun paiement</Td></tr>}
+            {filtered.length===0&&<tr><Td colSpan={7} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun paiement</Td></tr>}
             {filtered.map(p=>{
               const eleve=eleves.find(e=>e.id===p.eleveId);
               return (
                 <tr key={p.id}>
-                  <Td><strong style={{color:theme.text}}>{eleve?`${eleve.prenom} ${eleve.nom}`:"—"}</strong>{eleve&&<div style={{fontSize:11,color:theme.textMuted}}>{eleve.classe}</div>}</Td>
+                  <Td><strong style={{color:theme.text}}>{eleve?`${eleve.prenom} ${eleve.nom}`:"—"}</strong></Td>
+                  <Td style={{color:theme.textMuted,fontSize:12}}>{eleve?.classe||"—"}</Td>
                   <Td><span style={{background:couleur+"22",color:couleur,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:600}}>{p.type}</span></Td>
                   <Td style={{color:theme.textMuted,fontSize:12}}>{p.mois}</Td>
                   <Td style={{fontWeight:700,color:"#30D158"}}>{fmt(p.montant)}</Td>
@@ -815,16 +894,24 @@ function Finances({depenses,setDepenses,recettes,setRecettes,paiements,cfg,showT
 // ─── Paramètres ───────────────────────────────────────────────────────────────
 function Parametres({cfg,updateCfg,showToast}) {
   const {theme}=useTheme();
-  const {couleur}=cfg;
+  const {couleur,classes,matieres,devise}=cfg;
   const [newClasse,setNewClasse]=useState("");
   const [newMatiere,setNewMatiere]=useState("");
+  const [newType,setNewType]=useState("");
   const [editNom,setEditNom]=useState(cfg.nom);
-  const [editAdresse,setEditAdresse]=useState(cfg.adresse);
-  const [editTel,setEditTel]=useState(cfg.telephone);
-  const [editEmail,setEditEmail]=useState(cfg.email);
-  const [editFraisI,setEditFraisI]=useState(cfg.fraisInscription);
-  const [editFraisM,setEditFraisM]=useState(cfg.fraisMensuel);
-  const [editDevise,setEditDevise]=useState(cfg.devise);
+  const [editAdresse,setEditAdresse]=useState(cfg.adresse||"");
+  const [editTel,setEditTel]=useState(cfg.telephone||"");
+  const [editEmail,setEditEmail]=useState(cfg.email||"");
+  const [editDevise,setEditDevise]=useState(cfg.devise||"FCFA");
+  const [fraisParClasse,setFraisParClasse]=useState(cfg.fraisParClasse||{});
+  const [fraisInsParClasse,setFraisInsParClasse]=useState(cfg.fraisInscriptionParClasse||{});
+  const [fraisJanvier,setFraisJanvier]=useState(cfg.fraisSpeciaux?.["01"]||0);
+  const [fraisFevier,setFraisFevier]=useState(cfg.fraisSpeciaux?.["02"]||0);
+  const [coursDuSoir,setCoursDuSoir]=useState(cfg.coursDuSoir||false);
+  const [fraisCoursSOir,setFraisCoursSOir]=useState(cfg.fraisCoursSOir||0);
+  const [typesPaiements,setTypesPaiements]=useState(cfg.typesPaiements||["Mensualité","Inscription","Cantine","Fournitures","Transport","Cours du soir","Autre"]);
+
+  const COLORS=["#0A84FF","#30D158","#FF9F0A","#FF453A","#BF5AF2","#FF6B35","#5E5CE6","#00C7BE"];
 
   const addClasse=()=>{
     if(!newClasse.trim())return;
@@ -832,101 +919,181 @@ function Parametres({cfg,updateCfg,showToast}) {
     updateCfg({...cfg,classes:[...cfg.classes,newClasse.trim()]});
     setNewClasse("");showToast("Classe ajoutée ✓");
   };
-  const delClasse=(c)=>{
-    updateCfg({...cfg,classes:cfg.classes.filter(x=>x!==c)});
-    showToast("Classe supprimée");
-  };
+  const delClasse=(c)=>{updateCfg({...cfg,classes:cfg.classes.filter(x=>x!==c)});showToast("Classe supprimée");};
   const addMatiere=()=>{
     if(!newMatiere.trim())return;
     if(cfg.matieres.includes(newMatiere.trim()))return showToast("Matière déjà existante",true);
     updateCfg({...cfg,matieres:[...cfg.matieres,newMatiere.trim()]});
     setNewMatiere("");showToast("Matière ajoutée ✓");
   };
-  const delMatiere=(m)=>{
-    updateCfg({...cfg,matieres:cfg.matieres.filter(x=>x!==m)});
-    showToast("Matière supprimée");
+  const delMatiere=(m)=>{updateCfg({...cfg,matieres:cfg.matieres.filter(x=>x!==m)});showToast("Matière supprimée");};
+  const addType=()=>{
+    if(!newType.trim())return;
+    setTypesPaiements([...typesPaiements,newType.trim()]);
+    setNewType("");
   };
-  const saveInfos=()=>{
-    updateCfg({...cfg,nom:editNom,adresse:editAdresse,telephone:editTel,email:editEmail,fraisInscription:parseInt(editFraisI)||0,fraisMensuel:parseInt(editFraisM)||0,devise:editDevise});
-    showToast("Informations mises à jour ✓");
-  };
+  const delType=(t)=>setTypesPaiements(typesPaiements.filter(x=>x!==t));
 
-  const COLORS=["#0A84FF","#30D158","#FF9F0A","#FF453A","#BF5AF2","#FF6B35","#5E5CE6","#00C7BE"];
+  const saveInfos=()=>{
+    updateCfg({...cfg,
+      nom:editNom,adresse:editAdresse,telephone:editTel,email:editEmail,devise:editDevise,
+      fraisParClasse,fraisInscriptionParClasse:fraisInsParClasse,
+      fraisSpeciaux:{"01":parseInt(fraisJanvier)||0,"02":parseInt(fraisFevier)||0},
+      coursDuSoir,fraisCoursSOir:parseInt(fraisCoursSOir)||0,
+      typesPaiements,
+    });
+    showToast("Paramètres sauvegardés ✓");
+  };
 
   return (
     <div>
       <h1 style={{fontWeight:800,fontSize:24,margin:"0 0 20px",color:theme.text}}>⚙️ Paramètres</h1>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         {/* Infos école */}
         <Card>
-          <CardTitle color={couleur}>Informations de l'école</CardTitle>
-          <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+          <CardTitle color={couleur}>🏫 Informations de l'école</CardTitle>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
             <Inp label="Nom de l'école" value={editNom} onChange={e=>setEditNom(e.target.value)}/>
             <Inp label="Adresse" value={editAdresse} onChange={e=>setEditAdresse(e.target.value)}/>
             <Inp label="Téléphone" value={editTel} onChange={e=>setEditTel(e.target.value)}/>
             <Inp label="Email" value={editEmail} onChange={e=>setEditEmail(e.target.value)}/>
             <Sel label="Devise" value={editDevise} onChange={e=>setEditDevise(e.target.value)} options={DEVISES}/>
-            <Inp label={`Frais d'inscription (${editDevise})`} type="number" value={editFraisI} onChange={e=>setEditFraisI(e.target.value)}/>
-            <Inp label={`Frais mensuel (${editDevise})`} type="number" value={editFraisM} onChange={e=>setEditFraisM(e.target.value)}/>
           </div>
-          <Btn onClick={saveInfos} color={couleur}>💾 Sauvegarder</Btn>
         </Card>
 
+        {/* Couleur */}
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          {/* Couleur */}
           <Card>
-            <CardTitle color={couleur}>Couleur principale</CardTitle>
+            <CardTitle color={couleur}>🎨 Couleur principale</CardTitle>
             <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
               {COLORS.map(c=>(
-                <button key={c} onClick={()=>{updateCfg({...cfg,couleur:c});showToast("Couleur mise à jour ✓");}}
+                <button key={c} onClick={()=>updateCfg({...cfg,couleur:c})}
                   style={{width:34,height:34,borderRadius:99,background:c,border:`3px solid ${cfg.couleur===c?"#fff":c}`,cursor:"pointer",
                     boxShadow:cfg.couleur===c?"0 0 0 2px "+c:"none"}}/>
               ))}
             </div>
           </Card>
 
-          {/* Classes */}
+          {/* Cours du soir */}
           <Card>
-            <CardTitle color={couleur}>Classes ({cfg.classes.length})</CardTitle>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
-              {cfg.classes.map(c=>(
-                <div key={c} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:couleur+"18",borderRadius:99,border:`1px solid ${couleur}44`}}>
-                  <span style={{color:couleur,fontSize:13,fontWeight:600}}>{c}</span>
-                  <button onClick={()=>delClasse(c)} style={{background:"none",border:"none",color:"#FF453A",cursor:"pointer",fontSize:13,padding:0,fontWeight:700}}>✕</button>
-                </div>
-              ))}
+            <CardTitle color={couleur}>🌙 Cours du soir</CardTitle>
+            <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",marginBottom:coursDuSoir?12:0}}
+              onClick={()=>setCoursDuSoir(!coursDuSoir)}>
+              <div style={{width:20,height:20,borderRadius:6,background:coursDuSoir?couleur:theme.toggleBg,border:`2px solid ${coursDuSoir?couleur:theme.border}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {coursDuSoir&&<span style={{color:"#fff",fontSize:12,fontWeight:900}}>✓</span>}
+              </div>
+              <span style={{fontSize:13,fontWeight:600,color:theme.text}}>Activer les cours du soir</span>
             </div>
-            <div style={{display:"flex",gap:8}}>
-              <input value={newClasse} onChange={e=>setNewClasse(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&addClasse()}
-                placeholder="Ex: Terminale C"
-                style={{flex:1,background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
-              <Btn onClick={addClasse} color={couleur}>+ Ajouter</Btn>
-            </div>
-          </Card>
-
-          {/* Matières */}
-          <Card>
-            <CardTitle color={couleur}>Matières ({cfg.matieres.length})</CardTitle>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
-              {cfg.matieres.map(m=>(
-                <div key={m} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(255,255,255,0.06)",borderRadius:99,border:`1px solid ${theme.border}`}}>
-                  <span style={{color:theme.text,fontSize:13,fontWeight:600}}>{m}</span>
-                  <button onClick={()=>delMatiere(m)} style={{background:"none",border:"none",color:"#FF453A",cursor:"pointer",fontSize:13,padding:0,fontWeight:700}}>✕</button>
-                </div>
-              ))}
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <input value={newMatiere} onChange={e=>setNewMatiere(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&addMatiere()}
-                placeholder="Ex: Philosophie"
-                style={{flex:1,background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
-              <Btn onClick={addMatiere} color={couleur}>+ Ajouter</Btn>
-            </div>
+            {coursDuSoir&&(
+              <Inp label={`Frais cours du soir (${editDevise})`} type="number" value={fraisCoursSOir} onChange={e=>setFraisCoursSOir(e.target.value)} placeholder="0"/>
+            )}
           </Card>
         </div>
       </div>
+
+      {/* Frais par classe */}
+      <Card style={{marginBottom:16}}>
+        <CardTitle color={couleur}>💰 Frais par classe</CardTitle>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead>
+              <tr>
+                <Th>Classe</Th>
+                <Th>Frais mensuel ({editDevise})</Th>
+                <Th>Frais inscription ({editDevise})</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {classes.map(c=>(
+                <tr key={c}>
+                  <Td><strong style={{color:couleur}}>{c}</strong></Td>
+                  <Td>
+                    <input type="number" value={fraisParClasse[c]||""} onChange={e=>setFraisParClasse({...fraisParClasse,[c]:parseInt(e.target.value)||0})}
+                      placeholder={`${cfg.fraisMensuel||0}`}
+                      style={{width:"100%",background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:8,padding:"7px 10px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+                  </Td>
+                  <Td>
+                    <input type="number" value={fraisInsParClasse[c]||""} onChange={e=>setFraisInsParClasse({...fraisInsParClasse,[c]:parseInt(e.target.value)||0})}
+                      placeholder={`${cfg.fraisInscription||0}`}
+                      style={{width:"100%",background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:8,padding:"7px 10px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Frais spéciaux Janvier/Février */}
+      <Card style={{marginBottom:16}}>
+        <CardTitle color="#FF9F0A">📅 Frais spéciaux (Janvier & Février)</CardTitle>
+        <div style={{fontSize:12,color:theme.textMuted,marginBottom:12}}>
+          Laissez 0 pour utiliser les frais normaux par classe
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Inp label={`Frais Janvier (${editDevise}) — laisser 0 si normal`} type="number" value={fraisJanvier} onChange={e=>setFraisJanvier(e.target.value)} placeholder="0"/>
+          <Inp label={`Frais Février (${editDevise}) — laisser 0 si normal`} type="number" value={fraisFevier} onChange={e=>setFraisFevier(e.target.value)} placeholder="0"/>
+        </div>
+      </Card>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+        {/* Classes */}
+        <Card>
+          <CardTitle color={couleur}>🏫 Classes ({classes.length})</CardTitle>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+            {classes.map(c=>(
+              <div key={c} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:couleur+"18",borderRadius:99,border:`1px solid ${couleur}44`}}>
+                <span style={{color:couleur,fontSize:13,fontWeight:600}}>{c}</span>
+                <button onClick={()=>delClasse(c)} style={{background:"none",border:"none",color:"#FF453A",cursor:"pointer",fontSize:13,padding:0,fontWeight:700}}>✕</button>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <input value={newClasse} onChange={e=>setNewClasse(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addClasse()} placeholder="Ex: Terminale C"
+              style={{flex:1,background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+            <Btn onClick={addClasse} color={couleur}>+ Ajouter</Btn>
+          </div>
+        </Card>
+
+        {/* Matières */}
+        <Card>
+          <CardTitle color={couleur}>📚 Matières ({matieres.length})</CardTitle>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+            {matieres.map(m=>(
+              <div key={m} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(255,255,255,0.06)",borderRadius:99,border:`1px solid ${theme.border}`}}>
+                <span style={{color:theme.text,fontSize:13,fontWeight:600}}>{m}</span>
+                <button onClick={()=>delMatiere(m)} style={{background:"none",border:"none",color:"#FF453A",cursor:"pointer",fontSize:13,padding:0,fontWeight:700}}>✕</button>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <input value={newMatiere} onChange={e=>setNewMatiere(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addMatiere()} placeholder="Ex: Philosophie"
+              style={{flex:1,background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+            <Btn onClick={addMatiere} color={couleur}>+ Ajouter</Btn>
+          </div>
+        </Card>
+
+        {/* Types de paiements */}
+        <Card>
+          <CardTitle color={couleur}>💳 Types de paiements</CardTitle>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+            {typesPaiements.map(t=>(
+              <div key={t} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(255,255,255,0.06)",borderRadius:99,border:`1px solid ${theme.border}`}}>
+                <span style={{color:theme.text,fontSize:13,fontWeight:600}}>{t}</span>
+                <button onClick={()=>delType(t)} style={{background:"none",border:"none",color:"#FF453A",cursor:"pointer",fontSize:13,padding:0,fontWeight:700}}>✕</button>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <input value={newType} onChange={e=>setNewType(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addType()} placeholder="Ex: Examen"
+              style={{flex:1,background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+            <Btn onClick={addType} color={couleur}>+ Ajouter</Btn>
+          </div>
+        </Card>
+      </div>
+
+      <Btn onClick={saveInfos} color={couleur} style={{width:"100%",padding:"14px"}}>💾 Sauvegarder tous les paramètres</Btn>
     </div>
   );
 }
