@@ -1434,6 +1434,269 @@ function Recus({paiements,eleves,cfg}) {
   );
 }
 
+// ─── Bulletins ────────────────────────────────────────────────────────────────
+function Bulletins({notes,eleves,absences,cfg}) {
+  const {theme}=useTheme();
+  const {couleur,classes,nom:nomEcole,adresse,telephone,matieresParClasse={}}=cfg;
+  const [fClasse,setFClasse]=useState(classes[0]||"");
+  const [fTrimestre,setFTrimestre]=useState("T1");
+  const [selectedEleve,setSelectedEleve]=useState(null);
+  const printRef=useRef();
+
+  const elevesClasse=eleves.filter(e=>e.classe===fClasse&&e.statut==="Actif");
+
+  // Matières pour cette classe
+  const getMatieres=(classe)=>{
+    const spec=matieresParClasse[classe]||[];
+    return [...(cfg.matieres||[]),...spec.filter(m=>!(cfg.matieres||[]).includes(m))];
+  };
+
+  // Calculer moyenne d'un élève pour une matière
+  const getMoyenne=(eleveId,matiere,trimestre)=>{
+    const ns=notes.filter(n=>n.eleveId===eleveId&&n.matiere===matiere&&n.trimestre===trimestre);
+    if(ns.length===0)return null;
+    const totalCoeff=ns.reduce((s,n)=>s+n.coeff,0);
+    const totalPoints=ns.reduce((s,n)=>s+n.note*n.coeff,0);
+    return totalPoints/totalCoeff;
+  };
+
+  // Calculer moyenne générale
+  const getMoyenneGenerale=(eleveId,trimestre)=>{
+    const mats=getMatieres(fClasse);
+    const moyennes=mats.map(m=>getMoyenne(eleveId,m,trimestre)).filter(m=>m!==null);
+    if(moyennes.length===0)return null;
+    return moyennes.reduce((s,m)=>s+m,0)/moyennes.length;
+  };
+
+  // Appréciation selon la moyenne
+  const getAppreciation=(moy)=>{
+    if(moy===null)return{text:"—",color:"#636366"};
+    if(moy>=16)return{text:"Excellent",color:"#30D158"};
+    if(moy>=14)return{text:"Très bien",color:"#30D158"};
+    if(moy>=12)return{text:"Bien",color:"#0A84FF"};
+    if(moy>=10)return{text:"Assez bien",color:"#FF9F0A"};
+    if(moy>=8) return{text:"Passable",color:"#FF9F0A"};
+    return{text:"Insuffisant",color:"#FF453A"};
+  };
+
+  // Classement de la classe
+  const classement=elevesClasse.map(e=>({
+    ...e,
+    moy:getMoyenneGenerale(e.id,fTrimestre)
+  })).filter(e=>e.moy!==null).sort((a,b)=>b.moy-a.moy);
+
+  const getRang=(eleveId)=>{
+    const idx=classement.findIndex(e=>e.id===eleveId);
+    return idx>=0?idx+1:null;
+  };
+
+  // Absences de l'élève
+  const getNbAbsences=(eleveId)=>absences.filter(a=>a.eleveId===eleveId).length;
+
+  const imprimer=()=>{
+    const content=printRef.current.innerHTML;
+    const w=window.open("","_blank");
+    w.document.write(`<html><head><title>Bulletin ${selectedEleve?.prenom} ${selectedEleve?.nom}</title><style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:Arial,sans-serif;padding:20px;color:#1C1C1E;}
+      table{width:100%;border-collapse:collapse;}
+      th{background:#f5f5f7;padding:8px 10px;text-align:left;font-size:12px;font-weight:700;border:1px solid #e5e5ea;}
+      td{padding:8px 10px;font-size:13px;border:1px solid #e5e5ea;}
+      .bien{color:#30D158;font-weight:700;}
+      .moyen{color:#FF9F0A;font-weight:700;}
+      .faible{color:#FF453A;font-weight:700;}
+    </style></head><body>${content}</body></html>`);
+    w.document.close();w.print();
+  };
+
+  const matieres=getMatieres(fClasse);
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>📊 Bulletins de notes</h1>
+        {selectedEleve&&<button onClick={imprimer} style={{background:couleur,color:"#fff",border:"none",padding:"9px 20px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🖨️ Imprimer le bulletin</button>}
+      </div>
+
+      {/* Filtres */}
+      <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
+        <select value={fClasse} onChange={e=>{setFClasse(e.target.value);setSelectedEleve(null);}}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+          {classes.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={fTrimestre} onChange={e=>{setFTrimestre(e.target.value);setSelectedEleve(null);}}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+          {["T1","T2","T3"].map(t=><option key={t} value={t}>{t==="T1"?"1er Trimestre":t==="T2"?"2ème Trimestre":"3ème Trimestre"}</option>)}
+        </select>
+      </div>
+
+      {/* Liste élèves */}
+      {!selectedEleve&&(
+        <div>
+          <Card style={{marginBottom:16}}>
+            <CardTitle color={couleur}>Choisissez un élève — {fClasse} · {fTrimestre}</CardTitle>
+            {elevesClasse.length===0
+              ?<div style={{color:theme.textMuted,fontSize:13}}>Aucun élève dans cette classe</div>
+              :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:10}}>
+                {elevesClasse.map(e=>{
+                  const moy=getMoyenneGenerale(e.id,fTrimestre);
+                  const app=getAppreciation(moy);
+                  const rang=getRang(e.id);
+                  return (
+                    <div key={e.id} onClick={()=>setSelectedEleve(e)}
+                      style={{background:theme.bg,borderRadius:12,padding:"14px 16px",border:`1px solid ${theme.border}`,cursor:"pointer",transition:"all 0.15s"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                        <div>
+                          <div style={{fontSize:14,fontWeight:700,color:theme.text}}>{e.prenom} {e.nom}</div>
+                          <div style={{fontSize:11,color:theme.textMuted}}>{e.classe}</div>
+                        </div>
+                        {moy!==null&&<div style={{textAlign:"right"}}>
+                          <div style={{fontSize:18,fontWeight:800,color:app.color}}>{moy.toFixed(2)}</div>
+                          {rang&&<div style={{fontSize:11,color:theme.textMuted}}>{rang}ème / {classement.length}</div>}
+                        </div>}
+                      </div>
+                      {moy===null&&<div style={{fontSize:12,color:theme.textMuted,marginTop:6}}>Aucune note</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            }
+          </Card>
+        </div>
+      )}
+
+      {/* Bulletin détaillé */}
+      {selectedEleve&&(()=>{
+        const moyGen=getMoyenneGenerale(selectedEleve.id,fTrimestre);
+        const app=getAppreciation(moyGen);
+        const rang=getRang(selectedEleve.id);
+        const nbAbs=getNbAbsences(selectedEleve.id);
+        const annee=`${new Date().getFullYear()-1}-${new Date().getFullYear()}`;
+
+        return (
+          <div>
+            <button onClick={()=>setSelectedEleve(null)}
+              style={{background:"none",border:"none",color:theme.textMuted,cursor:"pointer",fontSize:14,marginBottom:16,fontFamily:"inherit",padding:0}}>
+              ← Retour à la liste
+            </button>
+
+            <Card style={{border:`1px solid ${couleur}44`}}>
+              <div ref={printRef} style={{background:"#fff",color:"#1C1C1E",padding:"30px",fontFamily:"Arial,sans-serif"}}>
+
+                {/* En-tête */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,paddingBottom:16,borderBottom:`3px solid ${couleur}`}}>
+                  <div>
+                    <div style={{fontSize:22,fontWeight:900,color:couleur}}>{nomEcole}</div>
+                    {adresse&&<div style={{fontSize:12,color:"#636366"}}>📍 {adresse}</div>}
+                    {telephone&&<div style={{fontSize:12,color:"#636366"}}>📞 {telephone}</div>}
+                  </div>
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontSize:18,fontWeight:900,color:"#1C1C1E"}}>BULLETIN DE NOTES</div>
+                    <div style={{fontSize:13,color:"#636366"}}>Année scolaire {annee}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:couleur}}>{fTrimestre==="T1"?"1er Trimestre":fTrimestre==="T2"?"2ème Trimestre":"3ème Trimestre"}</div>
+                  </div>
+                </div>
+
+                {/* Infos élève */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20,padding:"12px 16px",background:"#f5f5f7",borderRadius:10}}>
+                  <div>
+                    <div style={{fontSize:11,color:"#636366",textTransform:"uppercase",marginBottom:4}}>Élève</div>
+                    <div style={{fontSize:16,fontWeight:700}}>{selectedEleve.prenom} {selectedEleve.nom}</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:11,color:"#636366",textTransform:"uppercase",marginBottom:4}}>Classe</div>
+                    <div style={{fontSize:16,fontWeight:700}}>{selectedEleve.classe}</div>
+                  </div>
+                  {selectedEleve.parent&&<div>
+                    <div style={{fontSize:11,color:"#636366",textTransform:"uppercase",marginBottom:4}}>Parent / Tuteur</div>
+                    <div style={{fontSize:14}}>{selectedEleve.parent}</div>
+                  </div>}
+                  <div>
+                    <div style={{fontSize:11,color:"#636366",textTransform:"uppercase",marginBottom:4}}>Absences</div>
+                    <div style={{fontSize:14,fontWeight:700,color:nbAbs>5?"#FF453A":"#1C1C1E"}}>{nbAbs} absence{nbAbs!==1?"s":""}</div>
+                  </div>
+                </div>
+
+                {/* Tableau des notes */}
+                <table style={{width:"100%",borderCollapse:"collapse",marginBottom:20}}>
+                  <thead>
+                    <tr style={{background:"#f5f5f7"}}>
+                      {["Matière","Notes","Moyenne","Appréciation"].map(h=>(
+                        <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:12,fontWeight:700,color:"#636366",textTransform:"uppercase",border:"1px solid #e5e5ea"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matieres.map(m=>{
+                      const ns=notes.filter(n=>n.eleveId===selectedEleve.id&&n.matiere===m&&n.trimestre===fTrimestre);
+                      const moy=getMoyenne(selectedEleve.id,m,fTrimestre);
+                      const app=getAppreciation(moy);
+                      return (
+                        <tr key={m} style={{borderBottom:"1px solid #e5e5ea"}}>
+                          <td style={{padding:"10px 12px",fontSize:14,fontWeight:600,border:"1px solid #e5e5ea"}}>{m}</td>
+                          <td style={{padding:"10px 12px",fontSize:12,color:"#636366",border:"1px solid #e5e5ea"}}>
+                            {ns.length>0?ns.map(n=>`${n.note}/20`).join(" · "):"—"}
+                          </td>
+                          <td style={{padding:"10px 12px",fontSize:15,fontWeight:800,border:"1px solid #e5e5ea",color:moy!==null?(moy>=10?"#30D158":"#FF453A"):"#636366"}}>
+                            {moy!==null?`${moy.toFixed(2)}/20`:"—"}
+                          </td>
+                          <td style={{padding:"10px 12px",fontSize:13,fontWeight:600,border:"1px solid #e5e5ea",color:app.color}}>
+                            {app.text}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {/* Résumé */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:20}}>
+                  <div style={{background:"#f5f5f7",borderRadius:10,padding:"14px",textAlign:"center"}}>
+                    <div style={{fontSize:11,color:"#636366",textTransform:"uppercase",marginBottom:6}}>Moyenne générale</div>
+                    <div style={{fontSize:28,fontWeight:900,color:moyGen!==null?(moyGen>=10?couleur:"#FF453A"):"#636366"}}>
+                      {moyGen!==null?`${moyGen.toFixed(2)}/20`:"—"}
+                    </div>
+                  </div>
+                  <div style={{background:"#f5f5f7",borderRadius:10,padding:"14px",textAlign:"center"}}>
+                    <div style={{fontSize:11,color:"#636366",textTransform:"uppercase",marginBottom:6}}>Classement</div>
+                    <div style={{fontSize:28,fontWeight:900,color:couleur}}>
+                      {rang?`${rang}ème / ${classement.length}`:"—"}
+                    </div>
+                  </div>
+                  <div style={{background:"#f5f5f7",borderRadius:10,padding:"14px",textAlign:"center"}}>
+                    <div style={{fontSize:11,color:"#636366",textTransform:"uppercase",marginBottom:6}}>Appréciation</div>
+                    <div style={{fontSize:20,fontWeight:900,color:app.color}}>{app.text}</div>
+                  </div>
+                </div>
+
+                {/* Signature */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:20,marginTop:30,paddingTop:20,borderTop:"1px solid #e5e5ea"}}>
+                  {["Le Directeur","Le Professeur Principal","Signature Parent"].map(s=>(
+                    <div key={s} style={{textAlign:"center"}}>
+                      <div style={{fontSize:12,color:"#636366",marginBottom:40}}>{s}</div>
+                      <div style={{borderTop:"1px solid #1C1C1E",paddingTop:4,fontSize:11,color:"#636366"}}>Signature</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Footer */}
+                <div style={{marginTop:20,textAlign:"center",fontSize:11,color:"#8E8E93",borderTop:"1px solid #e5e5ea",paddingTop:12}}>
+                  {nomEcole} · Bulletin officiel · {annee}
+                </div>
+              </div>
+
+              <div style={{display:"flex",gap:10,marginTop:16}}>
+                <button onClick={imprimer} style={{background:couleur,color:"#fff",border:"none",padding:"10px 24px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🖨️ Imprimer / PDF</button>
+                <button onClick={()=>setSelectedEleve(null)} style={{background:theme.toggleBg,color:theme.text,border:`1px solid ${theme.border}`,padding:"10px 18px",borderRadius:10,fontWeight:600,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>Fermer</button>
+              </div>
+            </Card>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 // ─── Professeurs ──────────────────────────────────────────────────────────────
 function Professeurs({professeurs,setProfesseurs,cfg,showToast}) {
   const {theme}=useTheme();
@@ -1805,6 +2068,7 @@ export default function App() {
     {id:"paiements",  label:"Paiements",   icon:"💰",badge:alertes},
     {id:"recus",      label:"Reçus",       icon:"🧾"},
     {id:"notes",      label:"Notes",       icon:"📝"},
+    {id:"bulletins",  label:"Bulletins",   icon:"📊"},
     {id:"absences",   label:"Absences",    icon:"📅"},
     {id:"finances",   label:"Finances",    icon:"💼"},
     {id:"parametres", label:"Paramètres",  icon:"⚙️"},
@@ -1861,6 +2125,7 @@ export default function App() {
               {page==="paiements"   &&<Paiements    paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="recus"       &&<Recus        paiements={paiements} eleves={eleves} cfg={cfg}/>}
               {page==="notes"       &&<Notes        notes={notes} setNotes={setNotes} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="bulletins"   &&<Bulletins    notes={notes} eleves={eleves} absences={absences} cfg={cfg}/>}
               {page==="absences"    &&<Absences     absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="finances"    &&<Finances     depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
               {page==="parametres"  &&<Parametres   cfg={cfg} updateCfg={updateCfg} showToast={showToast}/>}
