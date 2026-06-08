@@ -37,9 +37,21 @@ const dbDel  = (t,id) => fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"D
 const dbPatch= (t,id,d) => fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"PATCH",headers:dbHeaders,body:JSON.stringify(d)});
 
 // ─── Config locale ────────────────────────────────────────────────────────────
-const STORAGE = "ecole_config";
+const STORAGE = "ecole_config_backup";
 const loadCfg = () => { try { return JSON.parse(localStorage.getItem(STORAGE)||"null"); } catch { return null; } };
-const saveCfg = (c) => localStorage.setItem(STORAGE, JSON.stringify(c));
+const saveCfg = async (c) => {
+  localStorage.setItem(STORAGE, JSON.stringify(c));
+  try {
+    // Vérifier si config existe déjà
+    const res = await fetch(`${SUPA_URL}/rest/v1/config?select=id`,{headers:dbHeaders});
+    const rows = await res.json();
+    if(rows&&rows.length>0){
+      await dbPatch("config",rows[0].id,{data:c});
+    } else {
+      await dbAdd("config",{data:c});
+    }
+  } catch(e){ console.error("Config sync error",e); }
+};
 
 const today = () => new Date().toISOString().split("T")[0];
 const xof = (n, devise="FCFA") => new Intl.NumberFormat("fr-FR",{maximumFractionDigits:0}).format(n)+" "+devise;
@@ -1282,11 +1294,20 @@ export default function App() {
   const [depenses,setDepensesRaw]=useState([]);
   const [recettes,setRecettesRaw]=useState([]);
 
-  // Charger depuis Supabase au démarrage
+  // Charger config + données depuis Supabase au démarrage
   useEffect(()=>{
-    if(!cfg)return setLoading(false);
     (async()=>{
       try{
+        // Charger config depuis Supabase
+        const cfgRes=await fetch(`${SUPA_URL}/rest/v1/config?select=data&order=id.desc&limit=1`,{headers:dbHeaders});
+        const cfgRows=await cfgRes.json();
+        if(cfgRows&&cfgRows.length>0&&cfgRows[0].data){
+          const remoteCfg=cfgRows[0].data;
+          setCfg(remoteCfg);
+          localStorage.setItem(STORAGE,JSON.stringify(remoteCfg));
+        }
+
+        // Charger données
         const [e,p,n,a,d,r]=await Promise.all([
           dbGet("eleves"),dbGet("paiements"),dbGet("notes"),
           dbGet("absences"),dbGet("depenses"),dbGet("recettes")
@@ -1297,10 +1318,10 @@ export default function App() {
         setAbsencesRaw((a||[]).map(x=>({...x,eleveId:x.eleve_id})));
         setDepensesRaw(d||[]);
         setRecettesRaw(r||[]);
-      }catch(e){showToast("Erreur de connexion",true);}
+      }catch(e){console.error(e);}
       setLoading(false);
     })();
-  },[cfg]);
+  },[]);
 
   // Fonctions Supabase
   const setEleves=async(v)=>{setElevesRaw(v);};
@@ -1319,9 +1340,21 @@ export default function App() {
 
   const showToast=(msg,err=false)=>{setToast({msg,err});setTimeout(()=>setToast(null),3000);};
 
-  if(!cfg) return (
+  // Afficher setup si pas de config ET chargement terminé
+  if(!loading&&!cfg) return (
     <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d),theme}}>
       <Setup onDone={(c)=>{saveCfg(c);setCfg(c);}}/>
+    </ThemeCtx.Provider>
+  );
+
+  // Écran de chargement
+  if(loading) return (
+    <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d),theme}}>
+      <div style={{minHeight:"100vh",background:theme.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+        <div style={{fontSize:48}}>🏫</div>
+        <div style={{fontSize:20,fontWeight:700,color:theme.text}}>Chargement...</div>
+        <div style={{fontSize:13,color:theme.textMuted}}>Connexion à la base de données</div>
+      </div>
     </ThemeCtx.Provider>
   );
 
