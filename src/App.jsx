@@ -2076,6 +2076,10 @@ export default function App() {
   const [loading,setLoading]=useState(true);
   const [offline,setOffline]=useState(false);
   const [utilisateurs,setUtilisateurs]=useState([]);
+  const [changeMdp,setChangeMdp]=useState(false);
+  const [ancienMdp,setAncienMdp]=useState("");
+  const [nouveauMdp,setNouveauMdp]=useState("");
+  const [confirmMdp,setConfirmMdp]=useState("");
 
   const [eleves,setElevesRaw]=useState([]);
   const [paiements,setPaiementsRaw]=useState([]);
@@ -2275,6 +2279,7 @@ export default function App() {
               <div style={{fontSize:11,color:couleur,fontWeight:700,background:couleur+"18",padding:"4px 10px",borderRadius:99}}>
                 {user?.role==="admin"?"👑":user?.role==="comptable"?"💰":"👨‍🏫"} {user?.prenom} {user?.nom}
               </div>
+              <button onClick={()=>setChangeMdp(true)} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"5px 12px",borderRadius:9,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🔑 Mot de passe</button>
               <button onClick={()=>setDark(d=>!d)} style={{background:theme.toggleBg,border:"none",borderRadius:20,padding:"6px 10px",cursor:"pointer",fontSize:16}}>{dark?"☀️":"🌙"}</button>
               <button onClick={()=>{clearSession();setUser(null);}} style={{background:"rgba(255,69,58,0.12)",border:"1px solid #FF453A",color:"#FF453A",padding:"5px 12px",borderRadius:9,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>🚪 Déconnexion</button>
             </div>
@@ -2314,6 +2319,39 @@ export default function App() {
           {nom} · Logiciel de gestion scolaire 🏫
         </footer>
         {toast&&<Toast msg={toast.msg} err={toast.err}/>}
+
+        {/* Modal changement mot de passe */}
+        {changeMdp&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:998,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+            <div style={{background:theme.bgCard,borderRadius:20,padding:28,width:"100%",maxWidth:400,border:`1px solid ${theme.border}`,boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+              <div style={{fontSize:16,fontWeight:800,color:theme.text,marginBottom:20}}>🔑 Changer mon mot de passe</div>
+              <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+                <Inp label="Ancien mot de passe" value={ancienMdp} onChange={e=>setAncienMdp(e.target.value)} type="password" placeholder="••••••••"/>
+                <Inp label="Nouveau mot de passe" value={nouveauMdp} onChange={e=>setNouveauMdp(e.target.value)} type="password" placeholder="••••••••"/>
+                <Inp label="Confirmer le nouveau" value={confirmMdp} onChange={e=>setConfirmMdp(e.target.value)} type="password" placeholder="••••••••"/>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={async()=>{
+                  if(!ancienMdp||!nouveauMdp||!confirmMdp)return showToast("Tous les champs sont requis",true);
+                  if(ancienMdp!==user.mot_de_passe)return showToast("Ancien mot de passe incorrect",true);
+                  if(nouveauMdp!==confirmMdp)return showToast("Les mots de passe ne correspondent pas",true);
+                  if(nouveauMdp.length<6)return showToast("Minimum 6 caractères",true);
+                  await dbPatch("utilisateurs",user.id,{mot_de_passe:nouveauMdp});
+                  const newUser={...user,mot_de_passe:nouveauMdp};
+                  setUser(newUser);saveSession(newUser);
+                  setAncienMdp("");setNouveauMdp("");setConfirmMdp("");
+                  setChangeMdp(false);showToast("Mot de passe changé ✓");
+                }} style={{flex:1,background:couleur,color:"#fff",border:"none",padding:"11px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>
+                  Confirmer
+                </button>
+                <button onClick={()=>{setChangeMdp(false);setAncienMdp("");setNouveauMdp("");setConfirmMdp("");}}
+                  style={{background:theme.toggleBg,color:theme.text,border:`1px solid ${theme.border}`,padding:"11px 18px",borderRadius:10,fontWeight:600,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>
+                  Annuler
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </ThemeCtx.Provider>
   );
