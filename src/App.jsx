@@ -812,6 +812,125 @@ function Finances({depenses,setDepenses,recettes,setRecettes,paiements,cfg,showT
   );
 }
 
+// ─── Paramètres ───────────────────────────────────────────────────────────────
+function Parametres({cfg,updateCfg,showToast}) {
+  const {theme}=useTheme();
+  const {couleur}=cfg;
+  const [newClasse,setNewClasse]=useState("");
+  const [newMatiere,setNewMatiere]=useState("");
+  const [editNom,setEditNom]=useState(cfg.nom);
+  const [editAdresse,setEditAdresse]=useState(cfg.adresse);
+  const [editTel,setEditTel]=useState(cfg.telephone);
+  const [editEmail,setEditEmail]=useState(cfg.email);
+  const [editFraisI,setEditFraisI]=useState(cfg.fraisInscription);
+  const [editFraisM,setEditFraisM]=useState(cfg.fraisMensuel);
+  const [editDevise,setEditDevise]=useState(cfg.devise);
+
+  const addClasse=()=>{
+    if(!newClasse.trim())return;
+    if(cfg.classes.includes(newClasse.trim()))return showToast("Classe déjà existante",true);
+    updateCfg({...cfg,classes:[...cfg.classes,newClasse.trim()]});
+    setNewClasse("");showToast("Classe ajoutée ✓");
+  };
+  const delClasse=(c)=>{
+    updateCfg({...cfg,classes:cfg.classes.filter(x=>x!==c)});
+    showToast("Classe supprimée");
+  };
+  const addMatiere=()=>{
+    if(!newMatiere.trim())return;
+    if(cfg.matieres.includes(newMatiere.trim()))return showToast("Matière déjà existante",true);
+    updateCfg({...cfg,matieres:[...cfg.matieres,newMatiere.trim()]});
+    setNewMatiere("");showToast("Matière ajoutée ✓");
+  };
+  const delMatiere=(m)=>{
+    updateCfg({...cfg,matieres:cfg.matieres.filter(x=>x!==m)});
+    showToast("Matière supprimée");
+  };
+  const saveInfos=()=>{
+    updateCfg({...cfg,nom:editNom,adresse:editAdresse,telephone:editTel,email:editEmail,fraisInscription:parseInt(editFraisI)||0,fraisMensuel:parseInt(editFraisM)||0,devise:editDevise});
+    showToast("Informations mises à jour ✓");
+  };
+
+  const COLORS=["#0A84FF","#30D158","#FF9F0A","#FF453A","#BF5AF2","#FF6B35","#5E5CE6","#00C7BE"];
+
+  return (
+    <div>
+      <h1 style={{fontWeight:800,fontSize:24,margin:"0 0 20px",color:theme.text}}>⚙️ Paramètres</h1>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        {/* Infos école */}
+        <Card>
+          <CardTitle color={couleur}>Informations de l'école</CardTitle>
+          <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+            <Inp label="Nom de l'école" value={editNom} onChange={e=>setEditNom(e.target.value)}/>
+            <Inp label="Adresse" value={editAdresse} onChange={e=>setEditAdresse(e.target.value)}/>
+            <Inp label="Téléphone" value={editTel} onChange={e=>setEditTel(e.target.value)}/>
+            <Inp label="Email" value={editEmail} onChange={e=>setEditEmail(e.target.value)}/>
+            <Sel label="Devise" value={editDevise} onChange={e=>setEditDevise(e.target.value)} options={DEVISES}/>
+            <Inp label={`Frais d'inscription (${editDevise})`} type="number" value={editFraisI} onChange={e=>setEditFraisI(e.target.value)}/>
+            <Inp label={`Frais mensuel (${editDevise})`} type="number" value={editFraisM} onChange={e=>setEditFraisM(e.target.value)}/>
+          </div>
+          <Btn onClick={saveInfos} color={couleur}>💾 Sauvegarder</Btn>
+        </Card>
+
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          {/* Couleur */}
+          <Card>
+            <CardTitle color={couleur}>Couleur principale</CardTitle>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+              {COLORS.map(c=>(
+                <button key={c} onClick={()=>{updateCfg({...cfg,couleur:c});showToast("Couleur mise à jour ✓");}}
+                  style={{width:34,height:34,borderRadius:99,background:c,border:`3px solid ${cfg.couleur===c?"#fff":c}`,cursor:"pointer",
+                    boxShadow:cfg.couleur===c?"0 0 0 2px "+c:"none"}}/>
+              ))}
+            </div>
+          </Card>
+
+          {/* Classes */}
+          <Card>
+            <CardTitle color={couleur}>Classes ({cfg.classes.length})</CardTitle>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+              {cfg.classes.map(c=>(
+                <div key={c} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:couleur+"18",borderRadius:99,border:`1px solid ${couleur}44`}}>
+                  <span style={{color:couleur,fontSize:13,fontWeight:600}}>{c}</span>
+                  <button onClick={()=>delClasse(c)} style={{background:"none",border:"none",color:"#FF453A",cursor:"pointer",fontSize:13,padding:0,fontWeight:700}}>✕</button>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={newClasse} onChange={e=>setNewClasse(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&addClasse()}
+                placeholder="Ex: Terminale C"
+                style={{flex:1,background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+              <Btn onClick={addClasse} color={couleur}>+ Ajouter</Btn>
+            </div>
+          </Card>
+
+          {/* Matières */}
+          <Card>
+            <CardTitle color={couleur}>Matières ({cfg.matieres.length})</CardTitle>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+              {cfg.matieres.map(m=>(
+                <div key={m} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(255,255,255,0.06)",borderRadius:99,border:`1px solid ${theme.border}`}}>
+                  <span style={{color:theme.text,fontSize:13,fontWeight:600}}>{m}</span>
+                  <button onClick={()=>delMatiere(m)} style={{background:"none",border:"none",color:"#FF453A",cursor:"pointer",fontSize:13,padding:0,fontWeight:700}}>✕</button>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={newMatiere} onChange={e=>setNewMatiere(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&addMatiere()}
+                placeholder="Ex: Philosophie"
+                style={{flex:1,background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+              <Btn onClick={addMatiere} color={couleur}>+ Ajouter</Btn>
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [dark,setDark]=useState(()=>window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -863,7 +982,11 @@ export default function App() {
     {id:"notes",    label:"Notes",     icon:"📝"},
     {id:"absences", label:"Absences",  icon:"📅"},
     {id:"finances", label:"Finances",  icon:"💼"},
+    {id:"parametres",label:"Paramètres",icon:"⚙️"},
   ];
+
+  // Fonctions pour modifier la config sans reconfigurer
+  const updateCfg=(newCfg)=>{saveCfg(newCfg);setCfg(newCfg);};
 
   return (
     <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d),theme}}>
@@ -877,7 +1000,6 @@ export default function App() {
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <div style={{fontSize:11,color:theme.textMuted}}>{new Date().toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"long",year:"numeric"})}</div>
               <button onClick={()=>setDark(d=>!d)} style={{background:theme.toggleBg,border:"none",borderRadius:20,padding:"6px 12px",cursor:"pointer",fontSize:16}}>{dark?"☀️":"🌙"}</button>
-              <button onClick={()=>{if(window.confirm("Reconfigurer ?"))setCfg(null);}} style={{background:"none",border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"5px 10px",borderRadius:9,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>⚙️</button>
             </div>
           </div>
           <div style={{display:"flex",gap:4,padding:"0 24px 10px",flexWrap:"wrap"}}>
@@ -895,12 +1017,13 @@ export default function App() {
           </div>
         </header>
         <main style={{flex:1,padding:"24px",maxWidth:1400,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
-          {page==="dashboard"&&<Dashboard eleves={eleves} paiements={paiements} depenses={depenses} recettes={recettes} absences={absences} cfg={cfg}/>}
-          {page==="eleves"   &&<Eleves    eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast}/>}
-          {page==="paiements"&&<Paiements paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
-          {page==="notes"    &&<Notes     notes={notes} setNotes={setNotes} eleves={eleves} cfg={cfg} showToast={showToast}/>}
-          {page==="absences" &&<Absences  absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
-          {page==="finances" &&<Finances  depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
+          {page==="dashboard" &&<Dashboard  eleves={eleves} paiements={paiements} depenses={depenses} recettes={recettes} absences={absences} cfg={cfg}/>}
+          {page==="eleves"    &&<Eleves     eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast}/>}
+          {page==="paiements" &&<Paiements  paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+          {page==="notes"     &&<Notes      notes={notes} setNotes={setNotes} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+          {page==="absences"  &&<Absences   absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+          {page==="finances"  &&<Finances   depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
+          {page==="parametres"&&<Parametres cfg={cfg} updateCfg={updateCfg} showToast={showToast}/>}
         </main>
         <footer style={{textAlign:"center",padding:"12px",fontSize:11,color:theme.textFaint,borderTop:`1px solid ${theme.border}`}}>
           {nom} · Logiciel de gestion scolaire 🏫
