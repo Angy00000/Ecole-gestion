@@ -31,10 +31,82 @@ const dbHeaders = {
   "Prefer": "return=representation",
 };
 
-const dbGet  = (t) => fetch(`${SUPA_URL}/rest/v1/${t}?order=id.desc`,{headers:dbHeaders}).then(r=>r.json());
-const dbAdd  = (t,d) => fetch(`${SUPA_URL}/rest/v1/${t}`,{method:"POST",headers:dbHeaders,body:JSON.stringify(d)}).then(r=>r.json());
-const dbDel  = (t,id) => fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"DELETE",headers:dbHeaders});
-const dbPatch= (t,id,d) => fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"PATCH",headers:dbHeaders,body:JSON.stringify(d)});
+// ─── File d'attente offline ───────────────────────────────────────────────────
+const QUEUE_KEY = "ecole_queue";
+const loadQueue = () => { try { return JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]"); } catch { return []; } };
+const saveQueue = (q) => localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+
+const addToQueue = (action) => {
+  const q = loadQueue();
+  q.push({...action, id: Date.now(), timestamp: new Date().toISOString()});
+  saveQueue(q);
+};
+
+// Vérifier si en ligne
+const isOnline = () => navigator.onLine;
+
+// Synchroniser la file d'attente avec Supabase
+const syncQueue = async () => {
+  const q = loadQueue();
+  if(q.length === 0) return;
+  const remaining = [];
+  for(const action of q){
+    try{
+      if(action.type === "ADD"){
+        await fetch(`${SUPA_URL}/rest/v1/${action.table}`,{method:"POST",headers:dbHeaders,body:JSON.stringify(action.data)});
+      } else if(action.type === "DEL"){
+        await fetch(`${SUPA_URL}/rest/v1/${action.table}?id=eq.${action.id}`,{method:"DELETE",headers:dbHeaders});
+      } else if(action.type === "PATCH"){
+        await fetch(`${SUPA_URL}/rest/v1/${action.table}?id=eq.${action.id}`,{method:"PATCH",headers:dbHeaders,body:JSON.stringify(action.data)});
+      }
+    } catch(e){
+      remaining.push(action); // Réessayer plus tard
+    }
+  }
+  saveQueue(remaining);
+};
+
+// Fonctions DB avec fallback offline
+const dbGet = (t) => fetch(`${SUPA_URL}/rest/v1/${t}?order=id.desc`,{headers:dbHeaders}).then(r=>r.json());
+
+const dbAdd = async (t, d) => {
+  if(isOnline()){
+    try{
+      const r = await fetch(`${SUPA_URL}/rest/v1/${t}`,{method:"POST",headers:dbHeaders,body:JSON.stringify(d)});
+      return r.json();
+    }catch(e){
+      addToQueue({type:"ADD",table:t,data:d});
+      return [{...d, id: Date.now()}]; // ID temporaire
+    }
+  } else {
+    addToQueue({type:"ADD",table:t,data:d});
+    return [{...d, id: Date.now()}]; // ID temporaire
+  }
+};
+
+const dbDel = async (t, id) => {
+  if(isOnline()){
+    try{
+      return fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"DELETE",headers:dbHeaders});
+    }catch(e){
+      addToQueue({type:"DEL",table:t,id});
+    }
+  } else {
+    addToQueue({type:"DEL",table:t,id});
+  }
+};
+
+const dbPatch = async (t, id, d) => {
+  if(isOnline()){
+    try{
+      return fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"PATCH",headers:dbHeaders,body:JSON.stringify(d)});
+    }catch(e){
+      addToQueue({type:"PATCH",table:t,id,data:d});
+    }
+  } else {
+    addToQueue({type:"PATCH",table:t,id,data:d});
+  }
+};
 
 // ─── Config locale + Cache offline ───────────────────────────────────────────
 const STORAGE     = "ecole_config_backup";
@@ -1434,15 +1506,41 @@ export default function App() {
 
   // Détecter retour connexion → resynchroniser
   useEffect(()=>{
-    const handleOnline=()=>{
-      if(offline){
-        setOffline(false);
-        window.location.reload(); // Recharger pour sync
-      }
+    const handleOnline=async()=>{
+      // Synchroniser la file d'attente
+      await syncQueue();
+      setOffline(false);
+      // Recharger les données depuis Supabase
+      try{
+        const [e,p,n,a,d,r]=await Promise.all([
+          dbGet("eleves"),dbGet("paiements"),dbGet("notes"),
+          dbGet("absences"),dbGet("depenses"),dbGet("recettes")
+        ]);
+        const data={
+          eleves:e||[],
+          paiements:(p||[]).map(x=>({...x,eleveId:x.eleve_id})),
+          notes:(n||[]).map(x=>({...x,eleveId:x.eleve_id})),
+          absences:(a||[]).map(x=>({...x,eleveId:x.eleve_id})),
+          depenses:d||[],
+          recettes:r||[],
+        };
+        setElevesRaw(data.eleves);
+        setPaiementsRaw(data.paiements);
+        setNotesRaw(data.notes);
+        setAbsencesRaw(data.absences);
+        setDepensesRaw(data.depenses);
+        setRecettesRaw(data.recettes);
+        saveCache(data);
+      }catch(e){console.error(e);}
     };
+    const handleOffline=()=>setOffline(true);
     window.addEventListener("online",handleOnline);
-    return ()=>window.removeEventListener("online",handleOnline);
-  },[offline]);
+    window.addEventListener("offline",handleOffline);
+    return ()=>{
+      window.removeEventListener("online",handleOnline);
+      window.removeEventListener("offline",handleOffline);
+    };
+  },[]);
 
   // Fonctions avec mise à jour du cache local
   const setEleves=(v)=>{setElevesRaw(v);const c=loadCache()||{};saveCache({...c,eleves:v});};
@@ -1504,7 +1602,11 @@ export default function App() {
           {offline&&(
             <div style={{background:"#3A2F1C",borderBottom:"1px solid #FF9F0A",padding:"6px 24px",display:"flex",alignItems:"center",gap:8}}>
               <span style={{fontSize:14}}>📵</span>
-              <span style={{fontSize:12,color:"#FF9F0A",fontWeight:600}}>Mode hors ligne — données du cache local. La synchronisation reprendra dès que vous serez connecté.</span>
+              <span style={{fontSize:12,color:"#FF9F0A",fontWeight:600}}>
+                Mode hors ligne — vous pouvez continuer à travailler normalement.
+                {loadQueue().length>0&&` ${loadQueue().length} action(s) en attente de synchronisation.`}
+                {" "}Synchronisation automatique dès reconnexion.
+              </span>
             </div>
           )}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 24px"}}>
