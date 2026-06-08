@@ -1434,6 +1434,218 @@ function Recus({paiements,eleves,cfg}) {
   );
 }
 
+// ─── Professeurs ──────────────────────────────────────────────────────────────
+function Professeurs({professeurs,setProfesseurs,cfg,showToast}) {
+  const {theme}=useTheme();
+  const {couleur,classes,matieres,devise}=cfg;
+  const fmt=(n)=>xof(n,devise);
+  const [show,setShow]=useState(false);
+  const [editId,setEditId]=useState(null);
+  const [showSalaire,setShowSalaire]=useState(null);
+  const [salaires,setSalaires]=useState([]);
+  const [formSalaire,setFormSalaire]=useState({montant:"",date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+  const [search,setSearch]=useState("");
+  const [form,setForm]=useState({
+    nom:"",prenom:"",telephone:"",email:"",
+    matieres:[],classes:[],
+    salaireMensuel:0,dateEmbauche:today(),
+    statut:"Actif",note:""
+  });
+
+  const filtered=professeurs.filter(p=>{
+    const q=search.toLowerCase();
+    return !q||(p.nom+p.prenom+p.telephone).toLowerCase().includes(q);
+  });
+
+  const toggleMatiere=(m)=>setForm({...form,matieres:form.matieres.includes(m)?form.matieres.filter(x=>x!==m):[...form.matieres,m]});
+  const toggleClasse=(c)=>setForm({...form,classes:form.classes.includes(c)?form.classes.filter(x=>x!==c):[...form.classes,c]});
+
+  const add=async()=>{
+    if(!form.nom||!form.prenom)return showToast("Nom et prénom requis",true);
+    if(editId){
+      await dbPatch("professeurs",editId,{nom:form.nom,prenom:form.prenom,telephone:form.telephone,email:form.email,matieres:JSON.stringify(form.matieres),classes:JSON.stringify(form.classes),salaire_mensuel:parseInt(form.salaireMensuel)||0,date_embauche:form.dateEmbauche,statut:form.statut,note:form.note});
+      setProfesseurs(professeurs.map(p=>p.id===editId?{...p,...form}:p));
+      setEditId(null);showToast("Professeur modifié ✓");
+    } else {
+      const rows=await dbAdd("professeurs",{nom:form.nom,prenom:form.prenom,telephone:form.telephone,email:form.email,matieres:JSON.stringify(form.matieres),classes:JSON.stringify(form.classes),salaire_mensuel:parseInt(form.salaireMensuel)||0,date_embauche:form.dateEmbauche,statut:form.statut,note:form.note});
+      setProfesseurs([{...rows[0],matieres:form.matieres,classes:form.classes,salaireMensuel:parseInt(form.salaireMensuel)||0},...professeurs]);
+      showToast("Professeur ajouté ✓");
+    }
+    setForm({nom:"",prenom:"",telephone:"",email:"",matieres:[],classes:[],salaireMensuel:0,dateEmbauche:today(),statut:"Actif",note:""});
+    setShow(false);
+  };
+
+  const startEdit=(p)=>{
+    setForm({
+      nom:p.nom,prenom:p.prenom,telephone:p.telephone||"",email:p.email||"",
+      matieres:Array.isArray(p.matieres)?p.matieres:(typeof p.matieres==="string"?JSON.parse(p.matieres||"[]"):[]),
+      classes:Array.isArray(p.classes)?p.classes:(typeof p.classes==="string"?JSON.parse(p.classes||"[]"):[]),
+      salaireMensuel:p.salaire_mensuel||p.salaireMensuel||0,
+      dateEmbauche:p.date_embauche||p.dateEmbauche||today(),
+      statut:p.statut||"Actif",note:p.note||""
+    });
+    setEditId(p.id);setShow(true);
+  };
+
+  const del=async(id)=>{await dbDel("professeurs",id);setProfesseurs(professeurs.filter(p=>p.id!==id));showToast("Supprimé");};
+
+  const payerSalaire=async(prof)=>{
+    if(!formSalaire.montant)return showToast("Montant requis",true);
+    const newSal={id:Date.now(),professeurId:prof.id,nom:`${prof.prenom} ${prof.nom}`,...formSalaire,montant:parseInt(formSalaire.montant),type:"Salaire professeur"};
+    setSalaires([newSal,...salaires]);
+    // Enregistrer aussi dans les dépenses
+    await dbAdd("depenses",{titre:`Salaire — ${prof.prenom} ${prof.nom}`,categorie:"Salaires",montant:parseInt(formSalaire.montant),date:formSalaire.date,statut:"Approuvée",note:formSalaire.note||`Mois: ${formSalaire.mois}`});
+    setFormSalaire({montant:"",date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+    setShowSalaire(null);
+    showToast("Salaire payé + dépense enregistrée ✓");
+  };
+
+  const getMatieres=(p)=>Array.isArray(p.matieres)?p.matieres:(typeof p.matieres==="string"?JSON.parse(p.matieres||"[]"):[]);
+  const getClasses=(p)=>Array.isArray(p.classes)?p.classes:(typeof p.classes==="string"?JSON.parse(p.classes||"[]"):[]);
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>👨‍🏫 Professeurs ({professeurs.length})</h1>
+        <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({nom:"",prenom:"",telephone:"",email:"",matieres:[],classes:[],salaireMensuel:0,dateEmbauche:today(),statut:"Actif",note:""}); }} color={couleur}>{show?"✕ Annuler":"+ Ajouter un professeur"}</Btn>
+      </div>
+
+      {/* Formulaire */}
+      {show&&(
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>{editId?"✏️ Modifier":"Nouveau professeur"}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:14}}>
+            <Inp label="Nom *" value={form.nom} onChange={e=>setForm({...form,nom:e.target.value})} placeholder="Nom de famille"/>
+            <Inp label="Prénom *" value={form.prenom} onChange={e=>setForm({...form,prenom:e.target.value})} placeholder="Prénom"/>
+            <Inp label="Téléphone" value={form.telephone} onChange={e=>setForm({...form,telephone:e.target.value})} placeholder="+221 77 000 00 00"/>
+            <Inp label="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="prof@ecole.com"/>
+            <Inp label={`Salaire mensuel (${devise})`} type="number" value={form.salaireMensuel} onChange={e=>setForm({...form,salaireMensuel:e.target.value})} placeholder="0"/>
+            <Inp label="Date d'embauche" type="date" value={form.dateEmbauche} onChange={e=>setForm({...form,dateEmbauche:e.target.value})}/>
+            <Sel label="Statut" value={form.statut} onChange={e=>setForm({...form,statut:e.target.value})} options={["Actif","Congé","Démissionné"]}/>
+            <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Optionnel"/>
+          </div>
+          {/* Matières enseignées */}
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:12,fontWeight:600,color:theme.textMuted,display:"block",marginBottom:8}}>Matières enseignées</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {matieres.map(m=>(
+                <button key={m} onClick={()=>toggleMatiere(m)}
+                  style={{padding:"5px 12px",borderRadius:99,border:"1px solid",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",
+                    borderColor:form.matieres.includes(m)?couleur:theme.border,
+                    background:form.matieres.includes(m)?couleur+"22":"transparent",
+                    color:form.matieres.includes(m)?couleur:theme.textMuted}}>
+                  {form.matieres.includes(m)?"✓ ":""}{m}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Classes */}
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:12,fontWeight:600,color:theme.textMuted,display:"block",marginBottom:8}}>Classes assignées</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {classes.map(c=>(
+                <button key={c} onClick={()=>toggleClasse(c)}
+                  style={{padding:"5px 12px",borderRadius:99,border:"1px solid",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",
+                    borderColor:form.classes.includes(c)?couleur:theme.border,
+                    background:form.classes.includes(c)?couleur+"22":"transparent",
+                    color:form.classes.includes(c)?couleur:theme.textMuted}}>
+                  {form.classes.includes(c)?"✓ ":""}{c}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn onClick={add} color={couleur}>{editId?"💾 Sauvegarder":"Ajouter"}</Btn>
+            {editId&&<BtnSec onClick={()=>{setEditId(null);setShow(false);}}>Annuler</BtnSec>}
+          </div>
+        </Card>
+      )}
+
+      {/* Modal paiement salaire */}
+      {showSalaire&&(()=>{
+        const prof=professeurs.find(p=>p.id===showSalaire);
+        return prof?(
+          <Card style={{marginBottom:16,borderColor:"rgba(48,209,88,0.3)"}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#30D158",marginBottom:14}}>💰 Payer salaire — {prof.prenom} {prof.nom}</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+              <Inp label={`Montant (${devise})`} type="number" value={formSalaire.montant} onChange={e=>setFormSalaire({...formSalaire,montant:e.target.value})} placeholder={`${prof.salaire_mensuel||0}`}/>
+              <Inp label="Date" type="date" value={formSalaire.date} onChange={e=>setFormSalaire({...formSalaire,date:e.target.value})}/>
+              <Inp label="Mois" type="month" value={formSalaire.mois} onChange={e=>setFormSalaire({...formSalaire,mois:e.target.value})}/>
+              <Inp label="Note" value={formSalaire.note} onChange={e=>setFormSalaire({...formSalaire,note:e.target.value})} placeholder="Optionnel"/>
+            </div>
+            <div style={{fontSize:12,color:theme.textMuted,marginBottom:12}}>
+              💡 Salaire mensuel habituel : <strong style={{color:couleur}}>{fmt(prof.salaire_mensuel||0)}</strong>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <Btn onClick={()=>payerSalaire(prof)} color="#30D158">💰 Confirmer le paiement</Btn>
+              <BtnSec onClick={()=>setShowSalaire(null)}>Annuler</BtnSec>
+            </div>
+          </Card>
+        ):null;
+      })()}
+
+      {/* Recherche */}
+      <div style={{marginBottom:14}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher un professeur..."
+          style={{width:"100%",background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+      </div>
+
+      {/* Liste */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:14}}>
+        {filtered.length===0&&<div style={{color:theme.textMuted,fontSize:13,gridColumn:"1/-1",textAlign:"center",padding:"2rem"}}>Aucun professeur</div>}
+        {filtered.map(p=>{
+          const mats=getMatieres(p);
+          const cls=getClasses(p);
+          return (
+            <div key={p.id} style={{background:theme.bgCard,borderRadius:16,padding:"18px 20px",border:`1px solid ${theme.border}`,boxShadow:theme.shadow}}>
+              {/* Header */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:44,height:44,borderRadius:12,background:couleur+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>👨‍🏫</div>
+                  <div>
+                    <div style={{fontSize:15,fontWeight:800,color:theme.text}}>{p.prenom} {p.nom}</div>
+                    {p.telephone&&<div style={{fontSize:12,color:theme.textMuted}}>📞 {p.telephone}</div>}
+                  </div>
+                </div>
+                <Badge label={p.statut||"Actif"} color={p.statut==="Actif"?"#30D158":p.statut==="Congé"?"#FF9F0A":"#FF453A"} bg={p.statut==="Actif"?"#1C3A27":p.statut==="Congé"?"#3A2F1C":"#3A1C1C"}/>
+              </div>
+              {/* Matières */}
+              {mats.length>0&&(
+                <div style={{marginBottom:8}}>
+                  <div style={{fontSize:11,color:theme.textMuted,marginBottom:5}}>Matières</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                    {mats.map(m=><span key={m} style={{background:couleur+"22",color:couleur,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:600}}>{m}</span>)}
+                  </div>
+                </div>
+              )}
+              {/* Classes */}
+              {cls.length>0&&(
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:11,color:theme.textMuted,marginBottom:5}}>Classes</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                    {cls.map(c=><span key={c} style={{background:"rgba(255,255,255,0.06)",color:theme.textSub,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:600,border:`1px solid ${theme.border}`}}>{c}</span>)}
+                  </div>
+                </div>
+              )}
+              {/* Salaire */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderTop:`1px solid ${theme.borderLight}`}}>
+                <div style={{fontSize:12,color:theme.textMuted}}>Salaire mensuel</div>
+                <div style={{fontWeight:700,color:"#30D158",fontSize:14}}>{fmt(p.salaire_mensuel||0)}</div>
+              </div>
+              {/* Actions */}
+              <div style={{display:"flex",gap:6,marginTop:10}}>
+                <button style={{flex:1,background:"rgba(48,209,88,0.12)",border:"1px solid #30D158",color:"#30D158",padding:"7px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}} onClick={()=>setShowSalaire(p.id)}>💰 Payer salaire</button>
+                <button style={{background:"rgba(255,159,10,0.12)",border:"1px solid #FF9F0A",color:"#FF9F0A",padding:"7px 10px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}} onClick={()=>startEdit(p)}>✏️</button>
+                <button style={{background:"none",border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"7px 10px",borderRadius:8,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>del(p.id)}>🗑</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [dark,setDark]=useState(()=>window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -1450,6 +1662,7 @@ export default function App() {
   const [absences,setAbsencesRaw]=useState([]);
   const [depenses,setDepensesRaw]=useState([]);
   const [recettes,setRecettesRaw]=useState([]);
+  const [professeurs,setProfesseursRaw]=useState([]);
 
   // Charger config + données depuis Supabase au démarrage
   useEffect(()=>{
@@ -1465,9 +1678,10 @@ export default function App() {
         }
 
         // Charger données depuis Supabase
-        const [e,p,n,a,d,r]=await Promise.all([
+        const [e,p,n,a,d,r,pr]=await Promise.all([
           dbGet("eleves"),dbGet("paiements"),dbGet("notes"),
-          dbGet("absences"),dbGet("depenses"),dbGet("recettes")
+          dbGet("absences"),dbGet("depenses"),dbGet("recettes"),
+          dbGet("professeurs").catch(()=>[])
         ]);
         const data={
           eleves:e||[],
@@ -1476,6 +1690,7 @@ export default function App() {
           absences:(a||[]).map(x=>({...x,eleveId:x.eleve_id})),
           depenses:d||[],
           recettes:r||[],
+          professeurs:pr||[],
         };
         setElevesRaw(data.eleves);
         setPaiementsRaw(data.paiements);
@@ -1483,6 +1698,7 @@ export default function App() {
         setAbsencesRaw(data.absences);
         setDepensesRaw(data.depenses);
         setRecettesRaw(data.recettes);
+        setProfesseursRaw(data.professeurs);
         // Sauvegarder dans le cache local
         saveCache(data);
         setOffline(false);
@@ -1497,6 +1713,7 @@ export default function App() {
           setAbsencesRaw(cache.absences||[]);
           setDepensesRaw(cache.depenses||[]);
           setRecettesRaw(cache.recettes||[]);
+          setProfesseursRaw(cache.professeurs||[]);
         }
         setOffline(true);
       }
@@ -1549,6 +1766,7 @@ export default function App() {
   const setAbsences=(v)=>{setAbsencesRaw(v);const c=loadCache()||{};saveCache({...c,absences:v});};
   const setDepenses=(v)=>{setDepensesRaw(v);const c=loadCache()||{};saveCache({...c,depenses:v});};
   const setRecettes=(v)=>{setRecettesRaw(v);const c=loadCache()||{};saveCache({...c,recettes:v});};
+  const setProfesseurs=(v)=>{setProfesseursRaw(v);const c=loadCache()||{};saveCache({...c,professeurs:v});};
 
   useEffect(()=>{
     const mq=window.matchMedia("(prefers-color-scheme: dark)");
@@ -1581,14 +1799,15 @@ export default function App() {
   const alertes=eleves.filter(e=>e.statut==="Actif"&&paiements.filter(p=>p.eleveId===e.id&&p.mois===new Date().toISOString().slice(0,7)).reduce((s,p)=>s+p.montant,0)<cfg.fraisMensuel).length;
 
   const NAV=[
-    {id:"dashboard",label:"Dashboard",icon:"◈"},
-    {id:"eleves",   label:"Élèves",   icon:"👨‍🎓"},
-    {id:"paiements",label:"Paiements", icon:"💰",badge:alertes},
-    {id:"recus",    label:"Reçus",     icon:"🧾"},
-    {id:"notes",    label:"Notes",     icon:"📝"},
-    {id:"absences", label:"Absences",  icon:"📅"},
-    {id:"finances", label:"Finances",  icon:"💼"},
-    {id:"parametres",label:"Paramètres",icon:"⚙️"},
+    {id:"dashboard",  label:"Dashboard",   icon:"◈"},
+    {id:"eleves",     label:"Élèves",      icon:"👨‍🎓"},
+    {id:"professeurs",label:"Professeurs", icon:"👨‍🏫"},
+    {id:"paiements",  label:"Paiements",   icon:"💰",badge:alertes},
+    {id:"recus",      label:"Reçus",       icon:"🧾"},
+    {id:"notes",      label:"Notes",       icon:"📝"},
+    {id:"absences",   label:"Absences",    icon:"📅"},
+    {id:"finances",   label:"Finances",    icon:"💼"},
+    {id:"parametres", label:"Paramètres",  icon:"⚙️"},
   ];
 
   // Fonctions pour modifier la config sans reconfigurer
@@ -1636,14 +1855,15 @@ export default function App() {
         <main style={{flex:1,padding:"24px",maxWidth:1400,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
           {loading?<div style={{textAlign:"center",padding:"60px",fontSize:32}}>⏳ Chargement...</div>:(
             <>
-              {page==="dashboard" &&<Dashboard  eleves={eleves} paiements={paiements} depenses={depenses} recettes={recettes} absences={absences} cfg={cfg}/>}
-              {page==="eleves"    &&<Eleves     eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast}/>}
-              {page==="paiements" &&<Paiements  paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
-              {page==="recus"     &&<Recus      paiements={paiements} eleves={eleves} cfg={cfg}/>}
-              {page==="notes"     &&<Notes      notes={notes} setNotes={setNotes} eleves={eleves} cfg={cfg} showToast={showToast}/>}
-              {page==="absences"  &&<Absences   absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
-              {page==="finances"  &&<Finances   depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
-              {page==="parametres"&&<Parametres cfg={cfg} updateCfg={updateCfg} showToast={showToast}/>}
+              {page==="dashboard"   &&<Dashboard    eleves={eleves} paiements={paiements} depenses={depenses} recettes={recettes} absences={absences} cfg={cfg}/>}
+              {page==="eleves"      &&<Eleves       eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast}/>}
+              {page==="professeurs" &&<Professeurs  professeurs={professeurs} setProfesseurs={setProfesseurs} cfg={cfg} showToast={showToast}/>}
+              {page==="paiements"   &&<Paiements    paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="recus"       &&<Recus        paiements={paiements} eleves={eleves} cfg={cfg}/>}
+              {page==="notes"       &&<Notes        notes={notes} setNotes={setNotes} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="absences"    &&<Absences     absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="finances"    &&<Finances     depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
+              {page==="parametres"  &&<Parametres   cfg={cfg} updateCfg={updateCfg} showToast={showToast}/>}
             </>
           )}
         </main>
@@ -1655,3 +1875,4 @@ export default function App() {
     </ThemeCtx.Provider>
   );
 }
+
