@@ -20,13 +20,26 @@ const LIGHT = {
   shadow:"0 4px 24px rgba(0,0,0,0.08)",
 };
 
+// ─── Config Supabase ──────────────────────────────────────────────────────────
+const SUPA_URL = "https://faeltgluscxmijqotlip.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZWx0Z2x1c2N4bWlqcW90bGlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM2OTMsImV4cCI6MjA5NjQ5OTY5M30.FaBj5kAEKf4Vlhkt5U9bEOxkRAHbEP_YXuQXuBxB4_o";
+
+const dbHeaders = {
+  "apikey": SUPA_KEY,
+  "Authorization": `Bearer ${SUPA_KEY}`,
+  "Content-Type": "application/json",
+  "Prefer": "return=representation",
+};
+
+const dbGet  = (t) => fetch(`${SUPA_URL}/rest/v1/${t}?order=id.desc`,{headers:dbHeaders}).then(r=>r.json());
+const dbAdd  = (t,d) => fetch(`${SUPA_URL}/rest/v1/${t}`,{method:"POST",headers:dbHeaders,body:JSON.stringify(d)}).then(r=>r.json());
+const dbDel  = (t,id) => fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"DELETE",headers:dbHeaders});
+const dbPatch= (t,id,d) => fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"PATCH",headers:dbHeaders,body:JSON.stringify(d)});
+
 // ─── Config locale ────────────────────────────────────────────────────────────
 const STORAGE = "ecole_config";
-const DATA_KEY = "ecole_data";
 const loadCfg = () => { try { return JSON.parse(localStorage.getItem(STORAGE)||"null"); } catch { return null; } };
 const saveCfg = (c) => localStorage.setItem(STORAGE, JSON.stringify(c));
-const loadData = () => { try { return JSON.parse(localStorage.getItem(DATA_KEY)||"null"); } catch { return null; } };
-const saveData = (d) => localStorage.setItem(DATA_KEY, JSON.stringify(d));
 
 const today = () => new Date().toISOString().split("T")[0];
 const xof = (n, devise="FCFA") => new Intl.NumberFormat("fr-FR",{maximumFractionDigits:0}).format(n)+" "+devise;
@@ -313,20 +326,22 @@ function Eleves({eleves,setEleves,cfg,showToast}) {
     return match&&(fClasse==="all"||e.classe===fClasse);
   });
 
-  const add=()=>{
+  const add=async()=>{
     if(!form.nom||!form.prenom)return showToast("Nom et prénom requis",true);
     if(editId){
+      await dbPatch("eleves",editId,{nom:form.nom,prenom:form.prenom,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,parent:form.parent,telephone_parent:form.telephoneParent,adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note});
       setEleves(eleves.map(e=>e.id===editId?{...e,...form}:e));
       setEditId(null);showToast("Élève modifié ✓");
     } else {
-      setEleves([{...form,id:Date.now()},...eleves]);
+      const rows=await dbAdd("eleves",{nom:form.nom,prenom:form.prenom,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,parent:form.parent,telephone_parent:form.telephoneParent,adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note});
+      setEleves([{...rows[0],dateNaissance:rows[0].date_naissance,telephoneParent:rows[0].telephone_parent,dateInscription:rows[0].date_inscription},...eleves]);
       showToast("Élève inscrit ✓");
     }
     setForm({nom:"",prenom:"",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});
     setShow(false);
   };
-  const startEdit=(e)=>{setForm({...e});setEditId(e.id);setShow(true);};
-  const del=(id)=>{setEleves(eleves.filter(e=>e.id!==id));showToast("Supprimé");};
+  const startEdit=(e)=>{setForm({...e,dateNaissance:e.date_naissance||e.dateNaissance||"",telephoneParent:e.telephone_parent||e.telephoneParent||"",dateInscription:e.date_inscription||e.dateInscription||""});setEditId(e.id);setShow(true);};
+  const del=async(id)=>{await dbDel("eleves",id);setEleves(eleves.filter(e=>e.id!==id));showToast("Supprimé");};
 
   return (
     <div>
@@ -451,15 +466,16 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
   });
   const total=filtered.reduce((s,p)=>s+p.montant,0);
 
-  const add=()=>{
+  const add=async()=>{
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
     if(!form.montant)return showToast("Montant requis",true);
-    setPaiements([{...form,id:Date.now(),montant:parseInt(form.montant)},...paiements]);
+    const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+    setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
     const eleve=eleves.find(e=>e.id===form.eleveId);
     setForm({...form,eleveId:"",note:"",montant:getFraisMensuel(eleve?.classe,form.mois)});
     setShow(false);showToast("Paiement enregistré ✓");
   };
-  const del=(id)=>{setPaiements(paiements.filter(p=>p.id!==id));showToast("Supprimé");};
+  const del=async(id)=>{await dbDel("paiements",id);setPaiements(paiements.filter(p=>p.id!==id));showToast("Supprimé");};
 
   // Impayés ce mois (mensualité seulement)
   const impayes=eleves.filter(e=>{
@@ -577,15 +593,16 @@ function Notes({notes,setNotes,eleves,cfg,showToast}) {
     return {...e,moy};
   }).sort((a,b)=>(b.moy||0)-(a.moy||0));
 
-  const add=()=>{
+  const add=async()=>{
     if(!form.eleveId||form.note==="")return showToast("Élève et note requis",true);
     const n=parseFloat(form.note);
     if(n<0||n>20)return showToast("Note entre 0 et 20",true);
-    setNotes([{...form,id:Date.now(),note:n,coeff:parseInt(form.coeff)||1},...notes]);
+    const rows=await dbAdd("notes",{eleve_id:form.eleveId,matiere:form.matiere,note:n,coeff:parseInt(form.coeff)||1,type:form.type,trimestre:form.trimestre,date:form.date,classe:form.classe||fClasse});
+    setNotes([{...rows[0],eleveId:rows[0].eleve_id},...notes]);
     setForm({...form,eleveId:"",note:""});
     showToast("Note enregistrée ✓");
   };
-  const del=(id)=>{setNotes(notes.filter(n=>n.id!==id));showToast("Supprimée");};
+  const del=async(id)=>{await dbDel("notes",id);setNotes(notes.filter(n=>n.id!==id));showToast("Supprimée");};
 
   const moyColor=(m)=>m>=14?"#30D158":m>=10?"#FF9F0A":"#FF453A";
 
@@ -676,14 +693,19 @@ function Absences({absences,setAbsences,eleves,cfg,showToast}) {
     return dateOk&&classeOk;
   });
 
-  const add=()=>{
+  const add=async()=>{
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
-    setAbsences([{...form,id:Date.now()},...absences]);
+    const rows=await dbAdd("absences",{eleve_id:form.eleveId,date:form.date,type:form.type,motif:form.motif,justifie:form.justifie});
+    setAbsences([{...rows[0],eleveId:rows[0].eleve_id},...absences]);
     setForm({...form,eleveId:"",motif:"",justifie:false});
     showToast("Absence enregistrée ✓");
   };
-  const del=(id)=>{setAbsences(absences.filter(a=>a.id!==id));showToast("Supprimée");};
-  const toggle=(id)=>setAbsences(absences.map(a=>a.id===id?{...a,justifie:!a.justifie}:a));
+  const del=async(id)=>{await dbDel("absences",id);setAbsences(absences.filter(a=>a.id!==id));showToast("Supprimée");};
+  const toggle=async(id)=>{
+    const a=absences.find(x=>x.id===id);
+    await dbPatch("absences",id,{justifie:!a.justifie});
+    setAbsences(absences.map(x=>x.id===id?{...x,justifie:!x.justifie}:x));
+  };
 
   // Stats
   const totalAbsences=absences.length;
@@ -775,21 +797,23 @@ function Finances({depenses,setDepenses,recettes,setRecettes,paiements,cfg,showT
   const totalRec=recettes.reduce((s,r)=>s+r.montant,0)+paiements.reduce((s,p)=>s+p.montant,0);
   const ben=totalRec-totalDep;
 
-  const addDep=()=>{
+  const addDep=async()=>{
     if(!formDep.titre||!formDep.montant)return showToast("Titre et montant requis",true);
-    setDepenses([{...formDep,id:Date.now(),montant:parseInt(formDep.montant)},...depenses]);
+    const rows=await dbAdd("depenses",{titre:formDep.titre,categorie:formDep.categorie,montant:parseInt(formDep.montant),date:formDep.date,statut:formDep.statut,note:formDep.note});
+    setDepenses([rows[0],...depenses]);
     setFormDep({titre:"",categorie:"Salaires",montant:"",date:today(),statut:"En attente",note:""});
     setShowDep(false);showToast("Dépense enregistrée ✓");
   };
-  const addRec=()=>{
+  const addRec=async()=>{
     if(!formRec.titre||!formRec.montant)return showToast("Titre et montant requis",true);
-    setRecettes([{...formRec,id:Date.now(),montant:parseInt(formRec.montant)},...recettes]);
+    const rows=await dbAdd("recettes",{titre:formRec.titre,categorie:formRec.categorie,montant:parseInt(formRec.montant),date:formRec.date,note:formRec.note});
+    setRecettes([rows[0],...recettes]);
     setFormRec({titre:"",categorie:"Autres",montant:"",date:today(),note:""});
     setShowRec(false);showToast("Recette enregistrée ✓");
   };
-  const chStat=(id,statut)=>setDepenses(depenses.map(d=>d.id===id?{...d,statut}:d));
-  const delDep=(id)=>{setDepenses(depenses.filter(d=>d.id!==id));showToast("Supprimée");};
-  const delRec=(id)=>{setRecettes(recettes.filter(r=>r.id!==id));showToast("Supprimée");};
+  const chStat=async(id,statut)=>{await dbPatch("depenses",id,{statut});setDepenses(depenses.map(d=>d.id===id?{...d,statut}:d));};
+  const delDep=async(id)=>{await dbDel("depenses",id);setDepenses(depenses.filter(d=>d.id!==id));showToast("Supprimée");};
+  const delRec=async(id)=>{await dbDel("recettes",id);setRecettes(recettes.filter(r=>r.id!==id));showToast("Supprimée");};
 
   return (
     <div>
@@ -1249,24 +1273,42 @@ export default function App() {
   const [cfg,setCfg]=useState(()=>loadCfg());
   const [page,setPage]=useState("dashboard");
   const [toast,setToast]=useState(null);
+  const [loading,setLoading]=useState(true);
 
-  // Données
-  const initData=loadData()||{eleves:[],paiements:[],notes:[],absences:[],depenses:[],recettes:[]};
-  const [eleves,setElevesRaw]=useState(initData.eleves);
-  const [paiements,setPaiementsRaw]=useState(initData.paiements);
-  const [notes,setNotesRaw]=useState(initData.notes);
-  const [absences,setAbsencesRaw]=useState(initData.absences);
-  const [depenses,setDepensesRaw]=useState(initData.depenses);
-  const [recettes,setRecettesRaw]=useState(initData.recettes);
+  const [eleves,setElevesRaw]=useState([]);
+  const [paiements,setPaiementsRaw]=useState([]);
+  const [notes,setNotesRaw]=useState([]);
+  const [absences,setAbsencesRaw]=useState([]);
+  const [depenses,setDepensesRaw]=useState([]);
+  const [recettes,setRecettesRaw]=useState([]);
 
-  // Auto-save
-  const persist=(key,val)=>{const d=loadData()||{};saveData({...d,[key]:val});};
-  const setEleves=(v)=>{setElevesRaw(v);persist("eleves",v);};
-  const setPaiements=(v)=>{setPaiementsRaw(v);persist("paiements",v);};
-  const setNotes=(v)=>{setNotesRaw(v);persist("notes",v);};
-  const setAbsences=(v)=>{setAbsencesRaw(v);persist("absences",v);};
-  const setDepenses=(v)=>{setDepensesRaw(v);persist("depenses",v);};
-  const setRecettes=(v)=>{setRecettesRaw(v);persist("recettes",v);};
+  // Charger depuis Supabase au démarrage
+  useEffect(()=>{
+    if(!cfg)return setLoading(false);
+    (async()=>{
+      try{
+        const [e,p,n,a,d,r]=await Promise.all([
+          dbGet("eleves"),dbGet("paiements"),dbGet("notes"),
+          dbGet("absences"),dbGet("depenses"),dbGet("recettes")
+        ]);
+        setElevesRaw(e||[]);
+        setPaiementsRaw((p||[]).map(x=>({...x,eleveId:x.eleve_id})));
+        setNotesRaw((n||[]).map(x=>({...x,eleveId:x.eleve_id})));
+        setAbsencesRaw((a||[]).map(x=>({...x,eleveId:x.eleve_id})));
+        setDepensesRaw(d||[]);
+        setRecettesRaw(r||[]);
+      }catch(e){showToast("Erreur de connexion",true);}
+      setLoading(false);
+    })();
+  },[cfg]);
+
+  // Fonctions Supabase
+  const setEleves=async(v)=>{setElevesRaw(v);};
+  const setPaiements=async(v)=>{setPaiementsRaw(v);};
+  const setNotes=async(v)=>{setNotesRaw(v);};
+  const setAbsences=async(v)=>{setAbsencesRaw(v);};
+  const setDepenses=async(v)=>{setDepensesRaw(v);};
+  const setRecettes=async(v)=>{setRecettesRaw(v);};
 
   useEffect(()=>{
     const mq=window.matchMedia("(prefers-color-scheme: dark)");
@@ -1329,14 +1371,18 @@ export default function App() {
           </div>
         </header>
         <main style={{flex:1,padding:"24px",maxWidth:1400,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
-          {page==="dashboard" &&<Dashboard  eleves={eleves} paiements={paiements} depenses={depenses} recettes={recettes} absences={absences} cfg={cfg}/>}
-          {page==="eleves"    &&<Eleves     eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast}/>}
-          {page==="paiements" &&<Paiements  paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
-          {page==="recus"     &&<Recus      paiements={paiements} eleves={eleves} cfg={cfg}/>}
-          {page==="notes"     &&<Notes      notes={notes} setNotes={setNotes} eleves={eleves} cfg={cfg} showToast={showToast}/>}
-          {page==="absences"  &&<Absences   absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
-          {page==="finances"  &&<Finances   depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
-          {page==="parametres"&&<Parametres cfg={cfg} updateCfg={updateCfg} showToast={showToast}/>}
+          {loading?<div style={{textAlign:"center",padding:"60px",fontSize:32}}>⏳ Chargement...</div>:(
+            <>
+              {page==="dashboard" &&<Dashboard  eleves={eleves} paiements={paiements} depenses={depenses} recettes={recettes} absences={absences} cfg={cfg}/>}
+              {page==="eleves"    &&<Eleves     eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast}/>}
+              {page==="paiements" &&<Paiements  paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="recus"     &&<Recus      paiements={paiements} eleves={eleves} cfg={cfg}/>}
+              {page==="notes"     &&<Notes      notes={notes} setNotes={setNotes} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="absences"  &&<Absences   absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="finances"  &&<Finances   depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
+              {page==="parametres"&&<Parametres cfg={cfg} updateCfg={updateCfg} showToast={showToast}/>}
+            </>
+          )}
         </main>
         <footer style={{textAlign:"center",padding:"12px",fontSize:11,color:theme.textFaint,borderTop:`1px solid ${theme.border}`}}>
           {nom} · Logiciel de gestion scolaire 🏫
