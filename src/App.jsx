@@ -1098,6 +1098,150 @@ function Parametres({cfg,updateCfg,showToast}) {
   );
 }
 
+// ─── Reçus ────────────────────────────────────────────────────────────────────
+function Recus({paiements,eleves,cfg}) {
+  const {theme}=useTheme();
+  const {couleur,devise,nom,adresse,telephone,email}=cfg;
+  const fmt=(n)=>xof(n,devise);
+  const [selected,setSelected]=useState(null);
+  const [fEleve,setFEleve]=useState("");
+  const [fMois,setFMois]=useState("");
+  const printRef=useRef();
+
+  const filtered=paiements.filter(p=>{
+    const eleveOk=!fEleve||p.eleveId===Number(fEleve);
+    const moisOk=!fMois||p.mois===fMois;
+    return eleveOk&&moisOk;
+  });
+
+  const imprimer=()=>{
+    if(!printRef.current)return;
+    const content=printRef.current.innerHTML;
+    const w=window.open("","_blank");
+    w.document.write(`<html><head><title>Reçu ${nom}</title><style>
+      *{box-sizing:border-box;}
+      body{font-family:Arial,sans-serif;margin:0;padding:40px;color:#1C1C1E;}
+      .recu{max-width:500px;margin:0 auto;border:2px solid #eee;padding:30px;border-radius:12px;}
+    </style></head><body>${content}</body></html>`);
+    w.document.close();w.print();
+  };
+
+  const getEleve=(id)=>eleves.find(e=>e.id===id);
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>🧾 Reçus de paiement</h1>
+        {selected&&<button onClick={imprimer} style={{background:couleur,color:"#fff",border:"none",padding:"9px 20px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🖨️ Imprimer</button>}
+      </div>
+
+      {/* Aperçu du reçu sélectionné */}
+      {selected&&(()=>{
+        const p=selected;
+        const eleve=getEleve(p.eleveId);
+        const num=`REC-${p.id}`;
+        return (
+          <div style={{...{background:theme.bgCard,borderRadius:16,padding:"20px 22px",border:`1px solid ${couleur}44`,boxShadow:theme.shadow},marginBottom:20}}>
+            <div ref={printRef}>
+              <div className="recu" style={{maxWidth:500,margin:"0 auto",border:"2px solid #e5e5ea",padding:30,borderRadius:12,background:"#fff",color:"#1C1C1E",fontFamily:"Arial,sans-serif"}}>
+                {/* Header */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,paddingBottom:20,borderBottom:`3px solid ${couleur}`}}>
+                  <div>
+                    <div style={{fontSize:20,fontWeight:900,color:couleur}}>{nom}</div>
+                    {adresse&&<div style={{fontSize:12,color:"#636366",marginTop:4}}>📍 {adresse}</div>}
+                    {telephone&&<div style={{fontSize:12,color:"#636366"}}>📞 {telephone}</div>}
+                    {email&&<div style={{fontSize:12,color:"#636366"}}>✉️ {email}</div>}
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:20,fontWeight:900,color:couleur}}>REÇU</div>
+                    <div style={{fontSize:13,fontWeight:700}}>#{num}</div>
+                    <div style={{fontSize:12,color:"#636366",marginTop:4}}>Date : {p.date}</div>
+                  </div>
+                </div>
+
+                {/* Infos élève */}
+                <div style={{marginBottom:20,padding:"14px",background:"#f5f5f7",borderRadius:10}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#636366",textTransform:"uppercase",marginBottom:8}}>Reçu de</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#1C1C1E"}}>{eleve?`${eleve.prenom} ${eleve.nom}`:"—"}</div>
+                  {eleve&&<div style={{fontSize:13,color:"#636366"}}>Classe : {eleve.classe}</div>}
+                  {eleve?.parent&&<div style={{fontSize:13,color:"#636366"}}>Parent : {eleve.parent}</div>}
+                </div>
+
+                {/* Détail paiement */}
+                <div style={{marginBottom:20}}>
+                  <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #e5e5ea"}}>
+                    <span style={{fontSize:14,color:"#636366"}}>Type de paiement</span>
+                    <span style={{fontSize:14,fontWeight:700,color:"#1C1C1E"}}>{p.type}</span>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #e5e5ea"}}>
+                    <span style={{fontSize:14,color:"#636366"}}>Période</span>
+                    <span style={{fontSize:14,fontWeight:700,color:"#1C1C1E"}}>{p.mois}</span>
+                  </div>
+                  {p.note&&<div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #e5e5ea"}}>
+                    <span style={{fontSize:14,color:"#636366"}}>Note</span>
+                    <span style={{fontSize:14,color:"#1C1C1E"}}>{p.note}</span>
+                  </div>}
+                </div>
+
+                {/* Montant */}
+                <div style={{background:couleur+"11",borderRadius:12,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+                  <span style={{fontSize:15,fontWeight:700,color:"#1C1C1E"}}>Montant reçu</span>
+                  <span style={{fontSize:26,fontWeight:900,color:couleur}}>{fmt(p.montant)}</span>
+                </div>
+
+                {/* Footer */}
+                <div style={{textAlign:"center",fontSize:11,color:"#8E8E93",borderTop:"1px solid #e5e5ea",paddingTop:16}}>
+                  {nom} · Merci pour votre confiance 🙏
+                </div>
+              </div>
+            </div>
+            <button onClick={()=>setSelected(null)} style={{marginTop:14,background:"none",border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"7px 16px",borderRadius:9,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>✕ Fermer</button>
+          </div>
+        );
+      })()}
+
+      {/* Filtres */}
+      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <select value={fEleve} onChange={e=>setFEleve(e.target.value)}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+          <option value="">Tous les élèves</option>
+          {eleves.map(e=><option key={e.id} value={e.id}>{e.prenom} {e.nom} ({e.classe})</option>)}
+        </select>
+        <input type="month" value={fMois} onChange={e=>setFMois(e.target.value)}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit"}}/>
+        <div style={{marginLeft:"auto",color:theme.textMuted,fontSize:13}}>
+          {filtered.length} reçu{filtered.length!==1?"s":""}
+        </div>
+      </div>
+
+      {/* Liste paiements */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}}>
+        {filtered.length===0&&<div style={{color:theme.textMuted,fontSize:13,gridColumn:"1/-1",textAlign:"center",padding:"2rem"}}>Aucun paiement trouvé</div>}
+        {filtered.map(p=>{
+          const eleve=getEleve(p.eleveId);
+          return (
+            <div key={p.id} style={{background:theme.bgCard,borderRadius:14,padding:"16px 18px",border:`1px solid ${selected?.id===p.id?couleur:theme.border}`,boxShadow:theme.shadow,cursor:"pointer",transition:"all 0.15s"}}
+              onClick={()=>setSelected(p)}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,color:theme.text}}>{eleve?`${eleve.prenom} ${eleve.nom}`:"—"}</div>
+                  <div style={{fontSize:12,color:theme.textMuted}}>{eleve?.classe||"—"} · {p.mois}</div>
+                </div>
+                <span style={{background:couleur+"22",color:couleur,padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>{p.type}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:20,fontWeight:800,color:"#30D158"}}>{fmt(p.montant)}</div>
+                <div style={{fontSize:11,color:theme.textMuted}}>{p.date}</div>
+              </div>
+              <div style={{marginTop:10,fontSize:11,color:couleur,fontWeight:600}}>👁 Appuyer pour voir le reçu</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [dark,setDark]=useState(()=>window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -1146,6 +1290,7 @@ export default function App() {
     {id:"dashboard",label:"Dashboard",icon:"◈"},
     {id:"eleves",   label:"Élèves",   icon:"👨‍🎓"},
     {id:"paiements",label:"Paiements", icon:"💰",badge:alertes},
+    {id:"recus",    label:"Reçus",     icon:"🧾"},
     {id:"notes",    label:"Notes",     icon:"📝"},
     {id:"absences", label:"Absences",  icon:"📅"},
     {id:"finances", label:"Finances",  icon:"💼"},
@@ -1187,6 +1332,7 @@ export default function App() {
           {page==="dashboard" &&<Dashboard  eleves={eleves} paiements={paiements} depenses={depenses} recettes={recettes} absences={absences} cfg={cfg}/>}
           {page==="eleves"    &&<Eleves     eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast}/>}
           {page==="paiements" &&<Paiements  paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+          {page==="recus"     &&<Recus      paiements={paiements} eleves={eleves} cfg={cfg}/>}
           {page==="notes"     &&<Notes      notes={notes} setNotes={setNotes} eleves={eleves} cfg={cfg} showToast={showToast}/>}
           {page==="absences"  &&<Absences   absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
           {page==="finances"  &&<Finances   depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
