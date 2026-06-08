@@ -36,13 +36,16 @@ const dbAdd  = (t,d) => fetch(`${SUPA_URL}/rest/v1/${t}`,{method:"POST",headers:
 const dbDel  = (t,id) => fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"DELETE",headers:dbHeaders});
 const dbPatch= (t,id,d) => fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"PATCH",headers:dbHeaders,body:JSON.stringify(d)});
 
-// ─── Config locale ────────────────────────────────────────────────────────────
-const STORAGE = "ecole_config_backup";
-const loadCfg = () => { try { return JSON.parse(localStorage.getItem(STORAGE)||"null"); } catch { return null; } };
+// ─── Config locale + Cache offline ───────────────────────────────────────────
+const STORAGE     = "ecole_config_backup";
+const CACHE_KEY   = "ecole_cache";
+const loadCfg     = () => { try { return JSON.parse(localStorage.getItem(STORAGE)||"null"); } catch { return null; } };
+const loadCache   = () => { try { return JSON.parse(localStorage.getItem(CACHE_KEY)||"null"); } catch { return null; } };
+const saveCache   = (d) => localStorage.setItem(CACHE_KEY, JSON.stringify(d));
+
 const saveCfg = async (c) => {
   localStorage.setItem(STORAGE, JSON.stringify(c));
   try {
-    // Vérifier si config existe déjà
     const res = await fetch(`${SUPA_URL}/rest/v1/config?select=id`,{headers:dbHeaders});
     const rows = await res.json();
     if(rows&&rows.length>0){
@@ -586,11 +589,21 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
 // ─── Notes ────────────────────────────────────────────────────────────────────
 function Notes({notes,setNotes,eleves,cfg,showToast}) {
   const {theme}=useTheme();
-  const {couleur,matieres,classes}=cfg;
+  const {couleur,matieres,classes,matieresParClasse={}}=cfg;
   const [show,setShow]=useState(false);
   const [fClasse,setFClasse]=useState(classes[0]||"");
-  const [fMatiere,setFMatiere]=useState(matieres[0]||"");
-  const [form,setForm]=useState({eleveId:"",matiere:matieres[0]||"",note:"",coeff:1,type:"Devoir",trimestre:"T1",date:today()});
+
+  // Matières disponibles = communes + spécifiques à la classe sélectionnée
+  const getMatieres=(classe)=>{
+    const specifiques=matieresParClasse[classe]||[];
+    const toutes=[...matieres];
+    specifiques.forEach(m=>{if(!toutes.includes(m))toutes.push(m);});
+    return toutes;
+  };
+
+  const matieresDisponibles=getMatieres(fClasse);
+  const [fMatiere,setFMatiere]=useState(matieresDisponibles[0]||"");
+  const [form,setForm]=useState({eleveId:"",matiere:matieresDisponibles[0]||"",note:"",coeff:1,type:"Devoir",trimestre:"T1",date:today()});
 
   const elevesClasse=eleves.filter(e=>e.classe===fClasse&&e.statut==="Actif");
   const notesFiltered=notes.filter(n=>{
@@ -627,10 +640,14 @@ function Notes({notes,setNotes,eleves,cfg,showToast}) {
       {show&&(
         <Card style={{marginBottom:16}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
-            <Sel label="Classe" value={form.classe||fClasse} onChange={e=>setForm({...form,classe:e.target.value})} options={classes}/>
+            <Sel label="Classe" value={form.classe||fClasse} onChange={e=>{
+              const cls=e.target.value;
+              const mats=getMatieres(cls);
+              setForm({...form,classe:cls,matiere:mats[0]||""});
+            }} options={classes}/>
             <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
               options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.classe===(form.classe||fClasse)&&e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom}`}))]}/>
-            <Sel label="Matière" value={form.matiere} onChange={e=>setForm({...form,matiere:e.target.value})} options={matieres}/>
+            <Sel label="Matière" value={form.matiere} onChange={e=>setForm({...form,matiere:e.target.value})} options={getMatieres(form.classe||fClasse)}/>
             <Inp label="Note (/20) *" type="number" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Ex: 15.5"/>
             <Inp label="Coefficient" type="number" value={form.coeff} onChange={e=>setForm({...form,coeff:e.target.value})} placeholder="1"/>
             <Sel label="Type" value={form.type} onChange={e=>setForm({...form,type:e.target.value})} options={["Devoir","Composition","Examen","Contrôle","TP"]}/>
@@ -641,14 +658,19 @@ function Notes({notes,setNotes,eleves,cfg,showToast}) {
         </Card>
       )}
       <div style={{display:"flex",gap:10,marginBottom:16}}>
-        <select value={fClasse} onChange={e=>setFClasse(e.target.value)}
+        <select value={fClasse} onChange={e=>{setFClasse(e.target.value);setFMatiere(getMatieres(e.target.value)[0]||"");}}
           style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
           {classes.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
         <select value={fMatiere} onChange={e=>setFMatiere(e.target.value)}
           style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
-          {matieres.map(m=><option key={m} value={m}>{m}</option>)}
+          {getMatieres(fClasse).map(m=><option key={m} value={m}>{m}</option>)}
         </select>
+        <div style={{marginLeft:"auto",fontSize:11,color:theme.textMuted,alignSelf:"center"}}>
+          {(matieresParClasse[fClasse]||[]).length>0&&
+            <span style={{color:couleur}}>+ {(matieresParClasse[fClasse]||[]).join(", ")} (spécifiques)</span>
+          }
+        </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
         <Card>
@@ -946,6 +968,9 @@ function Parametres({cfg,updateCfg,showToast}) {
   const [coursDuSoir,setCoursDuSoir]=useState(cfg.coursDuSoir||false);
   const [fraisCoursSOir,setFraisCoursSOir]=useState(cfg.fraisCoursSOir||0);
   const [typesPaiements,setTypesPaiements]=useState(cfg.typesPaiements||["Mensualité","Inscription","Cantine","Fournitures","Transport","Cours du soir","Autre"]);
+  const [matieresParClasse,setMatieresParClasse]=useState(cfg.matieresParClasse||{});
+  const [newMatiereClasse,setNewMatiereClasse]=useState("");
+  const [classeSelectionnee,setClasseSelectionnee]=useState(classes[0]||"");
 
   const COLORS=["#0A84FF","#30D158","#FF9F0A","#FF453A","#BF5AF2","#FF6B35","#5E5CE6","#00C7BE"];
 
@@ -963,6 +988,20 @@ function Parametres({cfg,updateCfg,showToast}) {
     setNewMatiere("");showToast("Matière ajoutée ✓");
   };
   const delMatiere=(m)=>{updateCfg({...cfg,matieres:cfg.matieres.filter(x=>x!==m)});showToast("Matière supprimée");};
+
+  const addMatiereClasse=()=>{
+    if(!newMatiereClasse.trim())return;
+    const current=matieresParClasse[classeSelectionnee]||[];
+    if(current.includes(newMatiereClasse.trim()))return showToast("Matière déjà ajoutée",true);
+    const updated={...matieresParClasse,[classeSelectionnee]:[...current,newMatiereClasse.trim()]};
+    setMatieresParClasse(updated);
+    setNewMatiereClasse("");showToast(`Matière ajoutée à ${classeSelectionnee} ✓`);
+  };
+  const delMatiereClasse=(classe,m)=>{
+    const updated={...matieresParClasse,[classe]:(matieresParClasse[classe]||[]).filter(x=>x!==m)};
+    setMatieresParClasse(updated);
+  };
+
   const addType=()=>{
     if(!newType.trim())return;
     setTypesPaiements([...typesPaiements,newType.trim()]);
@@ -976,7 +1015,7 @@ function Parametres({cfg,updateCfg,showToast}) {
       fraisParClasse,fraisInscriptionParClasse:fraisInsParClasse,
       fraisSpeciaux:{"01":parseInt(fraisJanvier)||0,"02":parseInt(fraisFevier)||0},
       coursDuSoir,fraisCoursSOir:parseInt(fraisCoursSOir)||0,
-      typesPaiements,
+      typesPaiements,matieresParClasse,
     });
     showToast("Paramètres sauvegardés ✓");
   };
@@ -1107,6 +1146,51 @@ function Parametres({cfg,updateCfg,showToast}) {
             <input value={newMatiere} onChange={e=>setNewMatiere(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addMatiere()} placeholder="Ex: Philosophie"
               style={{flex:1,background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
             <Btn onClick={addMatiere} color={couleur}>+ Ajouter</Btn>
+          </div>
+        </Card>
+
+        {/* Matières spécifiques par classe */}
+        <Card style={{gridColumn:"1/-1"}}>
+          <CardTitle color={couleur}>📚 Matières spécifiques par classe</CardTitle>
+          <div style={{fontSize:12,color:theme.textMuted,marginBottom:14}}>
+            Les matières communes s'appliquent à toutes les classes. Ajoutez ici des matières supplémentaires pour certaines classes uniquement.
+          </div>
+          <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"flex-end"}}>
+            <div style={{display:"flex",flexDirection:"column",gap:5,flex:1}}>
+              <label style={{fontSize:12,fontWeight:600,color:theme.textMuted}}>Classe</label>
+              <select value={classeSelectionnee} onChange={e=>setClasseSelectionnee(e.target.value)}
+                style={{background:theme.sel,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"9px 13px",color:theme.text,fontSize:14,outline:"none",fontFamily:"inherit",cursor:"pointer"}}>
+                {classes.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:5,flex:2}}>
+              <label style={{fontSize:12,fontWeight:600,color:theme.textMuted}}>Matière spécifique</label>
+              <input value={newMatiereClasse} onChange={e=>setNewMatiereClasse(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&addMatiereClasse()}
+                placeholder="Ex: Philosophie, Latin, Arabe..."
+                style={{background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"9px 13px",color:theme.text,fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+            <Btn onClick={addMatiereClasse} color={couleur}>+ Ajouter</Btn>
+          </div>
+          {/* Afficher matières spécifiques par classe */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+            {classes.map(c=>{
+              const matieresCls=matieresParClasse[c]||[];
+              return (
+                <div key={c} style={{background:theme.bg,borderRadius:12,padding:"12px 14px",border:`1px solid ${theme.border}`}}>
+                  <div style={{fontSize:13,fontWeight:700,color:couleur,marginBottom:8}}>{c}</div>
+                  {matieresCls.length===0
+                    ?<div style={{fontSize:11,color:theme.textFaint}}>Aucune matière spécifique</div>
+                    :matieresCls.map(m=>(
+                      <div key={m} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${theme.borderLight}`}}>
+                        <span style={{fontSize:12,color:theme.text}}>{m}</span>
+                        <button onClick={()=>delMatiereClasse(c,m)} style={{background:"none",border:"none",color:"#FF453A",cursor:"pointer",fontSize:13,padding:0}}>✕</button>
+                      </div>
+                    ))
+                  }
+                </div>
+              );
+            })}
           </div>
         </Card>
 
@@ -1286,6 +1370,7 @@ export default function App() {
   const [page,setPage]=useState("dashboard");
   const [toast,setToast]=useState(null);
   const [loading,setLoading]=useState(true);
+  const [offline,setOffline]=useState(false);
 
   const [eleves,setElevesRaw]=useState([]);
   const [paiements,setPaiementsRaw]=useState([]);
@@ -1307,29 +1392,65 @@ export default function App() {
           localStorage.setItem(STORAGE,JSON.stringify(remoteCfg));
         }
 
-        // Charger données
+        // Charger données depuis Supabase
         const [e,p,n,a,d,r]=await Promise.all([
           dbGet("eleves"),dbGet("paiements"),dbGet("notes"),
           dbGet("absences"),dbGet("depenses"),dbGet("recettes")
         ]);
-        setElevesRaw(e||[]);
-        setPaiementsRaw((p||[]).map(x=>({...x,eleveId:x.eleve_id})));
-        setNotesRaw((n||[]).map(x=>({...x,eleveId:x.eleve_id})));
-        setAbsencesRaw((a||[]).map(x=>({...x,eleveId:x.eleve_id})));
-        setDepensesRaw(d||[]);
-        setRecettesRaw(r||[]);
-      }catch(e){console.error(e);}
+        const data={
+          eleves:e||[],
+          paiements:(p||[]).map(x=>({...x,eleveId:x.eleve_id})),
+          notes:(n||[]).map(x=>({...x,eleveId:x.eleve_id})),
+          absences:(a||[]).map(x=>({...x,eleveId:x.eleve_id})),
+          depenses:d||[],
+          recettes:r||[],
+        };
+        setElevesRaw(data.eleves);
+        setPaiementsRaw(data.paiements);
+        setNotesRaw(data.notes);
+        setAbsencesRaw(data.absences);
+        setDepensesRaw(data.depenses);
+        setRecettesRaw(data.recettes);
+        // Sauvegarder dans le cache local
+        saveCache(data);
+        setOffline(false);
+      }catch(e){
+        // Pas de connexion → utiliser le cache local
+        console.log("Hors ligne, chargement du cache...");
+        const cache=loadCache();
+        if(cache){
+          setElevesRaw(cache.eleves||[]);
+          setPaiementsRaw(cache.paiements||[]);
+          setNotesRaw(cache.notes||[]);
+          setAbsencesRaw(cache.absences||[]);
+          setDepensesRaw(cache.depenses||[]);
+          setRecettesRaw(cache.recettes||[]);
+        }
+        setOffline(true);
+      }
       setLoading(false);
     })();
   },[]);
 
-  // Fonctions Supabase
-  const setEleves=async(v)=>{setElevesRaw(v);};
-  const setPaiements=async(v)=>{setPaiementsRaw(v);};
-  const setNotes=async(v)=>{setNotesRaw(v);};
-  const setAbsences=async(v)=>{setAbsencesRaw(v);};
-  const setDepenses=async(v)=>{setDepensesRaw(v);};
-  const setRecettes=async(v)=>{setRecettesRaw(v);};
+  // Détecter retour connexion → resynchroniser
+  useEffect(()=>{
+    const handleOnline=()=>{
+      if(offline){
+        setOffline(false);
+        window.location.reload(); // Recharger pour sync
+      }
+    };
+    window.addEventListener("online",handleOnline);
+    return ()=>window.removeEventListener("online",handleOnline);
+  },[offline]);
+
+  // Fonctions avec mise à jour du cache local
+  const setEleves=(v)=>{setElevesRaw(v);const c=loadCache()||{};saveCache({...c,eleves:v});};
+  const setPaiements=(v)=>{setPaiementsRaw(v);const c=loadCache()||{};saveCache({...c,paiements:v});};
+  const setNotes=(v)=>{setNotesRaw(v);const c=loadCache()||{};saveCache({...c,notes:v});};
+  const setAbsences=(v)=>{setAbsencesRaw(v);const c=loadCache()||{};saveCache({...c,absences:v});};
+  const setDepenses=(v)=>{setDepensesRaw(v);const c=loadCache()||{};saveCache({...c,depenses:v});};
+  const setRecettes=(v)=>{setRecettesRaw(v);const c=loadCache()||{};saveCache({...c,recettes:v});};
 
   useEffect(()=>{
     const mq=window.matchMedia("(prefers-color-scheme: dark)");
@@ -1379,6 +1500,13 @@ export default function App() {
     <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d),theme}}>
       <div style={{minHeight:"100vh",background:theme.bg,color:theme.text,fontFamily:"'SF Pro Display','Segoe UI',system-ui,sans-serif",display:"flex",flexDirection:"column",transition:"background 0.25s"}}>
         <header style={{background:theme.bgHeader,backdropFilter:"blur(20px)",borderBottom:`1px solid ${theme.border}`,position:"sticky",top:0,zIndex:100,boxShadow:theme.shadow}}>
+          {/* Bandeau hors ligne */}
+          {offline&&(
+            <div style={{background:"#3A2F1C",borderBottom:"1px solid #FF9F0A",padding:"6px 24px",display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:14}}>📵</span>
+              <span style={{fontSize:12,color:"#FF9F0A",fontWeight:600}}>Mode hors ligne — données du cache local. La synchronisation reprendra dès que vous serez connecté.</span>
+            </div>
+          )}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 24px"}}>
             <div>
               <div style={{fontWeight:900,fontSize:18,color:couleur,letterSpacing:"-0.3px"}}>🏫 {nom}</div>
