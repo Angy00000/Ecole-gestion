@@ -1440,6 +1440,174 @@ function Recus({paiements,eleves,cfg}) {
   );
 }
 
+// ─── Emploi du temps ──────────────────────────────────────────────────────────
+const JOURS=["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+const HEURES=["07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"];
+
+function EmploiDuTemps({cfg,professeurs}) {
+  const {theme}=useTheme();
+  const {couleur,classes,matieres,matieresParClasse={}}=cfg;
+  const [fClasse,setFClasse]=useState(classes[0]||"");
+  const [emploi,setEmploi]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("ecole_emploi")||"{}");}catch{return {};}
+  });
+  const [editing,setEditing]=useState(null); // {jour, heure}
+  const [form,setForm]=useState({matiere:"",professeur:"",debut:"",fin:""});
+  const printRef=useRef();
+
+  const getMatieres=(c)=>{
+    const spec=matieresParClasse[c]||[];
+    return [...(matieres||[]),...spec.filter(m=>!(matieres||[]).includes(m))];
+  };
+
+  const getProfs=()=>professeurs.filter(p=>p.statut==="Actif"||!p.statut);
+
+  const key=(classe,jour,heure)=>`${classe}_${jour}_${heure}`;
+
+  const saveEmploi=(newEmploi)=>{
+    setEmploi(newEmploi);
+    localStorage.setItem("ecole_emploi",JSON.stringify(newEmploi));
+  };
+
+  const setCell=(jour,heure,data)=>{
+    const k=key(fClasse,jour,heure);
+    const newEmploi=data?{...emploi,[k]:data}:{...emploi};
+    if(!data)delete newEmploi[k];
+    saveEmploi(newEmploi);
+  };
+
+  const getCell=(jour,heure)=>emploi[key(fClasse,jour,heure)]||null;
+
+  const clearCell=(jour,heure)=>{setCell(jour,heure,null);};
+
+  const saveCell=()=>{
+    if(!form.matiere)return;
+    setCell(editing.jour,editing.heure,{
+      matiere:form.matiere,
+      professeur:form.professeur,
+      debut:form.debut||editing.heure,
+      fin:form.fin||HEURES[HEURES.indexOf(editing.heure)+1]||"",
+    });
+    setEditing(null);
+    setForm({matiere:"",professeur:"",debut:"",fin:""});
+  };
+
+  const imprimer=()=>{
+    const content=printRef.current.innerHTML;
+    const w=window.open("","_blank");
+    w.document.write(`<html><head><title>Emploi du temps ${fClasse}</title><style>
+      *{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:20px;color:#1C1C1E;}
+      table{width:100%;border-collapse:collapse;}
+      th,td{border:1px solid #e5e5ea;padding:6px 8px;font-size:12px;text-align:center;}
+      th{background:#f5f5f7;font-weight:700;}
+      .cours{background:#EAF4FF;border-radius:4px;padding:4px;}
+    </style></head><body>${content}</body></html>`);
+    w.document.close();w.print();
+  };
+
+  const matiereColor=(matiere)=>{
+    const colors=["#0A84FF","#30D158","#FF9F0A","#BF5AF2","#FF6B35","#FF453A","#64D2FF","#FFD60A"];
+    const idx=getMatieres(fClasse).indexOf(matiere)%colors.length;
+    return colors[idx>=0?idx:0];
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>🗓️ Emploi du temps</h1>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
+        </div>
+      </div>
+
+      {/* Filtre classe */}
+      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+        {classes.map(c=>(
+          <button key={c} onClick={()=>setFClasse(c)}
+            style={{padding:"7px 16px",borderRadius:10,border:"1px solid",cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit",
+              borderColor:fClasse===c?couleur:theme.border,
+              background:fClasse===c?couleur+"18":theme.toggleBg,
+              color:fClasse===c?couleur:theme.textMuted}}>
+            {c}
+          </button>
+        ))}
+      </div>
+
+      {/* Modal édition créneau */}
+      {editing&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:998,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:theme.bgCard,borderRadius:20,padding:28,width:"100%",maxWidth:400,border:`1px solid ${theme.border}`}}>
+            <div style={{fontSize:15,fontWeight:800,color:theme.text,marginBottom:16}}>
+              ✏️ {editing.jour} à {editing.heure} — {fClasse}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+              <Sel label="Matière *" value={form.matiere} onChange={e=>setForm({...form,matiere:e.target.value})}
+                options={[{v:"",l:"-- Choisir une matière --"},...getMatieres(fClasse).map(m=>({v:m,l:m}))]}/>
+              <Sel label="Professeur" value={form.professeur} onChange={e=>setForm({...form,professeur:e.target.value})}
+                options={[{v:"",l:"-- Choisir un professeur --"},...getProfs().map(p=>({v:`${p.prenom} ${p.nom}`,l:`${p.prenom} ${p.nom}`}))]}/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <Sel label="Heure début" value={form.debut||editing.heure} onChange={e=>setForm({...form,debut:e.target.value})} options={HEURES.map(h=>({v:h,l:h}))}/>
+                <Sel label="Heure fin" value={form.fin} onChange={e=>setForm({...form,fin:e.target.value})} options={HEURES.map(h=>({v:h,l:h}))}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={saveCell} style={{flex:1,background:couleur,color:"#fff",border:"none",padding:"11px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>💾 Enregistrer</button>
+              <button onClick={()=>{setEditing(null);setForm({matiere:"",professeur:"",debut:"",fin:""}); }}
+                style={{background:theme.toggleBg,color:theme.text,border:`1px solid ${theme.border}`,padding:"11px 16px",borderRadius:10,fontWeight:600,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>Annuler</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grille emploi du temps */}
+      <div style={{overflowX:"auto"}}>
+        <div ref={printRef}>
+          <div style={{fontSize:15,fontWeight:800,color:theme.text,marginBottom:14,textAlign:"center"}}>
+            {cfg.nom} — Emploi du temps {fClasse} — {new Date().getFullYear()}
+          </div>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+            <thead>
+              <tr>
+                <th style={{padding:"10px 12px",background:theme.tableHead,border:`1px solid ${theme.border}`,fontSize:12,fontWeight:700,color:theme.textMuted,minWidth:70}}>Heure</th>
+                {JOURS.map(j=>(
+                  <th key={j} style={{padding:"10px 12px",background:couleur+"18",border:`1px solid ${theme.border}`,fontSize:13,fontWeight:700,color:couleur,minWidth:110}}>{j}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {HEURES.map(h=>(
+                <tr key={h}>
+                  <td style={{padding:"8px 12px",border:`1px solid ${theme.border}`,fontSize:12,fontWeight:700,color:theme.textMuted,background:theme.tableHead,textAlign:"center"}}>{h}</td>
+                  {JOURS.map(j=>{
+                    const cell=getCell(j,h);
+                    const color=cell?matiereColor(cell.matiere):null;
+                    return (
+                      <td key={j} style={{padding:"4px",border:`1px solid ${theme.border}`,verticalAlign:"top",height:60,cursor:"pointer"}}
+                        onClick={()=>{setEditing({jour:j,heure:h});setForm(cell?{matiere:cell.matiere,professeur:cell.professeur||"",debut:cell.debut||h,fin:cell.fin||""}:{matiere:"",professeur:"",debut:h,fin:""});}}>
+                        {cell?(
+                          <div style={{background:color+"22",border:`1px solid ${color}44`,borderRadius:8,padding:"4px 6px",height:"100%",position:"relative"}}>
+                            <div style={{fontSize:11,fontWeight:700,color:color}}>{cell.matiere}</div>
+                            {cell.professeur&&<div style={{fontSize:10,color:theme.textMuted}}>{cell.professeur}</div>}
+                            {cell.debut&&cell.fin&&<div style={{fontSize:10,color:theme.textFaint}}>{cell.debut}–{cell.fin}</div>}
+                            <button onClick={e=>{e.stopPropagation();clearCell(j,h);}}
+                              style={{position:"absolute",top:2,right:2,background:"none",border:"none",color:"#FF453A",cursor:"pointer",fontSize:11,padding:0,lineHeight:1}}>✕</button>
+                          </div>
+                        ):(
+                          <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",color:theme.textFaint,fontSize:18}}>+</div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Bulletins ────────────────────────────────────────────────────────────────
 function Bulletins({notes,eleves,absences,cfg}) {
   const {theme}=useTheme();
@@ -2246,6 +2414,7 @@ export default function App() {
     ...(isAdmin||isProf?[{id:"notes",label:"Notes",icon:"📝"}]:[]),
     ...(isAdmin||isProf?[{id:"bulletins",label:"Bulletins",icon:"📊"}]:[]),
     ...(isAdmin||isProf?[{id:"absences",label:"Absences",icon:"📅"}]:[]),
+    ...(isAdmin||isProf?[{id:"emploi",label:"Emploi du temps",icon:"🗓️"}]:[]),
     ...(isAdmin||isComptable?[{id:"finances",label:"Finances",icon:"💼"}]:[]),
     ...(isAdmin?[{id:"utilisateurs",label:"Utilisateurs",icon:"👥"}]:[]),
     ...(isAdmin?[{id:"parametres",label:"Paramètres",icon:"⚙️"}]:[]),
@@ -2310,7 +2479,7 @@ export default function App() {
               {page==="bulletins"   &&<Bulletins    notes={notes} eleves={eleves} absences={absences} cfg={cfg}/>}
               {page==="absences"    &&<Absences     absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="finances"    &&<Finances     depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
-              {page==="utilisateurs"&&<Utilisateurs utilisateurs={utilisateurs} setUtilisateurs={setUtilisateurs} cfg={cfg} showToast={showToast}/>}
+              {page==="emploi"       &&<EmploiDuTemps cfg={cfg} professeurs={professeurs}/>}
               {page==="parametres"  &&<Parametres   cfg={cfg} updateCfg={updateCfg} showToast={showToast}/>}
             </>
           )}
