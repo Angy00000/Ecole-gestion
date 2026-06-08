@@ -20,6 +20,12 @@ const LIGHT = {
   shadow:"0 4px 24px rgba(0,0,0,0.08)",
 };
 
+// ─── Session locale ───────────────────────────────────────────────────────────
+const SESSION_KEY = "ecole_session";
+const loadSession = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY)||"null"); } catch { return null; } };
+const saveSession = (u) => localStorage.setItem(SESSION_KEY, JSON.stringify(u));
+const clearSession = () => localStorage.removeItem(SESSION_KEY);
+
 // ─── Config Supabase ──────────────────────────────────────────────────────────
 const SUPA_URL = "https://faeltgluscxmijqotlip.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZWx0Z2x1c2N4bWlqcW90bGlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM2OTMsImV4cCI6MjA5NjQ5OTY5M30.FaBj5kAEKf4Vlhkt5U9bEOxkRAHbEP_YXuQXuBxB4_o";
@@ -1909,15 +1915,167 @@ function Professeurs({professeurs,setProfesseurs,cfg,showToast}) {
   );
 }
 
+// ─── Écran de Login ───────────────────────────────────────────────────────────
+function LoginScreen({onLogin,cfg}) {
+  const [dark]=useState(()=>window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const theme=dark?DARK:LIGHT;
+  const [email,setEmail]=useState("");
+  const [mdp,setMdp]=useState("");
+  const [erreur,setErreur]=useState("");
+  const [loading,setLoading]=useState(false);
+  const couleur=cfg?.couleur||"#0A84FF";
+  const nomEcole=cfg?.nom||"Mon École";
+
+  const login=async()=>{
+    if(!email||!mdp)return setErreur("Email et mot de passe requis");
+    setLoading(true);setErreur("");
+    try{
+      const res=await fetch(`${SUPA_URL}/rest/v1/utilisateurs?email=eq.${email}&mot_de_passe=eq.${mdp}&actif=eq.true`,{headers:dbHeaders});
+      const rows=await res.json();
+      if(rows&&rows.length>0){
+        saveSession(rows[0]);
+        onLogin(rows[0]);
+      } else {
+        setErreur("Email ou mot de passe incorrect");
+      }
+    }catch(e){setErreur("Erreur de connexion");}
+    setLoading(false);
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:dark?"#000":"#F2F2F7",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'SF Pro Display','Segoe UI',sans-serif",padding:20}}>
+      <div style={{width:"100%",maxWidth:400}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontSize:48,marginBottom:12}}>🏫</div>
+          <div style={{fontSize:24,fontWeight:900,color:couleur}}>{nomEcole}</div>
+          <div style={{fontSize:14,color:dark?"#636366":"#8E8E93",marginTop:6}}>Connectez-vous pour accéder au logiciel</div>
+        </div>
+        <div style={{background:dark?"#1C1C1E":"#FFFFFF",borderRadius:20,padding:28,border:`1px solid ${dark?"rgba(255,255,255,0.08)":"rgba(0,0,0,0.08)"}`,boxShadow:"0 4px 24px rgba(0,0,0,0.1)"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:20}}>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              <label style={{fontSize:13,fontWeight:600,color:dark?"#8E8E93":"#636366"}}>Email</label>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&login()}
+                placeholder="votre@email.com"
+                style={{background:dark?"rgba(255,255,255,0.07)":"#F2F2F7",border:`1px solid ${dark?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,borderRadius:10,padding:"12px 14px",color:dark?"#F2F2F7":"#1C1C1E",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              <label style={{fontSize:13,fontWeight:600,color:dark?"#8E8E93":"#636366"}}>Mot de passe</label>
+              <input type="password" value={mdp} onChange={e=>setMdp(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&login()}
+                placeholder="••••••••"
+                style={{background:dark?"rgba(255,255,255,0.07)":"#F2F2F7",border:`1px solid ${dark?"rgba(255,255,255,0.12)":"rgba(0,0,0,0.12)"}`,borderRadius:10,padding:"12px 14px",color:dark?"#F2F2F7":"#1C1C1E",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+          </div>
+          {erreur&&<div style={{background:"#3A1C1C",color:"#FF453A",padding:"10px 14px",borderRadius:10,fontSize:13,fontWeight:600,marginBottom:14}}>❌ {erreur}</div>}
+          <button onClick={login} style={{width:"100%",background:couleur,color:"#fff",border:"none",padding:"14px",borderRadius:12,fontWeight:700,cursor:"pointer",fontSize:16,fontFamily:"inherit",opacity:loading?0.7:1}}>
+            {loading?"Connexion...":"Se connecter"}
+          </button>
+        </div>
+        <div style={{textAlign:"center",marginTop:16,fontSize:12,color:dark?"#3A3A3C":"#AEAEB2"}}>
+          Compte admin par défaut : admin@ecole.com / admin123
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Gestion Utilisateurs ─────────────────────────────────────────────────────
+function Utilisateurs({utilisateurs,setUtilisateurs,cfg,showToast}) {
+  const {theme}=useTheme();
+  const {couleur}=cfg;
+  const [show,setShow]=useState(false);
+  const [form,setForm]=useState({nom:"",prenom:"",email:"",mot_de_passe:"",role:"professeur",actif:true});
+
+  const ROLES=[
+    {v:"admin",    l:"👑 Administrateur — Accès total"},
+    {v:"comptable",l:"💰 Comptable — Paiements et finances"},
+    {v:"professeur",l:"👨‍🏫 Professeur — Notes et absences"},
+  ];
+
+  const add=async()=>{
+    if(!form.nom||!form.email||!form.mot_de_passe)return showToast("Tous les champs sont requis",true);
+    const rows=await dbAdd("utilisateurs",form);
+    setUtilisateurs([rows[0],...utilisateurs]);
+    setForm({nom:"",prenom:"",email:"",mot_de_passe:"",role:"professeur",actif:true});
+    setShow(false);showToast("Utilisateur créé ✓");
+  };
+
+  const toggleActif=async(id,actif)=>{
+    await dbPatch("utilisateurs",id,{actif:!actif});
+    setUtilisateurs(utilisateurs.map(u=>u.id===id?{...u,actif:!actif}:u));
+    showToast(actif?"Compte désactivé":"Compte activé ✓");
+  };
+
+  const del=async(id)=>{
+    await dbDel("utilisateurs",id);
+    setUtilisateurs(utilisateurs.filter(u=>u.id!==id));
+    showToast("Supprimé");
+  };
+
+  const roleLabel=(r)=>r==="admin"?"👑 Admin":r==="comptable"?"💰 Comptable":"👨‍🏫 Professeur";
+  const roleColor=(r)=>r==="admin"?"#FF9F0A":r==="comptable"?"#30D158":"#0A84FF";
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>👥 Utilisateurs ({utilisateurs.length})</h1>
+        <Btn onClick={()=>setShow(!show)} color={couleur}>{show?"✕ Annuler":"+ Nouvel utilisateur"}</Btn>
+      </div>
+
+      {show&&(
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>Nouvel utilisateur</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+            <Inp label="Nom *" value={form.nom} onChange={e=>setForm({...form,nom:e.target.value})} placeholder="Nom de famille"/>
+            <Inp label="Prénom" value={form.prenom} onChange={e=>setForm({...form,prenom:e.target.value})} placeholder="Prénom"/>
+            <Inp label="Email *" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="email@ecole.com"/>
+            <Inp label="Mot de passe *" value={form.mot_de_passe} onChange={e=>setForm({...form,mot_de_passe:e.target.value})} placeholder="Mot de passe"/>
+            <Sel label="Rôle" value={form.role} onChange={e=>setForm({...form,role:e.target.value})} options={ROLES.map(r=>({v:r.v,l:r.l}))}/>
+          </div>
+          <Btn onClick={add} color={couleur}>Créer le compte</Btn>
+        </Card>
+      )}
+
+      <TableWrap>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["Utilisateur","Email","Rôle","Statut","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+          <tbody>
+            {utilisateurs.length===0&&<tr><Td colSpan={5} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun utilisateur</Td></tr>}
+            {utilisateurs.map(u=>(
+              <tr key={u.id}>
+                <Td><strong style={{color:theme.text}}>{u.prenom} {u.nom}</strong></Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{u.email}</Td>
+                <Td><span style={{background:roleColor(u.role)+"22",color:roleColor(u.role),padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700}}>{roleLabel(u.role)}</span></Td>
+                <Td><Badge label={u.actif?"Actif":"Inactif"} color={u.actif?"#30D158":"#FF453A"} bg={u.actif?"#1C3A27":"#3A1C1C"}/></Td>
+                <Td>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>toggleActif(u.id,u.actif)} style={{background:u.actif?"rgba(255,69,58,0.12)":"rgba(48,209,88,0.12)",border:`1px solid ${u.actif?"#FF453A":"#30D158"}`,color:u.actif?"#FF453A":"#30D158",padding:"4px 10px",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>
+                      {u.actif?"Désactiver":"Activer"}
+                    </button>
+                    <button style={{background:"none",border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>del(u.id)}>🗑</button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableWrap>
+    </div>
+  );
+}
+
 // ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [dark,setDark]=useState(()=>window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);
   const theme=dark?DARK:LIGHT;
   const [cfg,setCfg]=useState(()=>loadCfg());
+  const [user,setUser]=useState(()=>loadSession());
   const [page,setPage]=useState("dashboard");
   const [toast,setToast]=useState(null);
   const [loading,setLoading]=useState(true);
   const [offline,setOffline]=useState(false);
+  const [utilisateurs,setUtilisateurs]=useState([]);
 
   const [eleves,setElevesRaw]=useState([]);
   const [paiements,setPaiementsRaw]=useState([]);
@@ -1941,10 +2099,11 @@ export default function App() {
         }
 
         // Charger données depuis Supabase
-        const [e,p,n,a,d,r,pr]=await Promise.all([
+        const [e,p,n,a,d,r,pr,ut]=await Promise.all([
           dbGet("eleves"),dbGet("paiements"),dbGet("notes"),
           dbGet("absences"),dbGet("depenses"),dbGet("recettes"),
-          dbGet("professeurs").catch(()=>[])
+          dbGet("professeurs").catch(()=>[]),
+          dbGet("utilisateurs").catch(()=>[])
         ]);
         const data={
           eleves:e||[],
@@ -1962,6 +2121,7 @@ export default function App() {
         setDepensesRaw(data.depenses);
         setRecettesRaw(data.recettes);
         setProfesseursRaw(data.professeurs);
+        setUtilisateurs(ut||[]);
         // Sauvegarder dans le cache local
         saveCache(data);
         setOffline(false);
@@ -2040,13 +2200,6 @@ export default function App() {
 
   const showToast=(msg,err=false)=>{setToast({msg,err});setTimeout(()=>setToast(null),3000);};
 
-  // Afficher setup si pas de config ET chargement terminé
-  if(!loading&&!cfg) return (
-    <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d),theme}}>
-      <Setup onDone={(c)=>{saveCfg(c);setCfg(c);}}/>
-    </ThemeCtx.Provider>
-  );
-
   // Écran de chargement
   if(loading) return (
     <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d),theme}}>
@@ -2058,20 +2211,40 @@ export default function App() {
     </ThemeCtx.Provider>
   );
 
-  const {couleur,nom,adresse,niveau}=cfg;
-  const alertes=eleves.filter(e=>e.statut==="Actif"&&paiements.filter(p=>p.eleveId===e.id&&p.mois===new Date().toISOString().slice(0,7)).reduce((s,p)=>s+p.montant,0)<cfg.fraisMensuel).length;
+  // Afficher login si pas de session
+  if(!user) return (
+    <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d),theme}}>
+      <LoginScreen onLogin={(u)=>setUser(u)} cfg={cfg}/>
+    </ThemeCtx.Provider>
+  );
+
+  // Afficher setup si pas de config ET admin connecté
+  if(!cfg&&user?.role==="admin") return (
+    <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d),theme}}>
+      <Setup onDone={(c)=>{saveCfg(c);setCfg(c);}}/>
+    </ThemeCtx.Provider>
+  );
+
+  const {couleur,nom,adresse,niveau}=cfg||{couleur:"#0A84FF",nom:"École",adresse:"",niveau:""};
+  const alertes=eleves.filter(e=>e.statut==="Actif"&&paiements.filter(p=>p.eleveId===e.id&&p.mois===new Date().toISOString().slice(0,7)).reduce((s,p)=>s+p.montant,0)<(cfg?.fraisMensuel||0)).length;
+
+  // Navigation selon le rôle
+  const isAdmin=user?.role==="admin";
+  const isComptable=user?.role==="comptable";
+  const isProf=user?.role==="professeur";
 
   const NAV=[
-    {id:"dashboard",  label:"Dashboard",   icon:"◈"},
-    {id:"eleves",     label:"Élèves",      icon:"👨‍🎓"},
-    {id:"professeurs",label:"Professeurs", icon:"👨‍🏫"},
-    {id:"paiements",  label:"Paiements",   icon:"💰",badge:alertes},
-    {id:"recus",      label:"Reçus",       icon:"🧾"},
-    {id:"notes",      label:"Notes",       icon:"📝"},
-    {id:"bulletins",  label:"Bulletins",   icon:"📊"},
-    {id:"absences",   label:"Absences",    icon:"📅"},
-    {id:"finances",   label:"Finances",    icon:"💼"},
-    {id:"parametres", label:"Paramètres",  icon:"⚙️"},
+    {id:"dashboard",   label:"Dashboard",    icon:"◈"},
+    ...(isAdmin||isProf?[{id:"eleves",label:"Élèves",icon:"👨‍🎓"}]:[]),
+    ...(isAdmin?[{id:"professeurs",label:"Professeurs",icon:"👨‍🏫"}]:[]),
+    ...(isAdmin||isComptable?[{id:"paiements",label:"Paiements",icon:"💰",badge:alertes}]:[]),
+    ...(isAdmin||isComptable?[{id:"recus",label:"Reçus",icon:"🧾"}]:[]),
+    ...(isAdmin||isProf?[{id:"notes",label:"Notes",icon:"📝"}]:[]),
+    ...(isAdmin||isProf?[{id:"bulletins",label:"Bulletins",icon:"📊"}]:[]),
+    ...(isAdmin||isProf?[{id:"absences",label:"Absences",icon:"📅"}]:[]),
+    ...(isAdmin||isComptable?[{id:"finances",label:"Finances",icon:"💼"}]:[]),
+    ...(isAdmin?[{id:"utilisateurs",label:"Utilisateurs",icon:"👥"}]:[]),
+    ...(isAdmin?[{id:"parametres",label:"Paramètres",icon:"⚙️"}]:[]),
   ];
 
   // Fonctions pour modifier la config sans reconfigurer
@@ -2099,7 +2272,11 @@ export default function App() {
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <div style={{fontSize:11,color:theme.textMuted}}>{new Date().toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"long",year:"numeric"})}</div>
-              <button onClick={()=>setDark(d=>!d)} style={{background:theme.toggleBg,border:"none",borderRadius:20,padding:"6px 12px",cursor:"pointer",fontSize:16}}>{dark?"☀️":"🌙"}</button>
+              <div style={{fontSize:11,color:couleur,fontWeight:700,background:couleur+"18",padding:"4px 10px",borderRadius:99}}>
+                {user?.role==="admin"?"👑":user?.role==="comptable"?"💰":"👨‍🏫"} {user?.prenom} {user?.nom}
+              </div>
+              <button onClick={()=>setDark(d=>!d)} style={{background:theme.toggleBg,border:"none",borderRadius:20,padding:"6px 10px",cursor:"pointer",fontSize:16}}>{dark?"☀️":"🌙"}</button>
+              <button onClick={()=>{clearSession();setUser(null);}} style={{background:"rgba(255,69,58,0.12)",border:"1px solid #FF453A",color:"#FF453A",padding:"5px 12px",borderRadius:9,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>🚪 Déconnexion</button>
             </div>
           </div>
           <div style={{display:"flex",gap:4,padding:"0 24px 10px",flexWrap:"wrap"}}>
@@ -2128,6 +2305,7 @@ export default function App() {
               {page==="bulletins"   &&<Bulletins    notes={notes} eleves={eleves} absences={absences} cfg={cfg}/>}
               {page==="absences"    &&<Absences     absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="finances"    &&<Finances     depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
+              {page==="utilisateurs"&&<Utilisateurs utilisateurs={utilisateurs} setUtilisateurs={setUtilisateurs} cfg={cfg} showToast={showToast}/>}
               {page==="parametres"  &&<Parametres   cfg={cfg} updateCfg={updateCfg} showToast={showToast}/>}
             </>
           )}
