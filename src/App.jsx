@@ -121,6 +121,23 @@ const loadCfg     = () => { try { return JSON.parse(localStorage.getItem(STORAGE
 const loadCache   = () => { try { return JSON.parse(localStorage.getItem(CACHE_KEY)||"null"); } catch { return null; } };
 const saveCache   = (d) => localStorage.setItem(CACHE_KEY, JSON.stringify(d));
 
+// ─── Export CSV ───────────────────────────────────────────────────────────────
+const exportCSV = (data, filename) => {
+  if(!data||data.length===0)return;
+  const headers=Object.keys(data[0]);
+  const rows=data.map(row=>headers.map(h=>{
+    const val=row[h]===null||row[h]===undefined?"":String(row[h]);
+    return `"${val.replace(/"/g,'""')}"`;
+  }).join(","));
+  const csv=[headers.join(","),...rows].join("\n");
+  const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=filename+".csv";
+  document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(url);
+};
+
 const saveCfg = async (c) => {
   localStorage.setItem(STORAGE, JSON.stringify(c));
   try {
@@ -356,6 +373,18 @@ function Dashboard({eleves,paiements,depenses,recettes,absences,cfg}) {
     return paid<cfg.fraisMensuel && e.statut==="Actif";
   }).length;
 
+  // Comparaison mois/mois
+  const now=new Date();
+  const moisCourant=now.toISOString().slice(0,7);
+  const moisPrec=new Date(now.getFullYear(),now.getMonth()-1,1).toISOString().slice(0,7);
+  const recMois=paiements.filter(p=>p.mois===moisCourant).reduce((s,p)=>s+p.montant,0);
+  const recMoisPrec=paiements.filter(p=>p.mois===moisPrec).reduce((s,p)=>s+p.montant,0);
+  const nbPaiMois=paiements.filter(p=>p.mois===moisCourant).length;
+  const nbPaiMoisPrec=paiements.filter(p=>p.mois===moisPrec).length;
+  const nbElevesMois=eleves.filter(e=>e.dateInscription?.startsWith(moisCourant)).length;
+  const nbElevesMoisPrec=eleves.filter(e=>e.dateInscription?.startsWith(moisPrec)).length;
+  const evol=(c,p)=>p===0?c>0?100:0:Math.round(((c-p)/p)*100);
+
   return (
     <div>
       <h1 style={{fontWeight:800,fontSize:24,margin:"0 0 20px",color:theme.text}}>Tableau de bord</h1>
@@ -370,6 +399,41 @@ function Dashboard({eleves,paiements,depenses,recettes,absences,cfg}) {
         <KPI label="Impayés ce mois" value={impaye} accent="#FF453A" icon="⚠️" sub="élèves en retard"/>
         <KPI label="Frais mensuel" value={xof(cfg.fraisMensuel,devise)} accent={couleur} icon="💳" sub={`Inscription: ${xof(cfg.fraisInscription,devise)}`}/>
       </div>
+
+      {/* Comparaison mois/mois */}
+      <Card style={{marginBottom:20}}>
+        <CardTitle color={couleur}>📈 Comparaison mois/mois</CardTitle>
+        <div style={{fontSize:11,color:theme.textMuted,marginBottom:14}}>
+          {new Date(now.getFullYear(),now.getMonth()-1,1).toLocaleDateString("fr-FR",{month:"long"})} → {now.toLocaleDateString("fr-FR",{month:"long"})}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+          {[
+            {label:"Recettes du mois",current:recMois,previous:recMoisPrec,ev:evol(recMois,recMoisPrec),color:"#30D158",fmt:true},
+            {label:"Nb paiements",current:nbPaiMois,previous:nbPaiMoisPrec,ev:evol(nbPaiMois,nbPaiMoisPrec),color:"#0A84FF"},
+            {label:"Nouvelles inscriptions",current:nbElevesMois,previous:nbElevesMoisPrec,ev:evol(nbElevesMois,nbElevesMoisPrec),color:couleur},
+          ].map(item=>(
+            <div key={item.label} style={{background:theme.bg,borderRadius:12,padding:"14px",border:`1px solid ${theme.border}`}}>
+              <div style={{fontSize:12,color:theme.textMuted,marginBottom:8}}>{item.label}</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:8}}>
+                <div>
+                  <div style={{fontSize:10,color:theme.textFaint}}>Mois précédent</div>
+                  <div style={{fontSize:13,fontWeight:600,color:theme.textSub}}>{item.fmt?xof(item.previous,devise):item.previous}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:10,color:theme.textFaint}}>Ce mois</div>
+                  <div style={{fontSize:18,fontWeight:800,color:item.color}}>{item.fmt?xof(item.current,devise):item.current}</div>
+                </div>
+              </div>
+              <div style={{height:5,background:theme.border,borderRadius:99,overflow:"hidden",marginBottom:8}}>
+                <div style={{height:"100%",width:`${Math.min(100,item.previous>0?Math.round((item.current/Math.max(item.current,item.previous))*100):item.current>0?100:0)}%`,background:item.color,borderRadius:99}}/>
+              </div>
+              <span style={{background:item.ev>=0?"rgba(48,209,88,0.12)":"rgba(255,69,58,0.12)",color:item.ev>=0?"#30D158":"#FF453A",padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:700}}>
+                {item.ev>=0?"🔺":"🔻"} {item.ev>=0?"+":""}{item.ev}%
+              </span>
+            </div>
+          ))}
+        </div>
+      </Card>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <Card>
           <CardTitle color={couleur}>Derniers élèves inscrits</CardTitle>
@@ -404,11 +468,11 @@ function Dashboard({eleves,paiements,depenses,recettes,absences,cfg}) {
 }
 
 // ─── Élèves ───────────────────────────────────────────────────────────────────
-function Eleves({eleves,setEleves,cfg,showToast}) {
+function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
   const {theme}=useTheme();
   const {couleur,classes,devise}=cfg;
   const [show,setShow]=useState(false);
-  const [search,setSearch]=useState("");
+  const [search,setSearch]=useState(rechercheFiltre||"");
   const [fClasse,setFClasse]=useState("all");
   const [editId,setEditId]=useState(null);
   const [form,setForm]=useState({nom:"",prenom:"",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});
@@ -480,6 +544,8 @@ function Eleves({eleves,setEleves,cfg,showToast}) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>👨‍🎓 Élèves ({eleves.length})</h1>
         <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>exportCSV(filtered.map(e=>({Nom:e.nom,Prénom:e.prenom,Classe:e.classe,Téléphone:e.telephone||"",Parent:e.parent||"",Statut:e.statut,Inscription:e.dateInscription||""})),"eleves-ecole")}
+            style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
           <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
           <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({nom:"",prenom:"",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});}} color={couleur}>{show?"✕ Annuler":"+ Inscrire un élève"}</Btn>
         </div>
@@ -545,13 +611,14 @@ function Eleves({eleves,setEleves,cfg,showToast}) {
 }
 
 // ─── Paiements ────────────────────────────────────────────────────────────────
-function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
+function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=""}) {
   const {theme}=useTheme();
   const {couleur,devise,fraisParClasse,fraisInscriptionParClasse,fraisMensuel,fraisInscription,fraisSpeciaux,typesPaiements,coursDuSoir,fraisCoursSOir}=cfg;
   const fmt=(n)=>xof(n,devise);
   const [show,setShow]=useState(false);
   const [fMois,setFMois]=useState("");
   const [fType,setFType]=useState("all");
+  const [search,setSearch]=useState(rechercheFiltre||"");
   const moisCourant=new Date().toISOString().slice(0,7);
   const moisNum=new Date().toISOString().slice(5,7);
 
@@ -566,7 +633,7 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
   const [form,setForm]=useState({
     eleveId:"",type:(typesPaiements&&typesPaiements[0])||"Mensualité",
     montant:fraisMensuel||0,date:today(),
-    mois:moisCourant,note:"",coursSoir:false
+    mois:moisCourant,note:"",coursSoir:false,modePaiement:"Espèces"
   });
 
   // Auto-calculer le montant selon type + classe + mois
@@ -597,7 +664,9 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
   const filtered=paiements.filter(p=>{
     const typeOk=fType==="all"||p.type===fType;
     const moisOk=!fMois||p.mois===fMois;
-    return typeOk&&moisOk;
+    const eleve=eleves.find(e=>e.id===p.eleveId);
+    const searchOk=!search||(eleve&&(eleve.nom+eleve.prenom).toLowerCase().includes(search.toLowerCase()));
+    return typeOk&&moisOk&&searchOk;
   });
   const total=filtered.reduce((s,p)=>s+p.montant,0);
 
@@ -648,6 +717,8 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>💰 Paiements</h1>
         <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>exportCSV(filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return{Élève:e?`${e.prenom} ${e.nom}`:"—",Classe:e?.classe||"—",Type:p.type,Mois:p.mois,Montant:p.montant,Date:p.date}}),"paiements-ecole")}
+            style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
           <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
           <Btn onClick={()=>setShow(!show)} color={couleur}>{show?"✕ Annuler":"+ Nouveau paiement"}</Btn>
         </div>
@@ -665,6 +736,21 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
             <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
             <Inp label="Mois concerné" type="month" value={form.mois} onChange={e=>handleMois(e.target.value)}/>
             <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Optionnel"/>
+          </div>
+          {/* Mode de paiement */}
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:12,fontWeight:600,color:theme.textMuted,display:"block",marginBottom:8}}>Mode de paiement</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+              {[{v:"Espèces",icon:"💵",color:"#30D158"},{v:"Wave",icon:"📱",color:"#00B9F1"},{v:"Orange Money",icon:"🟠",color:"#FF6600"},{v:"Free Money",icon:"🔵",color:"#0066FF"},{v:"Virement",icon:"🏦",color:"#BF5AF2"}].map(m=>(
+                <button key={m.v} onClick={()=>setForm({...form,modePaiement:m.v})}
+                  style={{padding:"6px 12px",borderRadius:10,border:"1px solid",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",
+                    borderColor:form.modePaiement===m.v?m.color:theme.border,
+                    background:form.modePaiement===m.v?m.color+"22":"transparent",
+                    color:form.modePaiement===m.v?m.color:theme.textMuted}}>
+                  {m.icon} {m.v}
+                </button>
+              ))}
+            </div>
           </div>
           {/* Info montant automatique */}
           {form.eleveId&&(
@@ -857,19 +943,21 @@ function Notes({notes,setNotes,eleves,cfg,showToast}) {
 }
 
 // ─── Absences ─────────────────────────────────────────────────────────────────
-function Absences({absences,setAbsences,eleves,cfg,showToast}) {
+function Absences({absences,setAbsences,eleves,cfg,showToast,rechercheFiltre=""}) {
   const {theme}=useTheme();
   const {couleur,classes}=cfg;
   const [show,setShow]=useState(false);
   const [fDate,setFDate]=useState(today());
   const [fClasse,setFClasse]=useState("all");
+  const [search,setSearch]=useState(rechercheFiltre||"");
   const [form,setForm]=useState({eleveId:"",date:today(),type:"Absence",motif:"",justifie:false});
 
   const filtered=absences.filter(a=>{
     const eleve=eleves.find(e=>e.id===a.eleveId);
+    const searchOk=!search||(eleve&&(eleve.nom+eleve.prenom).toLowerCase().includes(search.toLowerCase()));
     const dateOk=!fDate||a.date===fDate;
     const classeOk=fClasse==="all"||eleve?.classe===fClasse;
-    return dateOk&&classeOk;
+    return searchOk&&dateOk&&classeOk;
   });
 
   const add=async()=>{
@@ -895,17 +983,16 @@ function Absences({absences,setAbsences,eleves,cfg,showToast}) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>📅 Présences & Absences</h1>
         <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>exportCSV(filtered.map(a=>{const e=eleves.find(x=>x.id===a.eleveId);return{Élève:e?`${e.prenom} ${e.nom}`:"—",Classe:e?.classe||"—",Date:a.date,Type:a.type,Motif:a.motif||"",Justifiée:a.justifie?"Oui":"Non"}}),"absences-ecole")}
+            style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
           <button onClick={()=>{
             const w=window.open("","_blank");
             let html=`<html><head><title>Absences — ${cfg.nom}</title><style>*{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:30px;color:#1C1C1E;}h1{font-size:18px;}table{width:100%;border-collapse:collapse;margin-top:14px;}th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}th{background:#f5f5f7;font-weight:700;}</style></head><body>
             <h1>${cfg.nom} — Registre des absences</h1>
-            <p style="color:#636366;font-size:12px;">Date : ${today()} · Total : ${absences.length} absence(s)</p>
+            <p style="color:#636366;font-size:12px;">Total : ${filtered.length} absence(s) · ${today()}</p>
             <table><thead><tr><th>#</th><th>Élève</th><th>Classe</th><th>Date</th><th>Type</th><th>Motif</th><th>Statut</th></tr></thead><tbody>`;
-            absences.forEach((a,i)=>{
-              const eleve=eleves.find(e=>e.id===a.eleveId);
-              html+=`<tr><td>${i+1}</td><td>${eleve?`${eleve.prenom} ${eleve.nom}`:"—"}</td><td>${eleve?.classe||"—"}</td><td>${a.date}</td><td>${a.type}</td><td>${a.motif||"—"}</td><td>${a.justifie?"✓ Justifiée":"✕ Non justifiée"}</td></tr>`;
-            });
-            html+=`</tbody></table><p style="text-align:center;font-size:11px;color:#8E8E93;margin-top:20px;border-top:1px solid #e5e5ea;padding-top:10px;">${cfg.nom} · ${today()}</p></body></html>`;
+            filtered.forEach((a,i)=>{const e=eleves.find(x=>x.id===a.eleveId);html+=`<tr><td>${i+1}</td><td>${e?`${e.prenom} ${e.nom}`:"—"}</td><td>${e?.classe||"—"}</td><td>${a.date}</td><td>${a.type}</td><td>${a.motif||"—"}</td><td>${a.justifie?"✓ Justifiée":"✕ Non justifiée"}</td></tr>`;});
+            html+=`</tbody></table></body></html>`;
             w.document.write(html);w.document.close();w.print();
           }} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
           <Btn onClick={()=>setShow(!show)} color={couleur}>{show?"✕ Annuler":"+ Enregistrer une absence"}</Btn>
@@ -2455,7 +2542,19 @@ function Utilisateurs({utilisateurs,setUtilisateurs,cfg,showToast}) {
   const {theme}=useTheme();
   const {couleur}=cfg;
   const [show,setShow]=useState(false);
+  const [loadingData,setLoadingData]=useState(true);
   const [form,setForm]=useState({nom:"",prenom:"",email:"",mot_de_passe:"",role:"professeur",actif:true});
+
+  // Charger utilisateurs depuis Supabase
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const rows=await dbGet("utilisateurs");
+        setUtilisateurs(rows||[]);
+      }catch(e){console.error(e);}
+      setLoadingData(false);
+    })();
+  },[]);
 
   const ROLES=[
     {v:"admin",    l:"👑 Administrateur — Accès total"},
@@ -2492,6 +2591,7 @@ function Utilisateurs({utilisateurs,setUtilisateurs,cfg,showToast}) {
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>👥 Utilisateurs ({utilisateurs.length})</h1>
         <Btn onClick={()=>setShow(!show)} color={couleur}>{show?"✕ Annuler":"+ Nouvel utilisateur"}</Btn>
       </div>
+      {loadingData&&<div style={{textAlign:"center",padding:"2rem",color:theme.textMuted}}>⏳ Chargement...</div>}
 
       {show&&(
         <Card style={{marginBottom:16}}>
@@ -2550,6 +2650,9 @@ export default function App() {
   const [ancienMdp,setAncienMdp]=useState("");
   const [nouveauMdp,setNouveauMdp]=useState("");
   const [confirmMdp,setConfirmMdp]=useState("");
+  const [recherche,setRecherche]=useState("");
+  const [showRecherche,setShowRecherche]=useState(false);
+  const [rechercheFiltre,setRechercheFiltre]=useState("");
 
   const [eleves,setElevesRaw]=useState([]);
   const [paiements,setPaiementsRaw]=useState([]);
@@ -2741,10 +2844,41 @@ export default function App() {
               </span>
             </div>
           )}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 24px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 24px",gap:12}}>
             <div>
               <div style={{fontWeight:900,fontSize:18,color:couleur,letterSpacing:"-0.3px"}}>🏫 {nom}</div>
               <div style={{fontSize:10,color:theme.textMuted}}>{niveau}{adresse&&` · 📍 ${adresse}`}</div>
+            </div>
+            {/* Recherche globale */}
+            <div style={{flex:1,maxWidth:380,position:"relative"}}>
+              <input value={recherche} onChange={e=>{setRecherche(e.target.value);setShowRecherche(e.target.value.length>1);}}
+                onBlur={()=>setTimeout(()=>setShowRecherche(false),200)}
+                onFocus={()=>recherche.length>1&&setShowRecherche(true)}
+                placeholder="🔍 Rechercher élève, paiement..."
+                style={{width:"100%",background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:12,padding:"8px 14px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              {showRecherche&&(()=>{
+                const q=recherche.toLowerCase();
+                const results=[
+                  ...eleves.filter(e=>(e.nom+e.prenom).toLowerCase().includes(q)).map(e=>({type:"👨‍🎓",titre:`${e.prenom} ${e.nom}`,sub:`${e.classe} · ${e.statut}`,page:"eleves"})),
+                  ...paiements.filter(p=>{const el=eleves.find(x=>x.id===p.eleveId);return el&&(el.nom+el.prenom).toLowerCase().includes(q);}).map(p=>{const el=eleves.find(x=>x.id===p.eleveId);return{type:"💰",titre:`${el?.prenom} ${el?.nom}`,sub:`${p.type} · ${p.mois}`,page:"paiements"};}).slice(0,3),
+                  ...professeurs.filter(p=>(p.nom+p.prenom).toLowerCase().includes(q)).map(p=>({type:"👨‍🏫",titre:`${p.prenom} ${p.nom}`,sub:p.telephone||"",page:"professeurs"})),
+                ].slice(0,7);
+                if(results.length===0)return <div style={{position:"absolute",top:"100%",left:0,right:0,background:theme.bgCard,border:`1px solid ${theme.border}`,borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.3)",zIndex:999,marginTop:4,padding:"14px",fontSize:13,color:theme.textMuted}}>Aucun résultat</div>;
+                return (
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,background:theme.bgCard,border:`1px solid ${theme.border}`,borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.3)",zIndex:999,marginTop:4,overflow:"hidden"}}>
+                    {results.map((r,i)=>(
+                      <div key={i} onClick={()=>{setPage(r.page);setRechercheFiltre(recherche);setRecherche("");setShowRecherche(false);}}
+                        style={{padding:"10px 16px",cursor:"pointer",borderBottom:`1px solid ${theme.borderLight}`,display:"flex",gap:10,alignItems:"center"}}>
+                        <span style={{fontSize:16}}>{r.type}</span>
+                        <div>
+                          <div style={{fontSize:13,fontWeight:600,color:theme.text}}>{r.titre}</div>
+                          <div style={{fontSize:11,color:theme.textMuted}}>{r.sub}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <div style={{fontSize:11,color:theme.textMuted}}>{new Date().toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"long",year:"numeric"})}</div>
@@ -2758,7 +2892,7 @@ export default function App() {
           </div>
           <div style={{display:"flex",gap:4,padding:"0 24px 10px",flexWrap:"wrap"}}>
             {NAV.map(n=>(
-              <button key={n.id} onClick={()=>setPage(n.id)}
+              <button key={n.id} onClick={()=>{setPage(n.id);setRechercheFiltre("");}}
                 style={{padding:"6px 13px",borderRadius:10,border:"1px solid",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",transition:"all 0.15s",
                   borderColor:page===n.id?couleur+"66":theme.border,
                   background:page===n.id?couleur+"18":theme.toggleBg,
@@ -2774,16 +2908,17 @@ export default function App() {
           {loading?<div style={{textAlign:"center",padding:"60px",fontSize:32}}>⏳ Chargement...</div>:(
             <>
               {page==="dashboard"   &&<Dashboard    eleves={eleves} paiements={paiements} depenses={depenses} recettes={recettes} absences={absences} cfg={cfg}/>}
-              {page==="eleves"      &&<Eleves       eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast}/>}
-              {page==="professeurs" &&<Professeurs  professeurs={professeurs} setProfesseurs={setProfesseurs} cfg={cfg} showToast={showToast}/>}
-              {page==="paiements"   &&<Paiements    paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="eleves"      &&<Eleves       eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
+              {page==="professeurs" &&<Professeurs  professeurs={professeurs} setProfesseurs={setProfesseurs} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
+              {page==="paiements"   &&<Paiements    paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
               {page==="recus"       &&<Recus        paiements={paiements} eleves={eleves} cfg={cfg}/>}
               {page==="notes"       &&<Notes        notes={notes} setNotes={setNotes} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="bulletins"   &&<Bulletins    notes={notes} eleves={eleves} absences={absences} cfg={cfg}/>}
-              {page==="absences"    &&<Absences     absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="absences"    &&<Absences     absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
               {page==="finances"    &&<Finances     depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
-              {page==="rapports"     &&<Rapports     paiements={paiements} depenses={depenses} recettes={recettes} eleves={eleves} cfg={cfg}/>}
-              {page==="emploi"       &&<EmploiDuTemps cfg={cfg} professeurs={professeurs}/>}
+              {page==="rapports"    &&<Rapports     paiements={paiements} depenses={depenses} recettes={recettes} eleves={eleves} cfg={cfg}/>}
+              {page==="emploi"      &&<EmploiDuTemps cfg={cfg} professeurs={professeurs}/>}
+              {page==="utilisateurs"&&<Utilisateurs utilisateurs={utilisateurs} setUtilisateurs={setUtilisateurs} cfg={cfg} showToast={showToast}/>}
               {page==="parametres"  &&<Parametres   cfg={cfg} updateCfg={updateCfg} showToast={showToast}/>}
             </>
           )}
