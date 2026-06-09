@@ -412,12 +412,51 @@ function Eleves({eleves,setEleves,cfg,showToast}) {
   const [fClasse,setFClasse]=useState("all");
   const [editId,setEditId]=useState(null);
   const [form,setForm]=useState({nom:"",prenom:"",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});
+  const printRef=useRef();
 
   const filtered=eleves.filter(e=>{
     const q=search.toLowerCase();
     const match=!q||(e.nom+e.prenom+e.classe).toLowerCase().includes(q);
     return match&&(fClasse==="all"||e.classe===fClasse);
   });
+
+  const imprimer=()=>{
+    const w=window.open("","_blank");
+    const parClasse=classes.reduce((acc,c)=>{acc[c]=filtered.filter(e=>e.classe===c);return acc;},{});
+    let html=`<html><head><title>Liste élèves — ${cfg.nom}</title><style>
+      *{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:30px;color:#1C1C1E;}
+      h1{font-size:20px;margin-bottom:4px;}h2{font-size:15px;color:#0A84FF;margin:20px 0 8px;}
+      table{width:100%;border-collapse:collapse;margin-bottom:20px;}
+      th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}
+      th{background:#f5f5f7;font-weight:700;}
+      .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;}
+      .actif{background:#D4EFDD;color:#1A7A35;}.inactif{background:#FDDEDE;color:#C0392B;}
+    </style></head><body>
+    <h1>${cfg.nom} — Liste des élèves</h1>
+    <p style="color:#636366;font-size:13px;">Date : ${today()} · Total : ${filtered.length} élève${filtered.length!==1?"s":""}</p>`;
+
+    if(fClasse==="all"){
+      classes.forEach(c=>{
+        const elvs=parClasse[c]||[];
+        if(elvs.length===0)return;
+        html+=`<h2>${c} (${elvs.length} élève${elvs.length!==1?"s":""})</h2>
+        <table><thead><tr><th>#</th><th>Nom complet</th><th>Parent/Tuteur</th><th>Téléphone</th><th>Inscription</th><th>Statut</th></tr></thead><tbody>`;
+        elvs.forEach((e,i)=>{
+          html+=`<tr><td>${i+1}</td><td><strong>${e.prenom} ${e.nom}</strong></td><td>${e.parent||"—"}</td><td>${e.telephoneParent||e.telephone||"—"}</td><td>${e.dateInscription||"—"}</td><td><span class="badge ${e.statut==="Actif"?"actif":"inactif"}">${e.statut}</span></td></tr>`;
+        });
+        html+=`</tbody></table>`;
+      });
+    } else {
+      html+=`<h2>${fClasse} (${filtered.length} élève${filtered.length!==1?"s":""})</h2>
+      <table><thead><tr><th>#</th><th>Nom complet</th><th>Parent/Tuteur</th><th>Téléphone</th><th>Inscription</th><th>Statut</th></tr></thead><tbody>`;
+      filtered.forEach((e,i)=>{
+        html+=`<tr><td>${i+1}</td><td><strong>${e.prenom} ${e.nom}</strong></td><td>${e.parent||"—"}</td><td>${e.telephoneParent||e.telephone||"—"}</td><td>${e.dateInscription||"—"}</td><td><span class="badge ${e.statut==="Actif"?"actif":"inactif"}">${e.statut}</span></td></tr>`;
+      });
+      html+=`</tbody></table>`;
+    }
+    html+=`<p style="text-align:center;font-size:11px;color:#8E8E93;margin-top:30px;border-top:1px solid #e5e5ea;padding-top:10px;">${cfg.nom} · Liste officielle des élèves · ${today()}</p></body></html>`;
+    w.document.write(html);w.document.close();w.print();
+  };
 
   const add=async()=>{
     if(!form.nom||!form.prenom)return showToast("Nom et prénom requis",true);
@@ -440,7 +479,10 @@ function Eleves({eleves,setEleves,cfg,showToast}) {
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>👨‍🎓 Élèves ({eleves.length})</h1>
-        <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({nom:"",prenom:"",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});}} color={couleur}>{show?"✕ Annuler":"+ Inscrire un élève"}</Btn>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({nom:"",prenom:"",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});}} color={couleur}>{show?"✕ Annuler":"+ Inscrire un élève"}</Btn>
+        </div>
       </div>
       {show&&(
         <Card style={{marginBottom:16}}>
@@ -559,6 +601,28 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
   });
   const total=filtered.reduce((s,p)=>s+p.montant,0);
 
+  const imprimer=()=>{
+    const w=window.open("","_blank");
+    let html=`<html><head><title>Paiements — ${cfg.nom}</title><style>
+      *{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:30px;color:#1C1C1E;}
+      h1{font-size:18px;}table{width:100%;border-collapse:collapse;margin-top:14px;}
+      th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}
+      th{background:#f5f5f7;font-weight:700;}
+    </style></head><body>
+    <h1>${cfg.nom} — Liste des paiements${fMois?" ("+fMois+")":""}</h1>
+    <p style="color:#636366;font-size:12px;">Date : ${today()} · Total : ${fmt(total)} · ${filtered.length} paiement(s)</p>
+    <table><thead><tr><th>#</th><th>Élève</th><th>Classe</th><th>Type</th><th>Mois</th><th>Montant</th><th>Date</th></tr></thead><tbody>`;
+    filtered.forEach((p,i)=>{
+      const eleve=eleves.find(e=>e.id===p.eleveId);
+      html+=`<tr><td>${i+1}</td><td>${eleve?`${eleve.prenom} ${eleve.nom}`:"—"}</td><td>${eleve?.classe||"—"}</td><td>${p.type}</td><td>${p.mois}</td><td><strong>${fmt(p.montant)}</strong></td><td>${p.date}</td></tr>`;
+    });
+    html+=`</tbody></table>
+    <p style="margin-top:10px;font-weight:700;">Total : ${fmt(total)}</p>
+    <p style="text-align:center;font-size:11px;color:#8E8E93;margin-top:20px;border-top:1px solid #e5e5ea;padding-top:10px;">${cfg.nom} · ${today()}</p>
+    </body></html>`;
+    w.document.write(html);w.document.close();w.print();
+  };
+
   const add=async()=>{
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
     if(!form.montant)return showToast("Montant requis",true);
@@ -583,7 +647,10 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast}) {
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>💰 Paiements</h1>
-        <Btn onClick={()=>setShow(!show)} color={couleur}>{show?"✕ Annuler":"+ Nouveau paiement"}</Btn>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
+          <Btn onClick={()=>setShow(!show)} color={couleur}>{show?"✕ Annuler":"+ Nouveau paiement"}</Btn>
+        </div>
       </div>
 
       {show&&(
@@ -827,7 +894,22 @@ function Absences({absences,setAbsences,eleves,cfg,showToast}) {
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>📅 Présences & Absences</h1>
-        <Btn onClick={()=>setShow(!show)} color={couleur}>{show?"✕ Annuler":"+ Enregistrer une absence"}</Btn>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{
+            const w=window.open("","_blank");
+            let html=`<html><head><title>Absences — ${cfg.nom}</title><style>*{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:30px;color:#1C1C1E;}h1{font-size:18px;}table{width:100%;border-collapse:collapse;margin-top:14px;}th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}th{background:#f5f5f7;font-weight:700;}</style></head><body>
+            <h1>${cfg.nom} — Registre des absences</h1>
+            <p style="color:#636366;font-size:12px;">Date : ${today()} · Total : ${absences.length} absence(s)</p>
+            <table><thead><tr><th>#</th><th>Élève</th><th>Classe</th><th>Date</th><th>Type</th><th>Motif</th><th>Statut</th></tr></thead><tbody>`;
+            absences.forEach((a,i)=>{
+              const eleve=eleves.find(e=>e.id===a.eleveId);
+              html+=`<tr><td>${i+1}</td><td>${eleve?`${eleve.prenom} ${eleve.nom}`:"—"}</td><td>${eleve?.classe||"—"}</td><td>${a.date}</td><td>${a.type}</td><td>${a.motif||"—"}</td><td>${a.justifie?"✓ Justifiée":"✕ Non justifiée"}</td></tr>`;
+            });
+            html+=`</tbody></table><p style="text-align:center;font-size:11px;color:#8E8E93;margin-top:20px;border-top:1px solid #e5e5ea;padding-top:10px;">${cfg.nom} · ${today()}</p></body></html>`;
+            w.document.write(html);w.document.close();w.print();
+          }} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
+          <Btn onClick={()=>setShow(!show)} color={couleur}>{show?"✕ Annuler":"+ Enregistrer une absence"}</Btn>
+        </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>
         <KPI label="Total absences" value={totalAbsences} accent={couleur} icon="📅" sub="toutes périodes"/>
@@ -2148,7 +2230,23 @@ function Professeurs({professeurs,setProfesseurs,cfg,showToast}) {
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>👨‍🏫 Professeurs ({professeurs.length})</h1>
-        <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({nom:"",prenom:"",telephone:"",email:"",matieres:[],classes:[],salaireMensuel:0,dateEmbauche:today(),statut:"Actif",note:""}); }} color={couleur}>{show?"✕ Annuler":"+ Ajouter un professeur"}</Btn>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{
+            const w=window.open("","_blank");
+            let html=`<html><head><title>Professeurs — ${cfg.nom}</title><style>*{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:30px;color:#1C1C1E;}h1{font-size:18px;}table{width:100%;border-collapse:collapse;margin-top:14px;}th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}th{background:#f5f5f7;font-weight:700;}</style></head><body>
+            <h1>${cfg.nom} — Liste des professeurs</h1>
+            <p style="color:#636366;font-size:12px;">Date : ${today()} · Total : ${professeurs.length} professeur(s)</p>
+            <table><thead><tr><th>#</th><th>Nom complet</th><th>Téléphone</th><th>Matières</th><th>Classes</th><th>Salaire mensuel</th><th>Statut</th></tr></thead><tbody>`;
+            professeurs.forEach((p,i)=>{
+              const mats=Array.isArray(p.matieres)?p.matieres:(typeof p.matieres==="string"?JSON.parse(p.matieres||"[]"):[]);
+              const cls=Array.isArray(p.classes)?p.classes:(typeof p.classes==="string"?JSON.parse(p.classes||"[]"):[]);
+              html+=`<tr><td>${i+1}</td><td><strong>${p.prenom} ${p.nom}</strong></td><td>${p.telephone||"—"}</td><td>${mats.join(", ")||"—"}</td><td>${cls.join(", ")||"—"}</td><td>${xof(p.salaire_mensuel||0,devise)}</td><td>${p.statut||"Actif"}</td></tr>`;
+            });
+            html+=`</tbody></table><p style="text-align:center;font-size:11px;color:#8E8E93;margin-top:20px;border-top:1px solid #e5e5ea;padding-top:10px;">${cfg.nom} · ${today()}</p></body></html>`;
+            w.document.write(html);w.document.close();w.print();
+          }} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({nom:"",prenom:"",telephone:"",email:"",matieres:[],classes:[],salaireMensuel:0,dateEmbauche:today(),statut:"Actif",note:""});}} color={couleur}>{show?"✕ Annuler":"+ Ajouter un professeur"}</Btn>
+        </div>
       </div>
 
       {/* Formulaire */}
