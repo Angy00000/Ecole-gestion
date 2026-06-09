@@ -1440,6 +1440,210 @@ function Recus({paiements,eleves,cfg}) {
   );
 }
 
+// ─── Rapports financiers ──────────────────────────────────────────────────────
+function Rapports({paiements,depenses,recettes,eleves,cfg}) {
+  const {theme}=useTheme();
+  const {couleur,devise,classes,fraisMensuel=0}=cfg;
+  const fmt=(n)=>xof(n,devise);
+  const [periode,setPeriode]=useState("mois");
+  const [annee]=useState(new Date().getFullYear());
+  const printRef=useRef();
+
+  // Mois de l'année
+  const MOIS=["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+
+  // Recettes par mois (paiements + recettes)
+  const recettesParMois=MOIS.map((_,i)=>{
+    const mm=String(i+1).padStart(2,"0");
+    const moisStr=`${annee}-${mm}`;
+    const p=paiements.filter(x=>x.mois===moisStr).reduce((s,x)=>s+x.montant,0);
+    const r=recettes.filter(x=>x.date?.startsWith(moisStr)).reduce((s,x)=>s+x.montant,0);
+    return p+r;
+  });
+
+  // Dépenses par mois
+  const depensesParMois=MOIS.map((_,i)=>{
+    const mm=String(i+1).padStart(2,"0");
+    const moisStr=`${annee}-${mm}`;
+    return depenses.filter(d=>d.date?.startsWith(moisStr)&&d.statut==="Approuvée").reduce((s,d)=>s+d.montant,0);
+  });
+
+  const totalRecettes=recettesParMois.reduce((s,v)=>s+v,0);
+  const totalDepenses=depensesParMois.reduce((s,v)=>s+v,0);
+  const solde=totalRecettes-totalDepenses;
+  const maxVal=Math.max(...recettesParMois,...depensesParMois,1);
+
+  // Taux de recouvrement par classe
+  const moisCourant=new Date().toISOString().slice(0,7);
+  const recouvrement=classes.map(c=>{
+    const elevesClasse=eleves.filter(e=>e.classe===c&&e.statut==="Actif");
+    const total=elevesClasse.length*fraisMensuel;
+    const paye=paiements.filter(p=>{
+      const eleve=eleves.find(e=>e.id===p.eleveId);
+      return eleve?.classe===c&&p.mois===moisCourant&&p.type==="Mensualité";
+    }).reduce((s,p)=>s+p.montant,0);
+    const taux=total>0?Math.round((paye/total)*100):0;
+    return {classe:c,elevesClasse:elevesClasse.length,total,paye,taux};
+  });
+
+  // Paiements par type
+  const parType={};
+  paiements.forEach(p=>{
+    if(!parType[p.type])parType[p.type]=0;
+    parType[p.type]+=p.montant;
+  });
+  const topTypes=Object.entries(parType).sort((a,b)=>b[1]-a[1]);
+
+  // Dépenses par catégorie
+  const parCat={};
+  depenses.filter(d=>d.statut==="Approuvée").forEach(d=>{
+    if(!parCat[d.categorie])parCat[d.categorie]=0;
+    parCat[d.categorie]+=d.montant;
+  });
+  const topCats=Object.entries(parCat).sort((a,b)=>b[1]-a[1]);
+
+  const imprimer=()=>{
+    const content=printRef.current.innerHTML;
+    const w=window.open("","_blank");
+    w.document.write(`<html><head><title>Rapport financier ${cfg.nom}</title><style>
+      *{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:30px;color:#1C1C1E;}
+      h1{font-size:20px;}h2{font-size:15px;color:#636366;}
+      table{width:100%;border-collapse:collapse;margin:10px 0;}
+      th,td{border:1px solid #e5e5ea;padding:8px 10px;font-size:12px;text-align:left;}
+      th{background:#f5f5f7;font-weight:700;}
+    </style></head><body>${content}</body></html>`);
+    w.document.close();w.print();
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>📈 Rapports financiers</h1>
+        <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer le rapport</button>
+      </div>
+
+      <div ref={printRef}>
+        {/* KPIs */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+          <KPI label="Total recettes" value={fmt(totalRecettes)} accent="#30D158" icon="💰" sub={`Année ${annee}`}/>
+          <KPI label="Total dépenses" value={fmt(totalDepenses)} accent="#FF453A" icon="📤" sub="Approuvées"/>
+          <KPI label="Solde net" value={fmt(solde)} accent={solde>=0?"#30D158":"#FF453A"} icon={solde>=0?"📈":"📉"} sub="Recettes − Dépenses"/>
+        </div>
+
+        {/* Graphique barres */}
+        <Card style={{marginBottom:16}}>
+          <CardTitle color={couleur}>📊 Recettes vs Dépenses — {annee}</CardTitle>
+          <div style={{display:"flex",alignItems:"flex-end",gap:6,height:140,paddingTop:10}}>
+            {MOIS.map((m,i)=>(
+              <div key={m} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                <div style={{display:"flex",gap:2,alignItems:"flex-end",height:110}}>
+                  <div style={{width:"45%",background:"#30D158",borderRadius:"3px 3px 0 0",height:`${Math.round((recettesParMois[i]/maxVal)*100)}%`,minHeight:recettesParMois[i]>0?4:0}}/>
+                  <div style={{width:"45%",background:"#FF453A",borderRadius:"3px 3px 0 0",height:`${Math.round((depensesParMois[i]/maxVal)*100)}%`,minHeight:depensesParMois[i]>0?4:0}}/>
+                </div>
+                <div style={{fontSize:9,color:theme.textMuted,fontWeight:600}}>{m}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:16,marginTop:8,justifyContent:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:12,height:12,background:"#30D158",borderRadius:3}}/><span style={{fontSize:11,color:theme.textMuted}}>Recettes</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:12,height:12,background:"#FF453A",borderRadius:3}}/><span style={{fontSize:11,color:theme.textMuted}}>Dépenses</span></div>
+          </div>
+        </Card>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+          {/* Taux de recouvrement */}
+          <Card>
+            <CardTitle color={couleur}>🎯 Taux de recouvrement — {moisCourant}</CardTitle>
+            {recouvrement.map(r=>(
+              <div key={r.classe} style={{marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                  <span style={{fontSize:13,fontWeight:600,color:theme.text}}>{r.classe}</span>
+                  <span style={{fontSize:13,fontWeight:800,color:r.taux>=80?"#30D158":r.taux>=50?"#FF9F0A":"#FF453A"}}>{r.taux}%</span>
+                </div>
+                <div style={{height:8,background:theme.border,borderRadius:99,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${r.taux}%`,background:r.taux>=80?"#30D158":r.taux>=50?"#FF9F0A":"#FF453A",borderRadius:99,transition:"width 0.5s"}}/>
+                </div>
+                <div style={{fontSize:11,color:theme.textMuted,marginTop:3}}>{fmt(r.paye)} / {fmt(r.total)} · {r.elevesClasse} élèves</div>
+              </div>
+            ))}
+          </Card>
+
+          {/* Répartition dépenses */}
+          <Card>
+            <CardTitle color={couleur}>📤 Dépenses par catégorie</CardTitle>
+            {topCats.length===0
+              ?<div style={{color:theme.textMuted,fontSize:13}}>Aucune dépense</div>
+              :topCats.map(([cat,montant])=>(
+                <div key={cat} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${theme.borderLight}`}}>
+                  <span style={{fontSize:13,color:theme.text}}>{cat}</span>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#FF453A"}}>{fmt(montant)}</div>
+                    <div style={{fontSize:10,color:theme.textMuted}}>{totalDepenses>0?Math.round((montant/totalDepenses)*100):0}%</div>
+                  </div>
+                </div>
+              ))
+            }
+          </Card>
+        </div>
+
+        {/* Recettes par type */}
+        <Card style={{marginBottom:16}}>
+          <CardTitle color={couleur}>💰 Recettes par type de paiement</CardTitle>
+          {topTypes.length===0
+            ?<div style={{color:theme.textMuted,fontSize:13}}>Aucun paiement</div>
+            :<table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr>{["Type","Montant","% du total"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+              <tbody>
+                {topTypes.map(([type,montant])=>(
+                  <tr key={type}>
+                    <Td><span style={{background:couleur+"22",color:couleur,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:600}}>{type}</span></Td>
+                    <Td style={{fontWeight:700,color:"#30D158"}}>{fmt(montant)}</Td>
+                    <Td style={{color:theme.textMuted}}>{totalRecettes>0?Math.round((montant/totalRecettes)*100):0}%</Td>
+                  </tr>
+                ))}
+                <tr style={{borderTop:`2px solid ${theme.border}`}}>
+                  <Td><strong style={{color:theme.text}}>TOTAL</strong></Td>
+                  <Td style={{fontWeight:800,color:"#30D158",fontSize:15}}>{fmt(totalRecettes)}</Td>
+                  <Td style={{fontWeight:700,color:theme.textMuted}}>100%</Td>
+                </tr>
+              </tbody>
+            </table>
+          }
+        </Card>
+
+        {/* Résumé mensuel */}
+        <Card>
+          <CardTitle color={couleur}>📅 Résumé mensuel {annee}</CardTitle>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr>{["Mois","Recettes","Dépenses","Solde"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+            <tbody>
+              {MOIS.map((m,i)=>{
+                const rec=recettesParMois[i];
+                const dep=depensesParMois[i];
+                const sol=rec-dep;
+                return (
+                  <tr key={m}>
+                    <Td style={{fontWeight:600,color:theme.text}}>{m} {annee}</Td>
+                    <Td style={{color:"#30D158",fontWeight:600}}>{rec>0?fmt(rec):"—"}</Td>
+                    <Td style={{color:"#FF453A",fontWeight:600}}>{dep>0?fmt(dep):"—"}</Td>
+                    <Td style={{fontWeight:700,color:sol>=0?"#30D158":"#FF453A"}}>{rec>0||dep>0?fmt(sol):"—"}</Td>
+                  </tr>
+                );
+              })}
+              <tr style={{borderTop:`2px solid ${theme.border}`}}>
+                <Td><strong style={{color:theme.text}}>TOTAL {annee}</strong></Td>
+                <Td style={{fontWeight:800,color:"#30D158",fontSize:14}}>{fmt(totalRecettes)}</Td>
+                <Td style={{fontWeight:800,color:"#FF453A",fontSize:14}}>{fmt(totalDepenses)}</Td>
+                <Td style={{fontWeight:800,fontSize:14,color:solde>=0?"#30D158":"#FF453A"}}>{fmt(solde)}</Td>
+              </tr>
+            </tbody>
+          </table>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 // ─── Emploi du temps ──────────────────────────────────────────────────────────
 const JOURS=["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
 const HEURES=["07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"];
@@ -2416,6 +2620,7 @@ export default function App() {
     ...(isAdmin||isProf?[{id:"absences",label:"Absences",icon:"📅"}]:[]),
     ...(isAdmin||isProf?[{id:"emploi",label:"Emploi du temps",icon:"🗓️"}]:[]),
     ...(isAdmin||isComptable?[{id:"finances",label:"Finances",icon:"💼"}]:[]),
+    ...(isAdmin||isComptable?[{id:"rapports",label:"Rapports",icon:"📈"}]:[]),
     ...(isAdmin?[{id:"utilisateurs",label:"Utilisateurs",icon:"👥"}]:[]),
     ...(isAdmin?[{id:"parametres",label:"Paramètres",icon:"⚙️"}]:[]),
   ];
@@ -2479,6 +2684,7 @@ export default function App() {
               {page==="bulletins"   &&<Bulletins    notes={notes} eleves={eleves} absences={absences} cfg={cfg}/>}
               {page==="absences"    &&<Absences     absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="finances"    &&<Finances     depenses={depenses} setDepenses={setDepenses} recettes={recettes} setRecettes={setRecettes} paiements={paiements} cfg={cfg} showToast={showToast}/>}
+              {page==="rapports"     &&<Rapports     paiements={paiements} depenses={depenses} recettes={recettes} eleves={eleves} cfg={cfg}/>}
               {page==="emploi"       &&<EmploiDuTemps cfg={cfg} professeurs={professeurs}/>}
               {page==="parametres"  &&<Parametres   cfg={cfg} updateCfg={updateCfg} showToast={showToast}/>}
             </>
