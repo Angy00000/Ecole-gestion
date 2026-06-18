@@ -549,7 +549,9 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
     merePrenom:e.mere_prenom||e.merePrenom||"",mereNom:e.mere_nom||e.mereNom||"",mereFonction:e.mere_fonction||e.mereFonction||"",mereTelephone:e.mere_telephone||e.mereTelephone||"",
     dateInscription:e.date_inscription||e.dateInscription||"",
     montantPersonnalise:e.montant_personnalise||e.montantPersonnalise||"",scolariteGratuite:e.scolarite_gratuite||e.scolariteGratuite||false,inscriptionPayee:e.inscription_payee||e.inscriptionPayee||false});setEditId(e.id);setShow(true);};
-  const del=async(id)=>{await dbDel("eleves",id);setEleves(eleves.filter(e=>e.id!==id));showToast("Supprimé");};
+  const [confirmDel,setConfirmDel]=useState(null);
+  const del=(id)=>setConfirmDel(id);
+  const confirmerDel=async()=>{await dbDel("eleves",confirmDel);setEleves(eleves.filter(e=>e.id!==confirmDel));setConfirmDel(null);showToast("Élève supprimé");};
 
   return (
     <div>
@@ -665,7 +667,7 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
                 <Td>
                   <div style={{display:"flex",gap:6}}>
                     <button style={{background:"rgba(255,159,10,0.12)",border:"1px solid #FF9F0A",color:"#FF9F0A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}} onClick={()=>startEdit(e)}>✏️</button>
-                    <button style={{background:"none",border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>del(e.id)}>🗑</button>
+                    <button style={{background:"rgba(255,69,58,0.1)",border:"1px solid #FF453A",color:"#FF453A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>del(e.id)}>🗑</button>
                   </div>
                 </Td>
               </tr>
@@ -1962,6 +1964,377 @@ function Parametres({cfg,updateCfg,showToast}) {
       </div>
 
       <Btn onClick={saveInfos} color={couleur} style={{width:"100%",padding:"14px"}}>💾 Sauvegarder tous les paramètres</Btn>
+    </div>
+  );
+}
+
+
+// ─── SUIVI PAIEMENTS ──────────────────────────────────────────────────────────
+function SuiviPaiements({paiements,eleves,cfg,showToast}) {
+  const {theme}=useTheme();
+  const {couleur,devise,fraisMensuel,fraisParClasse,fraisInscriptionParClasse,fraisInscription}=cfg;
+  const fmt=(n)=>xof(n,devise);
+  const [fClasse,setFClasse]=useState("all");
+  const [fStatut,setFStatut]=useState("all");
+  const [search,setSearch]=useState("");
+  const moisCourant=new Date().toISOString().slice(0,7);
+  const classes=[...new Set(eleves.map(e=>e.classe))].filter(Boolean).sort();
+
+  const getFraisMensuel=(classe)=>fraisParClasse?.[classe]||fraisMensuel||0;
+  const getFraisInscription=(classe)=>fraisInscriptionParClasse?.[classe]||fraisInscription||0;
+
+  const ficheEleve=(e)=>{
+    const montantDu=e.montant_personnalise!=null&&e.montant_personnalise!==""?Number(e.montant_personnalise):getFraisMensuel(e.classe);
+    const gratuit=e.scolarite_gratuite||e.scolariteGratuite;
+    const totalMensualites=paiements.filter(p=>p.eleveId===e.id&&p.type==="Mensualité").reduce((s,p)=>s+p.montant,0);
+    const totalInscription=paiements.filter(p=>p.eleveId===e.id&&p.type==="Inscription").reduce((s,p)=>s+p.montant,0);
+    const moisPayes=paiements.filter(p=>p.eleveId===e.id&&p.type==="Mensualité").map(p=>p.mois);
+    const fraisInscDu=e.inscription_payee||e.inscriptionPayee?0:getFraisInscription(e.classe);
+    const resteMensualite=gratuit?0:Math.max(0,(montantDu)-(paiements.filter(p=>p.eleveId===e.id&&p.mois===moisCourant&&p.type==="Mensualité").reduce((s,p)=>s+p.montant,0)));
+    const resteInscription=Math.max(0,fraisInscDu-totalInscription);
+    const resteTotal=resteMensualite+resteInscription;
+    return {montantDu,gratuit,totalMensualites,totalInscription,moisPayes,resteMensualite,resteInscription,resteTotal};
+  };
+
+  const elevesFiltered=eleves.filter(e=>{
+    if(e.statut!=="Actif")return false;
+    const ok=!search||(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase());
+    const classOk=fClasse==="all"||e.classe===fClasse;
+    const {resteTotal,gratuit}=ficheEleve(e);
+    const statutOk=fStatut==="all"||(fStatut==="impaye"&&resteTotal>0&&!gratuit)||(fStatut==="paye"&&(resteTotal===0||gratuit))||(fStatut==="gratuit"&&gratuit);
+    return ok&&classOk&&statutOk;
+  });
+
+  const totalRestant=elevesFiltered.reduce((s,e)=>s+ficheEleve(e).resteTotal,0);
+
+  const imprimer=()=>{
+    const w=window.open("","_blank");
+    let html=`<html><head><title>Suivi paiements</title><style>
+      body{font-family:Arial;padding:20px;font-size:12px;}
+      table{width:100%;border-collapse:collapse;}
+      th,td{border:1px solid #ddd;padding:6px 8px;}
+      th{background:#f5f5f7;font-weight:700;}
+      .ok{color:#30D158;font-weight:700;} .ko{color:#FF453A;font-weight:700;}
+    </style></head><body>
+    <h2>Suivi des paiements — ${cfg.nom||"École"}</h2>
+    <p>Mois : ${moisCourant} | Classe : ${fClasse==="all"?"Toutes":fClasse} | ${elevesFiltered.length} élèves</p>
+    <table><thead><tr><th>#</th><th>Élève</th><th>Classe</th><th>Mensualité due</th><th>Payé ce mois</th><th>Reste mensualité</th><th>Reste inscription</th><th>Statut</th></tr></thead><tbody>`;
+    elevesFiltered.forEach((e,i)=>{
+      const f=ficheEleve(e);
+      html+=`<tr><td>${i+1}</td><td>${e.prenom} ${e.nom}</td><td>${e.classe}</td>
+        <td>${f.gratuit?"GRATUIT":fmt(f.montantDu)}</td>
+        <td>${fmt(f.totalMensualites)}</td>
+        <td class="${f.resteMensualite>0?"ko":"ok"}">${fmt(f.resteMensualite)}</td>
+        <td class="${f.resteInscription>0?"ko":"ok"}">${fmt(f.resteInscription)}</td>
+        <td class="${f.resteTotal>0&&!f.gratuit?"ko":"ok"}">${f.gratuit?"✅ Gratuit":f.resteTotal===0?"✅ OK":"⚠️ Impayé"}</td></tr>`;
+    });
+    html+=`</tbody></table><p><strong>Total restant à encaisser : ${fmt(totalRestant)}</strong></p></body></html>`;
+    w.document.write(html);w.document.close();w.print();
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>📊 Suivi des paiements</h1>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>exportCSV(elevesFiltered.map(e=>{const f=ficheEleve(e);return{Élève:`${e.prenom} ${e.nom}`,Classe:e.classe,"Mensualité due":f.gratuit?"GRATUIT":f.montantDu,"Payé ce mois":f.totalMensualites,"Reste mensualité":f.resteMensualite,"Reste inscription":f.resteInscription,"Total restant":f.resteTotal,Statut:f.gratuit?"Gratuit":f.resteTotal===0?"Payé":"Impayé"};}),"suivi-paiements")}
+            style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
+          <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+        {[
+          {label:"Total élèves",val:elevesFiltered.length,color:couleur},
+          {label:"Total restant",val:fmt(totalRestant),color:"#FF453A"},
+          {label:"Impayés ce mois",val:elevesFiltered.filter(e=>ficheEleve(e).resteMensualite>0&&!ficheEleve(e).gratuit).length,color:"#FF9F0A"},
+          {label:"À jour",val:elevesFiltered.filter(e=>ficheEleve(e).resteTotal===0||ficheEleve(e).gratuit).length,color:"#30D158"},
+        ].map(k=>(
+          <div key={k.label} style={{background:theme.card,border:`1px solid ${theme.border}`,borderRadius:14,padding:"14px 16px"}}>
+            <div style={{fontSize:11,color:theme.textMuted,marginBottom:4}}>{k.label}</div>
+            <div style={{fontSize:20,fontWeight:800,color:k.color}}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filtres */}
+      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher un élève..."
+          style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+        <select value={fClasse} onChange={e=>setFClasse(e.target.value)}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit"}}>
+          <option value="all">Toutes classes</option>
+          {classes.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={fStatut} onChange={e=>setFStatut(e.target.value)}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit"}}>
+          <option value="all">Tous statuts</option>
+          <option value="impaye">⚠️ Impayés</option>
+          <option value="paye">✅ À jour</option>
+          <option value="gratuit">🎓 Gratuits</option>
+        </select>
+      </div>
+
+      {/* Impayés par classe */}
+      {fStatut==="all"&&classes.map(cl=>{
+        const impayes=eleves.filter(e=>e.statut==="Actif"&&e.classe===cl&&ficheEleve(e).resteTotal>0&&!ficheEleve(e).gratuit);
+        if(impayes.length===0)return null;
+        const totalCl=impayes.reduce((s,e)=>s+ficheEleve(e).resteTotal,0);
+        return(
+          <div key={cl} style={{background:"rgba(255,69,58,0.06)",border:"1px solid rgba(255,69,58,0.2)",borderRadius:12,padding:"12px 16px",marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+              <span style={{fontWeight:700,color:"#FF453A",fontSize:13}}>⚠️ {cl} — {impayes.length} impayé{impayes.length>1?"s":""}</span>
+              <span style={{fontWeight:700,color:"#FF453A",fontSize:13}}>Restant : {fmt(totalCl)}</span>
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {impayes.map(e=><span key={e.id} style={{padding:"3px 10px",background:"rgba(255,69,58,0.12)",borderRadius:99,fontSize:12,color:"#FF453A"}}>{e.prenom} {e.nom} ({fmt(ficheEleve(e).resteTotal)})</span>)}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Tableau */}
+      <TableWrap>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["Élève","Classe","Mensualité due","Payé ce mois","Reste mensualité","Reste inscription","Statut"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+          <tbody>
+            {elevesFiltered.length===0&&<tr><Td colSpan={7} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun élève</Td></tr>}
+            {elevesFiltered.map(e=>{
+              const f=ficheEleve(e);
+              return(
+                <tr key={e.id}>
+                  <Td><strong style={{color:theme.text}}>{e.prenom} {e.nom}</strong></Td>
+                  <Td><span style={{background:couleur+"22",color:couleur,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:700}}>{e.classe}</span></Td>
+                  <Td style={{color:theme.textMuted}}>{f.gratuit?<span style={{color:"#30D158",fontWeight:700}}>GRATUIT</span>:fmt(f.montantDu)}</Td>
+                  <Td style={{fontWeight:700,color:"#30D158"}}>{fmt(f.totalMensualites)}</Td>
+                  <Td style={{fontWeight:700,color:f.resteMensualite>0?"#FF453A":"#30D158"}}>{fmt(f.resteMensualite)}</Td>
+                  <Td style={{fontWeight:700,color:f.resteInscription>0?"#FF9F0A":"#30D158"}}>{fmt(f.resteInscription)}</Td>
+                  <Td>{f.gratuit?<Badge label="Gratuit" color="#30D158" bg="#1C3A27"/>:f.resteTotal===0?<Badge label="✅ À jour" color="#30D158" bg="#1C3A27"/>:<Badge label="⚠️ Impayé" color="#FF453A" bg="#3A1C1C"/>}</Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </TableWrap>
+      <div style={{marginTop:12,textAlign:"right",color:theme.textMuted,fontSize:13}}>
+        Total restant à encaisser : <strong style={{color:"#FF453A"}}>{fmt(totalRestant)}</strong>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── ENCAISSEMENTS JOURNALIERS ────────────────────────────────────────────────
+function EncaissementsJour({paiements,depenses,eleves,cfg}) {
+  const {theme}=useTheme();
+  const {couleur,devise}=cfg;
+  const fmt=(n)=>xof(n,devise);
+  const [date,setDate]=useState(today());
+
+  const paiementsJour=paiements.filter(p=>p.date===date);
+  const depensesJour=(depenses||[]).filter(d=>d.date===date);
+  const totalEncaisse=paiementsJour.reduce((s,p)=>s+p.montant,0);
+  const totalDepense=depensesJour.reduce((s,d)=>s+d.montant,0);
+  const solde=totalEncaisse-totalDepense;
+
+  const byType=paiementsJour.reduce((acc,p)=>{acc[p.type]=(acc[p.type]||0)+p.montant;return acc;},{});
+
+  const imprimer=()=>{
+    const w=window.open("","_blank");
+    let html=`<html><head><title>Encaissements ${date}</title><style>
+      body{font-family:Arial;padding:30px;font-size:13px;}
+      table{width:100%;border-collapse:collapse;margin:10px 0;}
+      th,td{border:1px solid #ddd;padding:7px 10px;}th{background:#f5f5f7;font-weight:700;}
+      .total{font-weight:700;font-size:15px;}
+    </style></head><body>
+    <h2>${cfg.nom||"École"} — Encaissements du ${date}</h2>
+    <h3>💰 Recettes (${fmt(totalEncaisse)})</h3>
+    <table><thead><tr><th>#</th><th>Élève</th><th>Type</th><th>Montant</th><th>Mode</th></tr></thead><tbody>
+    ${paiementsJour.map((p,i)=>{const e=eleves.find(x=>x.id===p.eleveId);return`<tr><td>${i+1}</td><td>${e?e.prenom+" "+e.nom:"—"}</td><td>${p.type}</td><td><strong>${fmt(p.montant)}</strong></td><td>${p.modePaiement||"Espèces"}</td></tr>`;}).join("")}
+    </tbody></table>
+    <h3>💸 Dépenses (${fmt(totalDepense)})</h3>
+    <table><thead><tr><th>#</th><th>Libellé</th><th>Catégorie</th><th>Montant</th></tr></thead><tbody>
+    ${depensesJour.map((d,i)=>`<tr><td>${i+1}</td><td>${d.libelle||d.titre||"—"}</td><td>${d.categorie||"—"}</td><td><strong>${fmt(d.montant)}</strong></td></tr>`).join("")}
+    </tbody></table>
+    <div class="total" style="margin-top:15px;padding:12px;background:${solde>=0?"#e8f5e9":"#ffeaea"};border-radius:8px;">
+      SOLDE DU JOUR : ${fmt(solde)} ${solde>=0?"✅":"⚠️"}
+    </div>
+    </body></html>`;
+    w.document.write(html);w.document.close();w.print();
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>📅 Encaissements journaliers</h1>
+        <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
+      </div>
+
+      <div style={{display:"flex",gap:10,marginBottom:20,alignItems:"center"}}>
+        <label style={{fontSize:13,color:theme.textMuted,fontWeight:600}}>Date :</label>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit"}}/>
+      </div>
+
+      {/* KPIs solde journalier */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:20}}>
+        <div style={{background:theme.card,border:`1px solid #30D158`,borderRadius:14,padding:"16px"}}>
+          <div style={{fontSize:11,color:theme.textMuted,marginBottom:4}}>💰 Total encaissé</div>
+          <div style={{fontSize:22,fontWeight:800,color:"#30D158"}}>{fmt(totalEncaisse)}</div>
+          <div style={{fontSize:11,color:theme.textMuted}}>{paiementsJour.length} paiement{paiementsJour.length!==1?"s":""}</div>
+        </div>
+        <div style={{background:theme.card,border:`1px solid #FF453A`,borderRadius:14,padding:"16px"}}>
+          <div style={{fontSize:11,color:theme.textMuted,marginBottom:4}}>💸 Total dépensé</div>
+          <div style={{fontSize:22,fontWeight:800,color:"#FF453A"}}>{fmt(totalDepense)}</div>
+          <div style={{fontSize:11,color:theme.textMuted}}>{depensesJour.length} dépense{depensesJour.length!==1?"s":""}</div>
+        </div>
+        <div style={{background:theme.card,border:`1px solid ${solde>=0?"#30D158":"#FF453A"}`,borderRadius:14,padding:"16px"}}>
+          <div style={{fontSize:11,color:theme.textMuted,marginBottom:4}}>📊 Solde du jour</div>
+          <div style={{fontSize:22,fontWeight:800,color:solde>=0?"#30D158":"#FF453A"}}>{fmt(solde)}</div>
+          <div style={{fontSize:11,color:theme.textMuted}}>{solde>=0?"✅ Positif":"⚠️ Négatif"}</div>
+        </div>
+      </div>
+
+      {/* Répartition par type */}
+      {Object.keys(byType).length>0&&(
+        <div style={{background:theme.card,border:`1px solid ${theme.border}`,borderRadius:14,padding:"16px",marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:theme.text,marginBottom:12}}>Répartition par type</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {Object.entries(byType).map(([type,mt])=>(
+              <div key={type} style={{padding:"8px 14px",background:couleur+"15",borderRadius:10,border:`1px solid ${couleur}33`}}>
+                <div style={{fontSize:11,color:theme.textMuted}}>{type}</div>
+                <div style={{fontSize:15,fontWeight:700,color:couleur}}>{fmt(mt)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Liste paiements */}
+      <TableWrap>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["Élève","Classe","Type","Montant","Mode"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+          <tbody>
+            {paiementsJour.length===0&&<tr><Td colSpan={5} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun paiement ce jour</Td></tr>}
+            {paiementsJour.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return(
+              <tr key={p.id}>
+                <Td><strong style={{color:theme.text}}>{e?`${e.prenom} ${e.nom}`:"—"}</strong></Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{e?.classe||"—"}</Td>
+                <Td><span style={{background:couleur+"22",color:couleur,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:600}}>{p.type}</span></Td>
+                <Td style={{fontWeight:700,color:"#30D158"}}>{fmt(p.montant)}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.modePaiement||"Espèces"}</Td>
+              </tr>
+            );})}
+          </tbody>
+        </table>
+      </TableWrap>
+    </div>
+  );
+}
+
+// ─── COTISATION FETES ─────────────────────────────────────────────────────────
+function CotisationFetes({paiements,setPaiements,eleves,cfg,showToast}) {
+  const {theme}=useTheme();
+  const {couleur,devise}=cfg;
+  const fmt=(n)=>xof(n,devise);
+  const [show,setShow]=useState(false);
+  const [editId,setEditId]=useState(null);
+  const [search,setSearch]=useState("");
+  const [form,setForm]=useState({eleveId:"",type:"Cotisation fête",montant:cfg.fraisCotisation||5000,date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+
+  const fetePaiements=paiements.filter(p=>p.type==="Cotisation fête"||p.type==="Cotisation");
+  const filtered=fetePaiements.filter(p=>{
+    const e=eleves.find(x=>x.id===p.eleveId);
+    return !search||(e&&(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase()));
+  });
+  const total=filtered.reduce((s,p)=>s+p.montant,0);
+
+  const add=async()=>{
+    if(!form.eleveId)return showToast("Sélectionnez un élève",true);
+    if(!form.montant)return showToast("Montant requis",true);
+    if(editId){
+      await dbPatch("paiements",editId,{montant:parseInt(form.montant),date:form.date,note:form.note});
+      setPaiements(paiements.map(p=>p.id===editId?{...p,...form,montant:parseInt(form.montant)}:p));
+      setEditId(null);showToast("Modifié ✓");
+    } else {
+      const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:"Cotisation fête",montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
+      showToast("Cotisation enregistrée ✓");
+    }
+    setForm({...form,eleveId:"",note:""});setShow(false);
+  };
+  const startEdit=(p)=>{setForm({eleveId:p.eleveId,type:p.type,montant:p.montant,date:p.date,mois:p.mois,note:p.note||""});setEditId(p.id);setShow(true);};
+  const del=async(id)=>{if(!window.confirm("Supprimer ?"))return;await dbDel("paiements",id);setPaiements(paiements.filter(p=>p.id!==id));showToast("Supprimé");};
+
+  const dejaPaye=new Set(fetePaiements.map(p=>p.eleveId));
+  const nonPaye=eleves.filter(e=>e.statut==="Actif"&&!dejaPaye.has(e.id));
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>🎉 Cotisation fêtes ({filtered.length})</h1>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>exportCSV(filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return{Élève:e?`${e.prenom} ${e.nom}`:"—",Classe:e?.classe||"—",Montant:p.montant,Date:p.date,Note:p.note||""}}),"cotisation-fetes")}
+            style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);}} color={couleur}>{show?"✕ Annuler":"+ Cotisation"}</Btn>
+        </div>
+      </div>
+
+      {show&&(<Card style={{marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>{editId?"✏️ Modifier":"Nouvelle cotisation"}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+          <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
+            options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
+          <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
+          <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Ex: Fête de fin d'année"/>
+        </div>
+        <div style={{display:"flex",gap:10}}><Btn onClick={add} color={couleur}>{editId?"💾 Sauvegarder":"Enregistrer"}</Btn>{editId&&<BtnSec onClick={()=>{setEditId(null);setShow(false);}}>Annuler</BtnSec>}</div>
+      </Card>)}
+
+      <div style={{display:"flex",gap:12,marginBottom:16}}>
+        <div style={{background:theme.card,border:`1px solid ${theme.border}`,borderRadius:12,padding:"12px 16px",flex:1}}>
+          <div style={{fontSize:11,color:theme.textMuted}}>Total collecté</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#30D158"}}>{fmt(total)}</div>
+        </div>
+        <div style={{background:"rgba(255,69,58,0.06)",border:"1px solid rgba(255,69,58,0.2)",borderRadius:12,padding:"12px 16px",flex:1}}>
+          <div style={{fontSize:11,color:"#FF453A"}}>N'ont pas encore payé</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#FF453A"}}>{nonPaye.length} élève{nonPaye.length!==1?"s":""}</div>
+        </div>
+      </div>
+
+      {nonPaye.length>0&&(<div style={{background:"rgba(255,69,58,0.06)",border:"1px solid rgba(255,69,58,0.2)",borderRadius:12,padding:"12px 16px",marginBottom:16}}>
+        <div style={{fontWeight:700,color:"#FF453A",marginBottom:8,fontSize:13}}>❌ N'ont pas encore payé la cotisation</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {nonPaye.map(e=><span key={e.id} style={{padding:"3px 10px",background:"rgba(255,69,58,0.12)",borderRadius:99,fontSize:12,color:"#FF453A"}}>{e.prenom} {e.nom} ({e.classe})</span>)}
+        </div>
+      </div>)}
+
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..."
+        style={{width:"100%",background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:14}}/>
+
+      <TableWrap>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["Élève","Classe","Montant","Date","Note","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+          <tbody>
+            {filtered.length===0&&<tr><Td colSpan={6} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucune cotisation</Td></tr>}
+            {filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return(
+              <tr key={p.id}>
+                <Td><strong style={{color:theme.text}}>{e?`${e.prenom} ${e.nom}`:"—"}</strong></Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{e?.classe||"—"}</Td>
+                <Td style={{fontWeight:700,color:"#30D158"}}>{fmt(p.montant)}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.date}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.note||"—"}</Td>
+                <Td><div style={{display:"flex",gap:6}}>
+                  <button style={{background:"rgba(255,159,10,0.12)",border:"1px solid #FF9F0A",color:"#FF9F0A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>startEdit(p)}>✏️</button>
+                  <button style={{background:"none",border:`1px solid ${theme.border}`,color:"#FF453A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>del(p.id)}>🗑</button>
+                </div></Td>
+              </tr>
+            );})}
+          </tbody>
+        </table>
+      </TableWrap>
     </div>
   );
 }
@@ -3324,6 +3697,9 @@ export default function App() {
     ...(isAdmin?[{id:"professeurs",label:"Professeurs",icon:"👨‍🏫"}]:[]),
     ...(isAdmin||isComptable?[{id:"paiements",label:"Paiements",icon:"💰",badge:alertes}]:[]),
     ...(isAdmin||isComptable?[{id:"recus",label:"Reçus",icon:"🧾"}]:[]),
+    ...(isAdmin||isComptable?[{id:"suivi",label:"Suivi paiements",icon:"📊"}]:[]),
+    ...(isAdmin||isComptable?[{id:"encaissements",label:"Encaissements",icon:"📅"}]:[]),
+    ...(isAdmin||isComptable?[{id:"cotisation",label:"Cotisation fêtes",icon:"🎉"}]:[]),
     ...(isAdmin||isComptable?[{id:"cantine",label:"Cantine",icon:"🍽️"}]:[]),
     ...(isAdmin||isComptable?[{id:"courssoir",label:"Cours du soir",icon:"🌙"}]:[]),
     ...(isAdmin||isComptable?[{id:"uniforme",label:"Uniforme",icon:"👕"}]:[]),
@@ -3424,6 +3800,9 @@ export default function App() {
               {page==="professeurs" &&<Professeurs  professeurs={professeurs} setProfesseurs={setProfesseurs} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
               {page==="paiements"   &&<Paiements    paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
               {page==="recus"       &&<Recus        paiements={paiements} eleves={eleves} cfg={cfg}/>}
+              {page==="suivi"       &&<SuiviPaiements paiements={paiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="encaissements"&&<EncaissementsJour paiements={paiements} depenses={depenses} eleves={eleves} cfg={cfg}/>}
+              {page==="cotisation"  &&<CotisationFetes paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="cantine"     &&<Cantine      paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="courssoir"   &&<CoursSoir    paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="uniforme"    &&<Uniforme     paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
