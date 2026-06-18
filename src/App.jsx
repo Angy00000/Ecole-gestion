@@ -648,6 +648,7 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
   const [fMois,setFMois]=useState("");
   const [fType,setFType]=useState("all");
   const [search,setSearch]=useState(rechercheFiltre||"");
+  const [editId,setEditId]=useState(null);
   const moisCourant=new Date().toISOString().slice(0,7);
   const moisNum=new Date().toISOString().slice(5,7);
 
@@ -724,11 +725,23 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
   const add=async()=>{
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
     if(!form.montant)return showToast("Montant requis",true);
-    const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
-    setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
+    if(editId){
+      await dbPatch("paiements",editId,{eleve_id:form.eleveId,type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note,mode_paiement:form.modePaiement});
+      setPaiements(paiements.map(p=>p.id===editId?{...p,eleveId:form.eleveId,type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note,modePaiement:form.modePaiement}:p));
+      setEditId(null);
+      showToast("Paiement modifié ✓");
+    } else {
+      const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
+      showToast("Paiement enregistré ✓");
+    }
     const eleve=eleves.find(e=>e.id===form.eleveId);
     setForm({...form,eleveId:"",note:"",montant:getFraisMensuel(eleve?.classe,form.mois)});
-    setShow(false);showToast("Paiement enregistré ✓");
+    setShow(false);
+  };
+  const startEdit=(p)=>{
+    setForm({eleveId:p.eleveId,type:p.type,montant:p.montant,date:p.date,mois:p.mois,note:p.note||"",coursSoir:false,modePaiement:p.modePaiement||"Espèces"});
+    setEditId(p.id);setShow(true);
   };
   const del=async(id)=>{await dbDel("paiements",id);setPaiements(paiements.filter(p=>p.id!==id));showToast("Supprimé");};
 
@@ -749,13 +762,13 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
           <button onClick={()=>exportCSV(filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return{Élève:e?`${e.prenom} ${e.nom}`:"—",Classe:e?.classe||"—",Type:p.type,Mois:p.mois,Montant:p.montant,Date:p.date}}),"paiements-ecole")}
             style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
           <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
-          <Btn onClick={()=>setShow(!show)} color={couleur}>{show?"✕ Annuler":"+ Nouveau paiement"}</Btn>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);if(show){setForm({eleveId:"",type:(typesPaiements&&typesPaiements[0])||"Mensualité",montant:fraisMensuel||0,date:today(),mois:moisCourant,note:"",coursSoir:false,modePaiement:"Espèces"});}}} color={couleur}>{show?"✕ Annuler":"+ Nouveau paiement"}</Btn>
         </div>
       </div>
 
       {show&&(
         <Card style={{marginBottom:16}}>
-          <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>Nouveau paiement</div>
+          <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>{editId?"✏️ Modifier le paiement":"Nouveau paiement"}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
             <Sel label="Élève *" value={form.eleveId} onChange={e=>handleEleve(e.target.value)}
               options={[{v:"",l:"-- Choisir un élève --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
@@ -788,7 +801,10 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
               {fraisSpeciaux?.[form.mois?.slice(5,7)]>0&&<span style={{color:"#FF9F0A",marginLeft:8}}>⚠️ Tarif spécial {form.mois?.slice(5,7)==="01"?"Janvier":"Février"}</span>}
             </div>
           )}
-          <Btn onClick={add} color={couleur}>Enregistrer le paiement</Btn>
+          <div style={{display:"flex",gap:10}}>
+            <Btn onClick={add} color={couleur}>{editId?"💾 Sauvegarder":"Enregistrer le paiement"}</Btn>
+            {editId&&<BtnSec onClick={()=>{setEditId(null);setShow(false);}}>Annuler</BtnSec>}
+          </div>
         </Card>
       )}
 
@@ -835,7 +851,12 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
                   <Td style={{color:theme.textMuted,fontSize:12}}>{p.mois}</Td>
                   <Td style={{fontWeight:700,color:"#30D158"}}>{fmt(p.montant)}</Td>
                   <Td style={{color:theme.textMuted,fontSize:12}}>{p.date}</Td>
-                  <Td><button style={{background:"none",border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>del(p.id)}>🗑</button></Td>
+                  <Td>
+                    <div style={{display:"flex",gap:6}}>
+                      <button style={{background:"rgba(255,159,10,0.12)",border:"1px solid #FF9F0A",color:"#FF9F0A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}} onClick={()=>startEdit(p)}>✏️</button>
+                      <button style={{background:"none",border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>del(p.id)}>🗑</button>
+                    </div>
+                  </Td>
                 </tr>
               );
             })}
