@@ -475,7 +475,20 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
   const [search,setSearch]=useState(rechercheFiltre||"");
   const [fClasse,setFClasse]=useState("all");
   const [editId,setEditId]=useState(null);
-  const [form,setForm]=useState({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false});
+
+  // Génère le prochain matricule disponible au format ANNEE-NUMERO (ex: 2026-001)
+  const genererMatricule=()=>{
+    const annee=new Date().getFullYear();
+    const prefix=`${annee}-`;
+    const numeros=eleves
+      .map(e=>e.matricule)
+      .filter(m=>m&&m.startsWith(prefix))
+      .map(m=>parseInt(m.split("-")[1])||0);
+    const prochain=(numeros.length>0?Math.max(...numeros):0)+1;
+    return `${prefix}${String(prochain).padStart(3,"0")}`;
+  };
+
+  const [form,setForm]=useState({matricule:genererMatricule(),nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false});
   const printRef=useRef();
 
   const filtered=eleves.filter(e=>{
@@ -544,7 +557,7 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
         merePrenom:rows[0].mere_prenom,mereNom:rows[0].mere_nom,mereFonction:rows[0].mere_fonction,mereTelephone:rows[0].mere_telephone},...eleves]);
       showToast("Élève inscrit ✓");
     }
-    setForm({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false});
+    setForm({matricule:genererMatricule(),nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false});
     setShow(false);
   };
   const startEdit=(e)=>{setForm({...e,matricule:e.matricule||"",sexe:e.sexe||"M",dateNaissance:e.date_naissance||e.dateNaissance||"",
@@ -564,14 +577,14 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
           <button onClick={()=>exportCSV(filtered.map(e=>({Matricule:e.matricule||"",Nom:e.nom,Prénom:e.prenom,Sexe:e.sexe||"",Classe:e.classe,Téléphone:e.telephone||"","Père Prénom":e.perePrenom||"","Père Nom":e.pereNom||"","Père Fonction":e.pereFonction||"","Père Téléphone":e.pereTelephone||"","Mère Prénom":e.merePrenom||"","Mère Nom":e.mereNom||"","Mère Fonction":e.mereFonction||"","Mère Téléphone":e.mereTelephone||"",Statut:e.statut,Inscription:e.dateInscription||""})),"eleves-ecole")}
             style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
           <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
-          <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false});}} color={couleur}>{show?"✕ Annuler":"+ Inscrire un élève"}</Btn>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({matricule:genererMatricule(),nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false});}} color={couleur}>{show?"✕ Annuler":"+ Inscrire un élève"}</Btn>
         </div>
       </div>
       {show&&(
         <Card style={{marginBottom:16}}>
           <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>{editId?"✏️ Modifier l'élève":"Nouvelle inscription"}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
-            <Inp label="Matricule" value={form.matricule} onChange={e=>setForm({...form,matricule:e.target.value})} placeholder="Ex: 2026-001"/>
+            <Inp label="Matricule (auto)" value={form.matricule} onChange={e=>setForm({...form,matricule:e.target.value})} placeholder="Ex: 2026-001"/>
             <Inp label="Nom *" value={form.nom} onChange={e=>setForm({...form,nom:e.target.value})} placeholder="Nom de famille"/>
             <Inp label="Prénom *" value={form.prenom} onChange={e=>setForm({...form,prenom:e.target.value})} placeholder="Prénom"/>
             <Sel label="Sexe" value={form.sexe} onChange={e=>setForm({...form,sexe:e.target.value})} options={["M","F"]}/>
