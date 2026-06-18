@@ -535,7 +535,8 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
       const rows=await dbAdd("eleves",{matricule:form.matricule,nom:form.nom,prenom:form.prenom,sexe:form.sexe,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,
         pere_prenom:form.perePrenom,pere_nom:form.pereNom,pere_fonction:form.pereFonction,pere_telephone:form.pereTelephone,
         mere_prenom:form.merePrenom,mere_nom:form.mereNom,mere_fonction:form.mereFonction,mere_telephone:form.mereTelephone,
-        adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note,montant_personnalise:form.montantPersonnalise?Number(form.montantPersonnalise):null,scolarite_gratuite:form.scolariteGratuite,inscription_payee:form.inscriptionPayee});
+        adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note});
+      if(!rows||!rows[0])return showToast("Erreur enregistrement — vérifiez la connexion",true);
       setEleves([{...rows[0],dateNaissance:rows[0].date_naissance,dateInscription:rows[0].date_inscription,
         perePrenom:rows[0].pere_prenom,pereNom:rows[0].pere_nom,pereFonction:rows[0].pere_fonction,pereTelephone:rows[0].pere_telephone,
         merePrenom:rows[0].mere_prenom,mereNom:rows[0].mere_nom,mereFonction:rows[0].mere_fonction,mereTelephone:rows[0].mere_telephone},...eleves]);
