@@ -2401,13 +2401,22 @@ function Recus({paiements,eleves,cfg}) {
   const [selected,setSelected]=useState(null);
   const [fEleve,setFEleve]=useState("");
   const [fMois,setFMois]=useState("");
+  const [fType,setFType]=useState("all");
+  const [modeVue,setModeVue]=useState("liste"); // liste ou fiche
   const printRef=useRef();
+
+  const TYPES_ALL=["Mensualité","Inscription","Cantine mensuelle","Inscription cantine","Cantine journalière","Cours du soir","Uniforme","Fournitures","Cotisation fête","Transport","Autre"];
 
   const filtered=paiements.filter(p=>{
     const eleveOk=!fEleve||p.eleveId===Number(fEleve);
     const moisOk=!fMois||p.mois===fMois;
-    return eleveOk&&moisOk;
+    const typeOk=fType==="all"||p.type===fType;
+    return eleveOk&&moisOk&&typeOk;
   });
+
+  // Regrouper tous les paiements d'un élève pour la fiche complète
+  const ficheComplete=fEleve?paiements.filter(p=>p.eleveId===Number(fEleve)):[];
+  const totalFiche=ficheComplete.reduce((s,p)=>s+p.montant,0);
 
   const imprimer=()=>{
     if(!printRef.current)return;
@@ -2518,12 +2527,38 @@ function Recus({paiements,eleves,cfg}) {
           <option value="">Tous les élèves</option>
           {eleves.map(e=><option key={e.id} value={e.id}>{e.prenom} {e.nom} ({e.classe})</option>)}
         </select>
+        <select value={fType} onChange={e=>setFType(e.target.value)}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+          <option value="all">Tous les types</option>
+          {TYPES_ALL.map(t=><option key={t} value={t}>{t}</option>)}
+        </select>
         <input type="month" value={fMois} onChange={e=>setFMois(e.target.value)}
           style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit"}}/>
         <div style={{marginLeft:"auto",color:theme.textMuted,fontSize:13}}>
           {filtered.length} reçu{filtered.length!==1?"s":""}
         </div>
       </div>
+
+      {/* Fiche complète élève si sélectionné */}
+      {fEleve&&ficheComplete.length>0&&(
+        <div style={{background:theme.card,border:`1px solid ${couleur}44`,borderRadius:14,padding:"16px",marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontWeight:700,color:theme.text,fontSize:14}}>
+              📋 Fiche complète — {eleves.find(e=>e.id===Number(fEleve))?`${eleves.find(e=>e.id===Number(fEleve)).prenom} ${eleves.find(e=>e.id===Number(fEleve)).nom}`:""}
+            </div>
+            <div style={{fontWeight:800,color:"#30D158",fontSize:16}}>{fmt(totalFiche)}</div>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {ficheComplete.map(p=>(
+              <div key={p.id} style={{padding:"6px 12px",background:couleur+"15",borderRadius:10,fontSize:12}}>
+                <span style={{color:couleur,fontWeight:700}}>{p.type}</span>
+                <span style={{color:theme.textMuted,marginLeft:6}}>{p.mois}</span>
+                <span style={{color:"#30D158",fontWeight:700,marginLeft:6}}>{fmt(p.montant)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Liste paiements */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}}>
