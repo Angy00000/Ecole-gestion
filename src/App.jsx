@@ -475,7 +475,7 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
   const [search,setSearch]=useState(rechercheFiltre||"");
   const [fClasse,setFClasse]=useState("all");
   const [editId,setEditId]=useState(null);
-  const [form,setForm]=useState({nom:"",prenom:"",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});
+  const [form,setForm]=useState({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});
   const printRef=useRef();
 
   const filtered=eleves.filter(e=>{
@@ -504,17 +504,17 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
         const elvs=parClasse[c]||[];
         if(elvs.length===0)return;
         html+=`<h2>${c} (${elvs.length} élève${elvs.length!==1?"s":""})</h2>
-        <table><thead><tr><th>#</th><th>Nom complet</th><th>Parent/Tuteur</th><th>Téléphone</th><th>Inscription</th><th>Statut</th></tr></thead><tbody>`;
+        <table><thead><tr><th>#</th><th>Matricule</th><th>Nom complet</th><th>Sexe</th><th>Parent/Tuteur</th><th>Téléphone</th><th>Inscription</th><th>Statut</th></tr></thead><tbody>`;
         elvs.forEach((e,i)=>{
-          html+=`<tr><td>${i+1}</td><td><strong>${e.prenom} ${e.nom}</strong></td><td>${e.parent||"—"}</td><td>${e.telephoneParent||e.telephone||"—"}</td><td>${e.dateInscription||"—"}</td><td><span class="badge ${e.statut==="Actif"?"actif":"inactif"}">${e.statut}</span></td></tr>`;
+          html+=`<tr><td>${i+1}</td><td>${e.matricule||"—"}</td><td><strong>${e.prenom} ${e.nom}</strong></td><td>${e.sexe||"—"}</td><td>${e.parent||"—"}</td><td>${e.telephoneParent||e.telephone||"—"}</td><td>${e.dateInscription||"—"}</td><td><span class="badge ${e.statut==="Actif"?"actif":"inactif"}">${e.statut}</span></td></tr>`;
         });
         html+=`</tbody></table>`;
       });
     } else {
       html+=`<h2>${fClasse} (${filtered.length} élève${filtered.length!==1?"s":""})</h2>
-      <table><thead><tr><th>#</th><th>Nom complet</th><th>Parent/Tuteur</th><th>Téléphone</th><th>Inscription</th><th>Statut</th></tr></thead><tbody>`;
+      <table><thead><tr><th>#</th><th>Matricule</th><th>Nom complet</th><th>Sexe</th><th>Parent/Tuteur</th><th>Téléphone</th><th>Inscription</th><th>Statut</th></tr></thead><tbody>`;
       filtered.forEach((e,i)=>{
-        html+=`<tr><td>${i+1}</td><td><strong>${e.prenom} ${e.nom}</strong></td><td>${e.parent||"—"}</td><td>${e.telephoneParent||e.telephone||"—"}</td><td>${e.dateInscription||"—"}</td><td><span class="badge ${e.statut==="Actif"?"actif":"inactif"}">${e.statut}</span></td></tr>`;
+        html+=`<tr><td>${i+1}</td><td>${e.matricule||"—"}</td><td><strong>${e.prenom} ${e.nom}</strong></td><td>${e.sexe||"—"}</td><td>${e.parent||"—"}</td><td>${e.telephoneParent||e.telephone||"—"}</td><td>${e.dateInscription||"—"}</td><td><span class="badge ${e.statut==="Actif"?"actif":"inactif"}">${e.statut}</span></td></tr>`;
       });
       html+=`</tbody></table>`;
     }
@@ -525,18 +525,18 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
   const add=async()=>{
     if(!form.nom||!form.prenom)return showToast("Nom et prénom requis",true);
     if(editId){
-      await dbPatch("eleves",editId,{nom:form.nom,prenom:form.prenom,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,parent:form.parent,telephone_parent:form.telephoneParent,adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note});
+      await dbPatch("eleves",editId,{matricule:form.matricule,nom:form.nom,prenom:form.prenom,sexe:form.sexe,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,parent:form.parent,telephone_parent:form.telephoneParent,adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note});
       setEleves(eleves.map(e=>e.id===editId?{...e,...form}:e));
       setEditId(null);showToast("Élève modifié ✓");
     } else {
-      const rows=await dbAdd("eleves",{nom:form.nom,prenom:form.prenom,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,parent:form.parent,telephone_parent:form.telephoneParent,adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note});
+      const rows=await dbAdd("eleves",{matricule:form.matricule,nom:form.nom,prenom:form.prenom,sexe:form.sexe,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,parent:form.parent,telephone_parent:form.telephoneParent,adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note});
       setEleves([{...rows[0],dateNaissance:rows[0].date_naissance,telephoneParent:rows[0].telephone_parent,dateInscription:rows[0].date_inscription},...eleves]);
       showToast("Élève inscrit ✓");
     }
-    setForm({nom:"",prenom:"",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});
+    setForm({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});
     setShow(false);
   };
-  const startEdit=(e)=>{setForm({...e,dateNaissance:e.date_naissance||e.dateNaissance||"",telephoneParent:e.telephone_parent||e.telephoneParent||"",dateInscription:e.date_inscription||e.dateInscription||""});setEditId(e.id);setShow(true);};
+  const startEdit=(e)=>{setForm({...e,matricule:e.matricule||"",sexe:e.sexe||"M",dateNaissance:e.date_naissance||e.dateNaissance||"",telephoneParent:e.telephone_parent||e.telephoneParent||"",dateInscription:e.date_inscription||e.dateInscription||""});setEditId(e.id);setShow(true);};
   const del=async(id)=>{await dbDel("eleves",id);setEleves(eleves.filter(e=>e.id!==id));showToast("Supprimé");};
 
   return (
@@ -544,18 +544,20 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>👨‍🎓 Élèves ({eleves.length})</h1>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>exportCSV(filtered.map(e=>({Nom:e.nom,Prénom:e.prenom,Classe:e.classe,Téléphone:e.telephone||"",Parent:e.parent||"",Statut:e.statut,Inscription:e.dateInscription||""})),"eleves-ecole")}
+          <button onClick={()=>exportCSV(filtered.map(e=>({Matricule:e.matricule||"",Nom:e.nom,Prénom:e.prenom,Sexe:e.sexe||"",Classe:e.classe,Téléphone:e.telephone||"",Parent:e.parent||"",Statut:e.statut,Inscription:e.dateInscription||""})),"eleves-ecole")}
             style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
           <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
-          <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({nom:"",prenom:"",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});}} color={couleur}>{show?"✕ Annuler":"+ Inscrire un élève"}</Btn>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",parent:"",telephoneParent:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});}} color={couleur}>{show?"✕ Annuler":"+ Inscrire un élève"}</Btn>
         </div>
       </div>
       {show&&(
         <Card style={{marginBottom:16}}>
           <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>{editId?"✏️ Modifier l'élève":"Nouvelle inscription"}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+            <Inp label="Matricule" value={form.matricule} onChange={e=>setForm({...form,matricule:e.target.value})} placeholder="Ex: 2026-001"/>
             <Inp label="Nom *" value={form.nom} onChange={e=>setForm({...form,nom:e.target.value})} placeholder="Nom de famille"/>
             <Inp label="Prénom *" value={form.prenom} onChange={e=>setForm({...form,prenom:e.target.value})} placeholder="Prénom"/>
+            <Sel label="Sexe" value={form.sexe} onChange={e=>setForm({...form,sexe:e.target.value})} options={["M","F"]}/>
             <Sel label="Classe" value={form.classe} onChange={e=>setForm({...form,classe:e.target.value})} options={classes}/>
             <Inp label="Date de naissance" type="date" value={form.dateNaissance} onChange={e=>setForm({...form,dateNaissance:e.target.value})}/>
             <Inp label="Téléphone élève" value={form.telephone} onChange={e=>setForm({...form,telephone:e.target.value})} placeholder="+221 77 000 00 00"/>
@@ -584,12 +586,14 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
       </div>
       <TableWrap>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr>{["Élève","Classe","Parent","Téléphone","Inscription","Statut","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+          <thead><tr>{["Matricule","Élève","Sexe","Classe","Parent","Téléphone","Inscription","Statut","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
           <tbody>
-            {filtered.length===0&&<tr><Td colSpan={7} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun élève trouvé</Td></tr>}
+            {filtered.length===0&&<tr><Td colSpan={9} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun élève trouvé</Td></tr>}
             {filtered.map(e=>(
               <tr key={e.id}>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{e.matricule||"—"}</Td>
                 <Td><strong style={{color:theme.text}}>{e.prenom} {e.nom}</strong>{e.note&&<div style={{fontSize:11,color:theme.textMuted}}>{e.note}</div>}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{e.sexe||"—"}</Td>
                 <Td><span style={{background:couleur+"22",color:couleur,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:700}}>{e.classe}</span></Td>
                 <Td style={{color:theme.textSub}}>{e.parent||"—"}</Td>
                 <Td style={{color:theme.textMuted,fontSize:12}}>{e.telephoneParent||e.telephone||"—"}</Td>
