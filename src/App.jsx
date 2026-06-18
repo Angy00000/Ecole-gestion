@@ -475,7 +475,7 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
   const [search,setSearch]=useState(rechercheFiltre||"");
   const [fClasse,setFClasse]=useState("all");
   const [editId,setEditId]=useState(null);
-  const [form,setForm]=useState({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});
+  const [form,setForm]=useState({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",reduction:0,scolariteGratuite:false,inscriptionPayee:false});
   const printRef=useRef();
 
   const filtered=eleves.filter(e=>{
@@ -528,26 +528,27 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
       await dbPatch("eleves",editId,{matricule:form.matricule,nom:form.nom,prenom:form.prenom,sexe:form.sexe,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,
         pere_prenom:form.perePrenom,pere_nom:form.pereNom,pere_fonction:form.pereFonction,pere_telephone:form.pereTelephone,
         mere_prenom:form.merePrenom,mere_nom:form.mereNom,mere_fonction:form.mereFonction,mere_telephone:form.mereTelephone,
-        adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note});
+        adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note,reduction:Number(form.reduction)||0,scolarite_gratuite:form.scolariteGratuite,inscription_payee:form.inscriptionPayee});
       setEleves(eleves.map(e=>e.id===editId?{...e,...form}:e));
       setEditId(null);showToast("Élève modifié ✓");
     } else {
       const rows=await dbAdd("eleves",{matricule:form.matricule,nom:form.nom,prenom:form.prenom,sexe:form.sexe,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,
         pere_prenom:form.perePrenom,pere_nom:form.pereNom,pere_fonction:form.pereFonction,pere_telephone:form.pereTelephone,
         mere_prenom:form.merePrenom,mere_nom:form.mereNom,mere_fonction:form.mereFonction,mere_telephone:form.mereTelephone,
-        adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note});
+        adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note,reduction:Number(form.reduction)||0,scolarite_gratuite:form.scolariteGratuite,inscription_payee:form.inscriptionPayee});
       setEleves([{...rows[0],dateNaissance:rows[0].date_naissance,dateInscription:rows[0].date_inscription,
         perePrenom:rows[0].pere_prenom,pereNom:rows[0].pere_nom,pereFonction:rows[0].pere_fonction,pereTelephone:rows[0].pere_telephone,
         merePrenom:rows[0].mere_prenom,mereNom:rows[0].mere_nom,mereFonction:rows[0].mere_fonction,mereTelephone:rows[0].mere_telephone},...eleves]);
       showToast("Élève inscrit ✓");
     }
-    setForm({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});
+    setForm({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",reduction:0,scolariteGratuite:false,inscriptionPayee:false});
     setShow(false);
   };
   const startEdit=(e)=>{setForm({...e,matricule:e.matricule||"",sexe:e.sexe||"M",dateNaissance:e.date_naissance||e.dateNaissance||"",
     perePrenom:e.pere_prenom||e.perePrenom||"",pereNom:e.pere_nom||e.pereNom||"",pereFonction:e.pere_fonction||e.pereFonction||"",pereTelephone:e.pere_telephone||e.pereTelephone||"",
     merePrenom:e.mere_prenom||e.merePrenom||"",mereNom:e.mere_nom||e.mereNom||"",mereFonction:e.mere_fonction||e.mereFonction||"",mereTelephone:e.mere_telephone||e.mereTelephone||"",
-    dateInscription:e.date_inscription||e.dateInscription||""});setEditId(e.id);setShow(true);};
+    dateInscription:e.date_inscription||e.dateInscription||"",
+    reduction:e.reduction||0,scolariteGratuite:e.scolarite_gratuite||e.scolariteGratuite||false,inscriptionPayee:e.inscription_payee||e.inscriptionPayee||false});setEditId(e.id);setShow(true);};
   const del=async(id)=>{await dbDel("eleves",id);setEleves(eleves.filter(e=>e.id!==id));showToast("Supprimé");};
 
   return (
@@ -558,7 +559,7 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
           <button onClick={()=>exportCSV(filtered.map(e=>({Matricule:e.matricule||"",Nom:e.nom,Prénom:e.prenom,Sexe:e.sexe||"",Classe:e.classe,Téléphone:e.telephone||"","Père Prénom":e.perePrenom||"","Père Nom":e.pereNom||"","Père Fonction":e.pereFonction||"","Père Téléphone":e.pereTelephone||"","Mère Prénom":e.merePrenom||"","Mère Nom":e.mereNom||"","Mère Fonction":e.mereFonction||"","Mère Téléphone":e.mereTelephone||"",Statut:e.statut,Inscription:e.dateInscription||""})),"eleves-ecole")}
             style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
           <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
-          <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:""});}} color={couleur}>{show?"✕ Annuler":"+ Inscrire un élève"}</Btn>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({matricule:"",nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",reduction:0,scolariteGratuite:false,inscriptionPayee:false});}} color={couleur}>{show?"✕ Annuler":"+ Inscrire un élève"}</Btn>
         </div>
       </div>
       {show&&(
@@ -593,6 +594,40 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
           <div style={{display:"grid",gridTemplateColumns:"1fr",gap:12,marginBottom:12}}>
             <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Informations supplémentaires"/>
           </div>
+          <div style={{marginTop:4,marginBottom:12,padding:"14px",background:theme.toggleBg,borderRadius:12,border:`1px solid ${theme.border}`}}>
+            <div style={{fontSize:13,fontWeight:700,color:theme.text,marginBottom:12}}>🎓 Statut financier spécial</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:theme.textMuted,display:"block",marginBottom:6}}>Réduction mensualité (%)</label>
+                <input type="number" min="0" max="100" value={form.reduction} onChange={e=>setForm({...form,reduction:Number(e.target.value)})}
+                  style={{width:"100%",background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit",outline:"none"}} placeholder="0"/>
+                <div style={{fontSize:11,color:theme.textMuted,marginTop:4}}>Ex: 50 = demi-tarif</div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",justifyContent:"center",gap:10}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                  <input type="checkbox" checked={form.scolariteGratuite} onChange={e=>setForm({...form,scolariteGratuite:e.target.checked,reduction:e.target.checked?100:form.reduction})} style={{width:16,height:16,cursor:"pointer"}}/>
+                  <span style={{fontSize:13,fontWeight:600,color:"#30D158"}}>✅ Scolarité gratuite</span>
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                  <input type="checkbox" checked={form.inscriptionPayee} onChange={e=>setForm({...form,inscriptionPayee:e.target.checked})} style={{width:16,height:16,cursor:"pointer"}}/>
+                  <span style={{fontSize:13,fontWeight:600,color:couleur}}>📋 Inscription enregistrée sans paiement</span>
+                </label>
+              </div>
+              {form.reduction>0&&!form.scolariteGratuite&&(
+                <div style={{background:couleur+"11",borderRadius:10,padding:"10px 14px"}}>
+                  <div style={{fontSize:12,color:theme.textMuted}}>Mensualité appliquée</div>
+                  <div style={{fontSize:18,fontWeight:800,color:couleur}}>{xof(Math.round((cfg.fraisMensuel||0)*(1-form.reduction/100)),cfg.devise)}</div>
+                  <div style={{fontSize:11,color:theme.textMuted}}>au lieu de {xof(cfg.fraisMensuel||0,cfg.devise)}</div>
+                </div>
+              )}
+              {form.scolariteGratuite&&(
+                <div style={{background:"#30D15811",borderRadius:10,padding:"10px 14px"}}>
+                  <div style={{fontSize:12,color:"#30D158"}}>Scolarité</div>
+                  <div style={{fontSize:18,fontWeight:800,color:"#30D158"}}>GRATUITE</div>
+                </div>
+              )}
+            </div>
+          </div>
           <div style={{display:"flex",gap:10}}>
             <Btn onClick={add} color={couleur}>{editId?"💾 Sauvegarder":"Inscrire"}</Btn>
             {editId&&<BtnSec onClick={()=>{setEditId(null);setShow(false);}}>Annuler</BtnSec>}
@@ -617,7 +652,10 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
             {filtered.map(e=>(
               <tr key={e.id}>
                 <Td style={{color:theme.textMuted,fontSize:12}}>{e.matricule||"—"}</Td>
-                <Td><strong style={{color:theme.text}}>{e.prenom} {e.nom}</strong>{e.note&&<div style={{fontSize:11,color:theme.textMuted}}>{e.note}</div>}</Td>
+                <Td><strong style={{color:theme.text}}>{e.prenom} {e.nom}</strong>{e.note&&<div style={{fontSize:11,color:theme.textMuted}}>{e.note}</div>}
+                  {(e.scolarite_gratuite||e.scolariteGratuite)&&<span style={{background:"#30D15822",color:"#30D158",fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:99,marginLeft:4}}>GRATUIT</span>}
+                  {(e.reduction>0)&&!(e.scolarite_gratuite||e.scolariteGratuite)&&<span style={{background:"#FF9F0A22",color:"#FF9F0A",fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:99,marginLeft:4}}>-{e.reduction}%</span>}
+                </Td>
                 <Td style={{color:theme.textMuted,fontSize:12}}>{e.sexe||"—"}</Td>
                 <Td><span style={{background:couleur+"22",color:couleur,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:700}}>{e.classe}</span></Td>
                 <Td style={{color:theme.textSub,fontSize:12}}>{(e.perePrenom||e.pereNom)?`👨 ${e.perePrenom||""} ${e.pereNom||""}`.trim():"—"}</Td>
@@ -748,8 +786,12 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
   // Impayés ce mois (mensualité seulement)
   const impayes=eleves.filter(e=>{
     if(e.statut!=="Actif")return false;
+    if(e.scolarite_gratuite||e.scolariteGratuite)return false;
+    const reduction=e.reduction||0;
+    const fraisDu=Math.round(getFraisMensuel(e.classe,moisCourant)*(1-reduction/100));
+    if(fraisDu===0)return false;
     const paye=paiements.filter(p=>p.eleveId===e.id&&p.mois===moisCourant&&p.type==="Mensualité").reduce((s,p)=>s+p.montant,0);
-    return paye<getFraisMensuel(e.classe,moisCourant);
+    return paye<fraisDu;
   });
 
   const TYPES=typesPaiements||["Mensualité","Inscription","Cantine","Fournitures","Transport","Cours du soir","Autre"];
