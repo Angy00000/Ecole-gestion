@@ -867,6 +867,415 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
   );
 }
 
+
+// ─── MODULE CANTINE ───────────────────────────────────────────────────────────
+function Cantine({paiements,setPaiements,eleves,cfg,showToast}) {
+  const {theme}=useTheme();
+  const {couleur,devise}=cfg;
+  const fmt=(n)=>xof(n,devise);
+  const [show,setShow]=useState(false);
+  const [editId,setEditId]=useState(null);
+  const [search,setSearch]=useState("");
+  const [fMois,setFMois]=useState("");
+  const [form,setForm]=useState({eleveId:"",type:"Cantine mensuelle",montant:cfg.fraisCantine||5000,date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+
+  const canPaiements=paiements.filter(p=>p.type==="Cantine mensuelle"||p.type==="Inscription cantine"||p.type==="Cantine");
+  const filtered=canPaiements.filter(p=>{
+    const e=eleves.find(x=>x.id===p.eleveId);
+    const ok=!search||(e&&(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase()));
+    const mok=!fMois||p.mois===fMois;
+    return ok&&mok;
+  });
+  const total=filtered.reduce((s,p)=>s+p.montant,0);
+
+  const add=async()=>{
+    if(!form.eleveId)return showToast("Sélectionnez un élève",true);
+    if(!form.montant)return showToast("Montant requis",true);
+    if(editId){
+      await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      setPaiements(paiements.map(p=>p.id===editId?{...p,...form,montant:parseInt(form.montant)}:p));
+      setEditId(null);showToast("Modifié ✓");
+    } else {
+      const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
+      showToast("Paiement cantine enregistré ✓");
+    }
+    setForm({...form,eleveId:"",note:""});setShow(false);
+  };
+  const startEdit=(p)=>{setForm({eleveId:p.eleveId,type:p.type,montant:p.montant,date:p.date,mois:p.mois,note:p.note||""});setEditId(p.id);setShow(true);};
+  const del=async(id)=>{
+    if(!window.confirm("Supprimer ce paiement cantine ?"))return;
+    await dbDel("paiements",id);setPaiements(paiements.filter(p=>p.id!==id));showToast("Supprimé");
+  };
+
+  // Élèves inscrits à la cantine ce mois
+  const elevesInscrits=new Set(canPaiements.filter(p=>!fMois||p.mois===fMois).map(p=>p.eleveId));
+  const nonInscrits=eleves.filter(e=>e.statut==="Actif"&&!elevesInscrits.has(e.id));
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>🍽️ Cantine ({filtered.length})</h1>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>exportCSV(filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return{Élève:e?`${e.prenom} ${e.nom}`:"—",Classe:e?.classe||"—",Type:p.type,Mois:p.mois,Montant:p.montant,Date:p.date};}),"cantine")}
+            style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);}} color={couleur}>{show?"✕ Annuler":"+ Paiement cantine"}</Btn>
+        </div>
+      </div>
+
+      {show&&(<Card style={{marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>{editId?"✏️ Modifier":"Nouveau paiement cantine"}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+          <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
+            options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
+          <Sel label="Type" value={form.type} onChange={e=>setForm({...form,type:e.target.value})}
+            options={["Cantine mensuelle","Inscription cantine","Cantine journalière"]}/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
+          <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
+          <Inp label="Mois" type="month" value={form.mois} onChange={e=>setForm({...form,mois:e.target.value})}/>
+          <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Optionnel"/>
+        </div>
+        <div style={{display:"flex",gap:10}}><Btn onClick={add} color={couleur}>{editId?"💾 Sauvegarder":"Enregistrer"}</Btn>{editId&&<BtnSec onClick={()=>{setEditId(null);setShow(false);}}>Annuler</BtnSec>}</div>
+      </Card>)}
+
+      {nonInscrits.length>0&&!fMois&&(<Card style={{marginBottom:16,borderColor:"rgba(255,159,10,0.3)"}}>
+        <CardTitle color="#FF9F0A">⚠️ Non inscrits à la cantine ({nonInscrits.length})</CardTitle>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+          {nonInscrits.map(e=><span key={e.id} style={{padding:"4px 10px",background:"rgba(255,159,10,0.1)",borderRadius:99,fontSize:12,color:"#FF9F0A",fontWeight:600}}>{e.prenom} {e.nom} — {e.classe}</span>)}
+        </div>
+      </Card>)}
+
+      <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..."
+          style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+        <input type="month" value={fMois} onChange={e=>setFMois(e.target.value)}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit"}}/>
+        <div style={{color:theme.textMuted,fontSize:13}}>Total : <strong style={{color:"#30D158"}}>{fmt(total)}</strong></div>
+      </div>
+
+      <TableWrap>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["Élève","Classe","Type","Mois","Montant","Date","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+          <tbody>
+            {filtered.length===0&&<tr><Td colSpan={7} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun paiement cantine</Td></tr>}
+            {filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return(
+              <tr key={p.id}>
+                <Td><strong style={{color:theme.text}}>{e?`${e.prenom} ${e.nom}`:"—"}</strong></Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{e?.classe||"—"}</Td>
+                <Td><span style={{background:couleur+"22",color:couleur,padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:600}}>{p.type}</span></Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.mois}</Td>
+                <Td style={{fontWeight:700,color:"#30D158"}}>{fmt(p.montant)}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.date}</Td>
+                <Td><div style={{display:"flex",gap:6}}>
+                  <button style={{background:"rgba(255,159,10,0.12)",border:"1px solid #FF9F0A",color:"#FF9F0A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>startEdit(p)}>✏️</button>
+                  <button style={{background:"none",border:`1px solid ${theme.border}`,color:"#FF453A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>del(p.id)}>🗑</button>
+                </div></Td>
+              </tr>
+            );})}
+          </tbody>
+        </table>
+      </TableWrap>
+    </div>
+  );
+}
+
+// ─── MODULE COURS DU SOIR ─────────────────────────────────────────────────────
+function CoursSoir({paiements,setPaiements,eleves,cfg,showToast}) {
+  const {theme}=useTheme();
+  const {couleur,devise,fraisCoursSOir}=cfg;
+  const fmt=(n)=>xof(n,devise);
+  const [show,setShow]=useState(false);
+  const [editId,setEditId]=useState(null);
+  const [search,setSearch]=useState("");
+  const [fMois,setFMois]=useState("");
+  const [form,setForm]=useState({eleveId:"",type:"Cours du soir",montant:fraisCoursSOir||10000,date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+
+  const csPaiements=paiements.filter(p=>p.type==="Cours du soir");
+  const filtered=csPaiements.filter(p=>{
+    const e=eleves.find(x=>x.id===p.eleveId);
+    const ok=!search||(e&&(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase()));
+    const mok=!fMois||p.mois===fMois;
+    return ok&&mok;
+  });
+  const total=filtered.reduce((s,p)=>s+p.montant,0);
+
+  const add=async()=>{
+    if(!form.eleveId)return showToast("Sélectionnez un élève",true);
+    if(!form.montant)return showToast("Montant requis",true);
+    if(editId){
+      await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      setPaiements(paiements.map(p=>p.id===editId?{...p,...form,montant:parseInt(form.montant)}:p));
+      setEditId(null);showToast("Modifié ✓");
+    } else {
+      const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:"Cours du soir",montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
+      showToast("Paiement cours du soir enregistré ✓");
+    }
+    setForm({...form,eleveId:"",note:""});setShow(false);
+  };
+  const startEdit=(p)=>{setForm({eleveId:p.eleveId,type:p.type,montant:p.montant,date:p.date,mois:p.mois,note:p.note||""});setEditId(p.id);setShow(true);};
+  const del=async(id)=>{
+    if(!window.confirm("Supprimer ?"))return;
+    await dbDel("paiements",id);setPaiements(paiements.filter(p=>p.id!==id));showToast("Supprimé");
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>🌙 Cours du soir ({filtered.length})</h1>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>exportCSV(filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return{Élève:e?`${e.prenom} ${e.nom}`:"—",Classe:e?.classe||"—",Mois:p.mois,Montant:p.montant,Date:p.date};}),"cours-soir")}
+            style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);}} color={couleur}>{show?"✕ Annuler":"+ Paiement cours soir"}</Btn>
+        </div>
+      </div>
+
+      {show&&(<Card style={{marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>{editId?"✏️ Modifier":"Nouveau paiement cours du soir"}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+          <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
+            options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
+          <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
+          <Inp label="Mois" type="month" value={form.mois} onChange={e=>setForm({...form,mois:e.target.value})}/>
+          <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Optionnel"/>
+        </div>
+        <div style={{display:"flex",gap:10}}><Btn onClick={add} color={couleur}>{editId?"💾 Sauvegarder":"Enregistrer"}</Btn>{editId&&<BtnSec onClick={()=>{setEditId(null);setShow(false);}}>Annuler</BtnSec>}</div>
+      </Card>)}
+
+      <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..."
+          style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+        <input type="month" value={fMois} onChange={e=>setFMois(e.target.value)}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit"}}/>
+        <div style={{color:theme.textMuted,fontSize:13}}>Total : <strong style={{color:"#30D158"}}>{fmt(total)}</strong></div>
+      </div>
+
+      <TableWrap>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["Élève","Classe","Mois","Montant","Date","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+          <tbody>
+            {filtered.length===0&&<tr><Td colSpan={6} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun paiement cours du soir</Td></tr>}
+            {filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return(
+              <tr key={p.id}>
+                <Td><strong style={{color:theme.text}}>{e?`${e.prenom} ${e.nom}`:"—"}</strong></Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{e?.classe||"—"}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.mois}</Td>
+                <Td style={{fontWeight:700,color:"#30D158"}}>{fmt(p.montant)}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.date}</Td>
+                <Td><div style={{display:"flex",gap:6}}>
+                  <button style={{background:"rgba(255,159,10,0.12)",border:"1px solid #FF9F0A",color:"#FF9F0A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>startEdit(p)}>✏️</button>
+                  <button style={{background:"none",border:`1px solid ${theme.border}`,color:"#FF453A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>del(p.id)}>🗑</button>
+                </div></Td>
+              </tr>
+            );})}
+          </tbody>
+        </table>
+      </TableWrap>
+    </div>
+  );
+}
+
+// ─── MODULE UNIFORME ──────────────────────────────────────────────────────────
+function Uniforme({paiements,setPaiements,eleves,cfg,showToast}) {
+  const {theme}=useTheme();
+  const {couleur,devise}=cfg;
+  const fmt=(n)=>xof(n,devise);
+  const [show,setShow]=useState(false);
+  const [editId,setEditId]=useState(null);
+  const [search,setSearch]=useState("");
+  const [form,setForm]=useState({eleveId:"",type:"Uniforme",montant:cfg.fraisUniforme||15000,date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+
+  const uniPaiements=paiements.filter(p=>p.type==="Uniforme");
+  const filtered=uniPaiements.filter(p=>{
+    const e=eleves.find(x=>x.id===p.eleveId);
+    return !search||(e&&(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase()));
+  });
+  const total=filtered.reduce((s,p)=>s+p.montant,0);
+
+  const add=async()=>{
+    if(!form.eleveId)return showToast("Sélectionnez un élève",true);
+    if(!form.montant)return showToast("Montant requis",true);
+    if(editId){
+      await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,note:form.note});
+      setPaiements(paiements.map(p=>p.id===editId?{...p,...form,montant:parseInt(form.montant)}:p));
+      setEditId(null);showToast("Modifié ✓");
+    } else {
+      const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:"Uniforme",montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
+      showToast("Paiement uniforme enregistré ✓");
+    }
+    setForm({...form,eleveId:"",note:""});setShow(false);
+  };
+  const startEdit=(p)=>{setForm({eleveId:p.eleveId,type:p.type,montant:p.montant,date:p.date,mois:p.mois,note:p.note||""});setEditId(p.id);setShow(true);};
+  const del=async(id)=>{
+    if(!window.confirm("Supprimer ?"))return;
+    await dbDel("paiements",id);setPaiements(paiements.filter(p=>p.id!==id));showToast("Supprimé");
+  };
+
+  // Élèves n'ayant pas encore payé l'uniforme
+  const dejaPaye=new Set(uniPaiements.map(p=>p.eleveId));
+  const nonPaye=eleves.filter(e=>e.statut==="Actif"&&!dejaPaye.has(e.id));
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>👕 Uniforme ({filtered.length})</h1>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>exportCSV(filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return{Élève:e?`${e.prenom} ${e.nom}`:"—",Classe:e?.classe||"—",Montant:p.montant,Date:p.date,Note:p.note||""}}),"uniforme")}
+            style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);}} color={couleur}>{show?"✕ Annuler":"+ Paiement uniforme"}</Btn>
+        </div>
+      </div>
+
+      {show&&(<Card style={{marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>{editId?"✏️ Modifier":"Nouveau paiement uniforme"}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+          <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
+            options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
+          <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
+          <Inp label="Note (taille, couleur...)" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Ex: Taille M, 2 pantalons"/>
+        </div>
+        <div style={{display:"flex",gap:10}}><Btn onClick={add} color={couleur}>{editId?"💾 Sauvegarder":"Enregistrer"}</Btn>{editId&&<BtnSec onClick={()=>{setEditId(null);setShow(false);}}>Annuler</BtnSec>}</div>
+      </Card>)}
+
+      {nonPaye.length>0&&(<Card style={{marginBottom:16,borderColor:"rgba(255,69,58,0.3)"}}>
+        <CardTitle color="#FF453A">❌ N'ont pas encore payé l'uniforme ({nonPaye.length})</CardTitle>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+          {nonPaye.map(e=><span key={e.id} style={{padding:"4px 10px",background:"rgba(255,69,58,0.1)",borderRadius:99,fontSize:12,color:"#FF453A",fontWeight:600}}>{e.prenom} {e.nom} — {e.classe}</span>)}
+        </div>
+      </Card>)}
+
+      <div style={{display:"flex",gap:10,marginBottom:14}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..."
+          style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+        <div style={{color:theme.textMuted,fontSize:13,display:"flex",alignItems:"center"}}>Total : <strong style={{color:"#30D158",marginLeft:4}}>{fmt(total)}</strong></div>
+      </div>
+
+      <TableWrap>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["Élève","Classe","Montant","Date","Note","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+          <tbody>
+            {filtered.length===0&&<tr><Td colSpan={6} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun paiement uniforme</Td></tr>}
+            {filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return(
+              <tr key={p.id}>
+                <Td><strong style={{color:theme.text}}>{e?`${e.prenom} ${e.nom}`:"—"}</strong></Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{e?.classe||"—"}</Td>
+                <Td style={{fontWeight:700,color:"#30D158"}}>{fmt(p.montant)}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.date}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.note||"—"}</Td>
+                <Td><div style={{display:"flex",gap:6}}>
+                  <button style={{background:"rgba(255,159,10,0.12)",border:"1px solid #FF9F0A",color:"#FF9F0A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>startEdit(p)}>✏️</button>
+                  <button style={{background:"none",border:`1px solid ${theme.border}`,color:"#FF453A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>del(p.id)}>🗑</button>
+                </div></Td>
+              </tr>
+            );})}
+          </tbody>
+        </table>
+      </TableWrap>
+    </div>
+  );
+}
+
+// ─── MODULE FOURNITURES ───────────────────────────────────────────────────────
+function Fournitures({paiements,setPaiements,eleves,cfg,showToast}) {
+  const {theme}=useTheme();
+  const {couleur,devise}=cfg;
+  const fmt=(n)=>xof(n,devise);
+  const [show,setShow]=useState(false);
+  const [editId,setEditId]=useState(null);
+  const [search,setSearch]=useState("");
+  const [fMois,setFMois]=useState("");
+  const [form,setForm]=useState({eleveId:"",type:"Fournitures",montant:cfg.fraisFournitures||20000,date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+
+  const fourPaiements=paiements.filter(p=>p.type==="Fournitures");
+  const filtered=fourPaiements.filter(p=>{
+    const e=eleves.find(x=>x.id===p.eleveId);
+    const ok=!search||(e&&(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase()));
+    const mok=!fMois||p.mois===fMois;
+    return ok&&mok;
+  });
+  const total=filtered.reduce((s,p)=>s+p.montant,0);
+
+  const add=async()=>{
+    if(!form.eleveId)return showToast("Sélectionnez un élève",true);
+    if(!form.montant)return showToast("Montant requis",true);
+    if(editId){
+      await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      setPaiements(paiements.map(p=>p.id===editId?{...p,...form,montant:parseInt(form.montant)}:p));
+      setEditId(null);showToast("Modifié ✓");
+    } else {
+      const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:"Fournitures",montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
+      showToast("Paiement fournitures enregistré ✓");
+    }
+    setForm({...form,eleveId:"",note:""});setShow(false);
+  };
+  const startEdit=(p)=>{setForm({eleveId:p.eleveId,type:p.type,montant:p.montant,date:p.date,mois:p.mois,note:p.note||""});setEditId(p.id);setShow(true);};
+  const del=async(id)=>{
+    if(!window.confirm("Supprimer ?"))return;
+    await dbDel("paiements",id);setPaiements(paiements.filter(p=>p.id!==id));showToast("Supprimé");
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>📚 Fournitures ({filtered.length})</h1>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>exportCSV(filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return{Élève:e?`${e.prenom} ${e.nom}`:"—",Classe:e?.classe||"—",Montant:p.montant,Mois:p.mois,Date:p.date,Note:p.note||""}}),"fournitures")}
+            style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);}} color={couleur}>{show?"✕ Annuler":"+ Paiement fournitures"}</Btn>
+        </div>
+      </div>
+
+      {show&&(<Card style={{marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>{editId?"✏️ Modifier":"Nouveau paiement fournitures"}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+          <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
+            options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
+          <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
+          <Inp label="Mois" type="month" value={form.mois} onChange={e=>setForm({...form,mois:e.target.value})}/>
+          <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Ex: Kit complet CI"/>
+        </div>
+        <div style={{display:"flex",gap:10}}><Btn onClick={add} color={couleur}>{editId?"💾 Sauvegarder":"Enregistrer"}</Btn>{editId&&<BtnSec onClick={()=>{setEditId(null);setShow(false);}}>Annuler</BtnSec>}</div>
+      </Card>)}
+
+      <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..."
+          style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+        <input type="month" value={fMois} onChange={e=>setFMois(e.target.value)}
+          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit"}}/>
+        <div style={{color:theme.textMuted,fontSize:13}}>Total : <strong style={{color:"#30D158"}}>{fmt(total)}</strong></div>
+      </div>
+
+      <TableWrap>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["Élève","Classe","Montant","Mois","Date","Note","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+          <tbody>
+            {filtered.length===0&&<tr><Td colSpan={7} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun paiement fournitures</Td></tr>}
+            {filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return(
+              <tr key={p.id}>
+                <Td><strong style={{color:theme.text}}>{e?`${e.prenom} ${e.nom}`:"—"}</strong></Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{e?.classe||"—"}</Td>
+                <Td style={{fontWeight:700,color:"#30D158"}}>{fmt(p.montant)}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.mois}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.date}</Td>
+                <Td style={{color:theme.textMuted,fontSize:12}}>{p.note||"—"}</Td>
+                <Td><div style={{display:"flex",gap:6}}>
+                  <button style={{background:"rgba(255,159,10,0.12)",border:"1px solid #FF9F0A",color:"#FF9F0A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>startEdit(p)}>✏️</button>
+                  <button style={{background:"none",border:`1px solid ${theme.border}`,color:"#FF453A",padding:"4px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={()=>del(p.id)}>🗑</button>
+                </div></Td>
+              </tr>
+            );})}
+          </tbody>
+        </table>
+      </TableWrap>
+    </div>
+  );
+}
+
 // ─── Notes ────────────────────────────────────────────────────────────────────
 function Notes({notes,setNotes,eleves,cfg,showToast}) {
   const {theme}=useTheme();
@@ -2873,6 +3282,10 @@ export default function App() {
     ...(isAdmin?[{id:"professeurs",label:"Professeurs",icon:"👨‍🏫"}]:[]),
     ...(isAdmin||isComptable?[{id:"paiements",label:"Paiements",icon:"💰",badge:alertes}]:[]),
     ...(isAdmin||isComptable?[{id:"recus",label:"Reçus",icon:"🧾"}]:[]),
+    ...(isAdmin||isComptable?[{id:"cantine",label:"Cantine",icon:"🍽️"}]:[]),
+    ...(isAdmin||isComptable?[{id:"courssoir",label:"Cours du soir",icon:"🌙"}]:[]),
+    ...(isAdmin||isComptable?[{id:"uniforme",label:"Uniforme",icon:"👕"}]:[]),
+    ...(isAdmin||isComptable?[{id:"fournitures",label:"Fournitures",icon:"📚"}]:[]),
     ...(isAdmin||isProf?[{id:"notes",label:"Notes",icon:"📝"}]:[]),
     ...(isAdmin||isProf?[{id:"bulletins",label:"Bulletins",icon:"📊"}]:[]),
     ...(isAdmin||isProf?[{id:"absences",label:"Absences",icon:"📅"}]:[]),
@@ -2969,6 +3382,10 @@ export default function App() {
               {page==="professeurs" &&<Professeurs  professeurs={professeurs} setProfesseurs={setProfesseurs} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
               {page==="paiements"   &&<Paiements    paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
               {page==="recus"       &&<Recus        paiements={paiements} eleves={eleves} cfg={cfg}/>}
+              {page==="cantine"     &&<Cantine      paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="courssoir"   &&<CoursSoir    paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="uniforme"    &&<Uniforme     paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="fournitures" &&<Fournitures  paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="notes"       &&<Notes        notes={notes} setNotes={setNotes} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="bulletins"   &&<Bulletins    notes={notes} eleves={eleves} absences={absences} cfg={cfg}/>}
               {page==="absences"    &&<Absences     absences={absences} setAbsences={setAbsences} eleves={eleves} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
