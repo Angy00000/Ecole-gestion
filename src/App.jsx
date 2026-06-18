@@ -1571,33 +1571,72 @@ function Finances({depenses,setDepenses,recettes,setRecettes,paiements,cfg,showT
   const [tab,setTab]=useState("depenses");
   const [showDep,setShowDep]=useState(false);
   const [showRec,setShowRec]=useState(false);
+  const [editDepId,setEditDepId]=useState(null);
+  const [editRecId,setEditRecId]=useState(null);
+  const [confirmDelDep,setConfirmDelDep]=useState(null);
+  const [confirmDelRec,setConfirmDelRec]=useState(null);
+  const [searchDep,setSearchDep]=useState("");
+  const [searchRec,setSearchRec]=useState("");
   const [formDep,setFormDep]=useState({titre:"",categorie:"Salaires",montant:"",date:today(),statut:"En attente",note:""});
   const [formRec,setFormRec]=useState({titre:"",categorie:"Autres",montant:"",date:today(),note:""});
 
-  const CAT_DEP=["Salaires","Loyer","Fournitures","Eau/Électricité","Internet","Entretien","Transport","Autre"];
-  const CAT_REC=["Cantine","Transport scolaire","Activités","Dons","Subventions","Autres"];
+  const CAT_DEP=["Salaires","Loyer","Fournitures scolaires","Eau/Électricité","Internet","Entretien","Transport","Matériel pédagogique","Événements","Frais bancaires","Autre"];
+  const CAT_REC=["Cantine","Transport scolaire","Activités","Dons","Subventions","Aide État","Autres"];
 
   const totalDep=depenses.filter(d=>d.statut==="Approuvée").reduce((s,d)=>s+d.montant,0);
   const totalRec=recettes.reduce((s,r)=>s+r.montant,0)+paiements.reduce((s,p)=>s+p.montant,0);
   const ben=totalRec-totalDep;
 
+  const depFiltered=depenses.filter(d=>!searchDep||d.titre?.toLowerCase().includes(searchDep.toLowerCase())||d.categorie?.toLowerCase().includes(searchDep.toLowerCase()));
+  const recFiltered=recettes.filter(r=>!searchRec||r.titre?.toLowerCase().includes(searchRec.toLowerCase()));
+
   const addDep=async()=>{
     if(!formDep.titre||!formDep.montant)return showToast("Titre et montant requis",true);
-    const rows=await dbAdd("depenses",{titre:formDep.titre,categorie:formDep.categorie,montant:parseInt(formDep.montant),date:formDep.date,statut:formDep.statut,note:formDep.note});
-    setDepenses([rows[0],...depenses]);
+    if(editDepId){
+      await dbPatch("depenses",editDepId,{titre:formDep.titre,categorie:formDep.categorie,montant:parseInt(formDep.montant),date:formDep.date,statut:formDep.statut,note:formDep.note});
+      setDepenses(depenses.map(d=>d.id===editDepId?{...d,...formDep,montant:parseInt(formDep.montant)}:d));
+      setEditDepId(null);showToast("Dépense modifiée ✓");
+    } else {
+      const rows=await dbAdd("depenses",{titre:formDep.titre,categorie:formDep.categorie,montant:parseInt(formDep.montant),date:formDep.date,statut:formDep.statut,note:formDep.note});
+      setDepenses([rows[0],...depenses]);
+      showToast("Dépense enregistrée ✓");
+    }
     setFormDep({titre:"",categorie:"Salaires",montant:"",date:today(),statut:"En attente",note:""});
-    setShowDep(false);showToast("Dépense enregistrée ✓");
+    setShowDep(false);
   };
   const addRec=async()=>{
     if(!formRec.titre||!formRec.montant)return showToast("Titre et montant requis",true);
-    const rows=await dbAdd("recettes",{titre:formRec.titre,categorie:formRec.categorie,montant:parseInt(formRec.montant),date:formRec.date,note:formRec.note});
-    setRecettes([rows[0],...recettes]);
+    if(editRecId){
+      await dbPatch("recettes",editRecId,{titre:formRec.titre,categorie:formRec.categorie,montant:parseInt(formRec.montant),date:formRec.date,note:formRec.note});
+      setRecettes(recettes.map(r=>r.id===editRecId?{...r,...formRec,montant:parseInt(formRec.montant)}:r));
+      setEditRecId(null);showToast("Recette modifiée ✓");
+    } else {
+      const rows=await dbAdd("recettes",{titre:formRec.titre,categorie:formRec.categorie,montant:parseInt(formRec.montant),date:formRec.date,note:formRec.note});
+      setRecettes([rows[0],...recettes]);
+      showToast("Recette enregistrée ✓");
+    }
     setFormRec({titre:"",categorie:"Autres",montant:"",date:today(),note:""});
-    setShowRec(false);showToast("Recette enregistrée ✓");
+    setShowRec(false);
   };
+  const startEditDep=(d)=>{setFormDep({titre:d.titre,categorie:d.categorie,montant:d.montant,date:d.date,statut:d.statut,note:d.note||""});setEditDepId(d.id);setShowDep(true);};
+  const startEditRec=(r)=>{setFormRec({titre:r.titre,categorie:r.categorie,montant:r.montant,date:r.date,note:r.note||""});setEditRecId(r.id);setShowRec(true);};
   const chStat=async(id,statut)=>{await dbPatch("depenses",id,{statut});setDepenses(depenses.map(d=>d.id===id?{...d,statut}:d));};
-  const delDep=async(id)=>{await dbDel("depenses",id);setDepenses(depenses.filter(d=>d.id!==id));showToast("Supprimée");};
-  const delRec=async(id)=>{await dbDel("recettes",id);setRecettes(recettes.filter(r=>r.id!==id));showToast("Supprimée");};
+  const delDep=async()=>{await dbDel("depenses",confirmDelDep);setDepenses(depenses.filter(d=>d.id!==confirmDelDep));setConfirmDelDep(null);showToast("Supprimée");};
+  const delRec=async()=>{await dbDel("recettes",confirmDelRec);setRecettes(recettes.filter(r=>r.id!==confirmDelRec));setConfirmDelRec(null);showToast("Supprimée");};
+
+  const ModalConfirm=({onOk,onCancel})=>(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{background:theme.card,borderRadius:20,padding:28,width:300,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+        <div style={{fontSize:36,textAlign:"center",marginBottom:12}}>⚠️</div>
+        <div style={{fontSize:15,fontWeight:700,color:theme.text,textAlign:"center",marginBottom:8}}>Confirmer la suppression</div>
+        <div style={{fontSize:13,color:theme.textMuted,textAlign:"center",marginBottom:24}}>Cette action est irréversible.</div>
+        <div style={{display:"flex",gap:10}}>
+          <BtnSec onClick={onCancel} style={{flex:1}}>Annuler</BtnSec>
+          <button onClick={onOk} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:"#FF453A",color:"#fff",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700}}>🗑 Supprimer</button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -1618,11 +1657,14 @@ function Finances({depenses,setDepenses,recettes,setRecettes,paiements,cfg,showT
       </div>
       {tab==="depenses"&&(
         <div>
-          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
-            <Btn onClick={()=>setShowDep(!showDep)} color={couleur}>{showDep?"✕ Annuler":"+ Nouvelle dépense"}</Btn>
+          <div style={{display:"flex",gap:8,justifyContent:"space-between",marginBottom:12,alignItems:"center"}}>
+            <input value={searchDep} onChange={e=>setSearchDep(e.target.value)} placeholder="🔍 Rechercher une dépense..."
+              style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+            <Btn onClick={()=>{setShowDep(!showDep);setEditDepId(null);setFormDep({titre:"",categorie:"Salaires",montant:"",date:today(),statut:"En attente",note:""}); }} color={couleur}>{showDep?"✕ Annuler":"+ Nouvelle dépense"}</Btn>
           </div>
           {showDep&&(
             <Card style={{marginBottom:12}}>
+              <div style={{fontSize:13,fontWeight:700,color:theme.text,marginBottom:12}}>{editDepId?"✏️ Modifier la dépense":"Nouvelle dépense"}</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
                 <Inp label="Titre *" value={formDep.titre} onChange={e=>setFormDep({...formDep,titre:e.target.value})} placeholder="Description"/>
                 <Inp label={`Montant (${devise}) *`} type="number" value={formDep.montant} onChange={e=>setFormDep({...formDep,montant:e.target.value})} placeholder="0"/>
@@ -1631,15 +1673,15 @@ function Finances({depenses,setDepenses,recettes,setRecettes,paiements,cfg,showT
                 <Sel label="Statut" value={formDep.statut} onChange={e=>setFormDep({...formDep,statut:e.target.value})} options={["En attente","Approuvée","Rejetée"]}/>
                 <Inp label="Note" value={formDep.note} onChange={e=>setFormDep({...formDep,note:e.target.value})} placeholder="Optionnel"/>
               </div>
-              <Btn onClick={addDep} color={couleur}>Enregistrer</Btn>
+              <div style={{display:"flex",gap:10}}><Btn onClick={addDep} color={couleur}>{editDepId?"💾 Sauvegarder":"Enregistrer"}</Btn>{editDepId&&<BtnSec onClick={()=>{setEditDepId(null);setShowDep(false);}}>Annuler</BtnSec>}</div>
             </Card>
           )}
           <TableWrap>
             <table style={{width:"100%",borderCollapse:"collapse"}}>
               <thead><tr>{["Dépense","Catégorie","Date","Montant","Statut","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
               <tbody>
-                {depenses.length===0&&<tr><Td colSpan={6} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucune dépense</Td></tr>}
-                {depenses.map(d=>(
+                {depFiltered.length===0&&<tr><Td colSpan={6} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucune dépense</Td></tr>}
+                {depFiltered.map(d=>(
                   <tr key={d.id}>
                     <Td><strong style={{color:theme.text}}>{d.titre}</strong>{d.note&&<div style={{fontSize:11,color:theme.textMuted}}>{d.note}</div>}</Td>
                     <Td style={{color:theme.textMuted,fontSize:12}}>{d.categorie}</Td>
@@ -1649,7 +1691,8 @@ function Finances({depenses,setDepenses,recettes,setRecettes,paiements,cfg,showT
                     <Td>
                       <div style={{display:"flex",gap:6}}>
                         {d.statut!=="Approuvée"&&<button style={{background:"none",border:"1px solid #30D158",color:"#30D158",padding:"3px 7px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit"}} onClick={()=>chStat(d.id,"Approuvée")}>✓</button>}
-                        <button style={{background:"none",border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"3px 7px",borderRadius:6,cursor:"pointer",fontSize:11,fontFamily:"inherit"}} onClick={()=>delDep(d.id)}>🗑</button>
+                        <button style={{background:"rgba(255,159,10,0.12)",border:"1px solid #FF9F0A",color:"#FF9F0A",padding:"3px 7px",borderRadius:6,cursor:"pointer",fontSize:11,fontFamily:"inherit"}} onClick={()=>startEditDep(d)}>✏️</button>
+                        <button style={{background:"none",border:"1px solid #FF453A",color:"#FF453A",padding:"3px 7px",borderRadius:6,cursor:"pointer",fontSize:11,fontFamily:"inherit"}} onClick={()=>setConfirmDelDep(d.id)}>🗑</button>
                       </div>
                     </Td>
                   </tr>
@@ -1657,15 +1700,19 @@ function Finances({depenses,setDepenses,recettes,setRecettes,paiements,cfg,showT
               </tbody>
             </table>
           </TableWrap>
+          {confirmDelDep&&<ModalConfirm onOk={delDep} onCancel={()=>setConfirmDelDep(null)}/>}
         </div>
       )}
       {tab==="recettes"&&(
         <div>
-          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
-            <Btn onClick={()=>setShowRec(!showRec)} color={couleur}>{showRec?"✕ Annuler":"+ Nouvelle recette"}</Btn>
+          <div style={{display:"flex",gap:8,justifyContent:"space-between",marginBottom:12,alignItems:"center"}}>
+            <input value={searchRec} onChange={e=>setSearchRec(e.target.value)} placeholder="🔍 Rechercher une recette..."
+              style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+            <Btn onClick={()=>{setShowRec(!showRec);setEditRecId(null);setFormRec({titre:"",categorie:"Autres",montant:"",date:today(),note:""});}} color={couleur}>{showRec?"✕ Annuler":"+ Nouvelle recette"}</Btn>
           </div>
           {showRec&&(
             <Card style={{marginBottom:12}}>
+              <div style={{fontSize:13,fontWeight:700,color:theme.text,marginBottom:12}}>{editRecId?"✏️ Modifier la recette":"Nouvelle recette"}</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
                 <Inp label="Titre *" value={formRec.titre} onChange={e=>setFormRec({...formRec,titre:e.target.value})} placeholder="Description"/>
                 <Inp label={`Montant (${devise}) *`} type="number" value={formRec.montant} onChange={e=>setFormRec({...formRec,montant:e.target.value})} placeholder="0"/>
@@ -1673,26 +1720,30 @@ function Finances({depenses,setDepenses,recettes,setRecettes,paiements,cfg,showT
                 <Inp label="Date" type="date" value={formRec.date} onChange={e=>setFormRec({...formRec,date:e.target.value})}/>
                 <Inp label="Note" value={formRec.note} onChange={e=>setFormRec({...formRec,note:e.target.value})} placeholder="Optionnel"/>
               </div>
-              <Btn onClick={addRec} color={couleur}>Enregistrer</Btn>
+              <div style={{display:"flex",gap:10}}><Btn onClick={addRec} color={couleur}>{editRecId?"💾 Sauvegarder":"Enregistrer"}</Btn>{editRecId&&<BtnSec onClick={()=>{setEditRecId(null);setShowRec(false);}}>Annuler</BtnSec>}</div>
             </Card>
           )}
           <TableWrap>
             <table style={{width:"100%",borderCollapse:"collapse"}}>
               <thead><tr>{["Recette","Catégorie","Date","Montant","Actions"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
               <tbody>
-                {recettes.length===0&&<tr><Td colSpan={5} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucune recette</Td></tr>}
-                {recettes.map(r=>(
+                {recFiltered.length===0&&<tr><Td colSpan={5} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucune recette</Td></tr>}
+                {recFiltered.map(r=>(
                   <tr key={r.id}>
                     <Td><strong style={{color:theme.text}}>{r.titre}</strong>{r.note&&<div style={{fontSize:11,color:theme.textMuted}}>{r.note}</div>}</Td>
                     <Td style={{color:theme.textMuted,fontSize:12}}>{r.categorie}</Td>
                     <Td style={{color:theme.textMuted,fontSize:12}}>{r.date}</Td>
                     <Td style={{fontWeight:700,color:"#30D158"}}>{fmt(r.montant)}</Td>
-                    <Td><button style={{background:"none",border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"3px 7px",borderRadius:6,cursor:"pointer",fontSize:11,fontFamily:"inherit"}} onClick={()=>delRec(r.id)}>🗑</button></Td>
+                    <Td><div style={{display:"flex",gap:6}}>
+                      <button style={{background:"rgba(255,159,10,0.12)",border:"1px solid #FF9F0A",color:"#FF9F0A",padding:"3px 7px",borderRadius:6,cursor:"pointer",fontSize:11,fontFamily:"inherit"}} onClick={()=>startEditRec(r)}>✏️</button>
+                      <button style={{background:"none",border:"1px solid #FF453A",color:"#FF453A",padding:"3px 7px",borderRadius:6,cursor:"pointer",fontSize:11,fontFamily:"inherit"}} onClick={()=>setConfirmDelRec(r.id)}>🗑</button>
+                    </div></Td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </TableWrap>
+          {confirmDelRec&&<ModalConfirm onOk={delRec} onCancel={()=>setConfirmDelRec(null)}/>}
         </div>
       )}
     </div>
@@ -2366,6 +2417,18 @@ function Recus({paiements,eleves,cfg}) {
     </style></head><body>${content}</body></html>`);
     w.document.close();w.print();
   };
+  const imprimerDuplicata=()=>{
+    if(!printRef.current)return;
+    const c=printRef.current.innerHTML;
+    const w=window.open("","_blank");
+    w.document.write(`<html><head><title>Duplicata Reçu ${nom}</title><style>
+      *{box-sizing:border-box;}
+      body{font-family:Arial,sans-serif;margin:0;padding:40px;color:#1C1C1E;}
+      .recu{max-width:500px;margin:0 auto;border:2px solid #eee;padding:30px;border-radius:12px;position:relative;}
+      .duplicata-stamp{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);font-size:72px;font-weight:900;color:rgba(255,69,58,0.15);white-space:nowrap;pointer-events:none;z-index:10;}
+    </style></head><body><div style="position:relative">${c}<div class="duplicata-stamp">DUPLICATA</div></div></body></html>`);
+    w.document.close();w.print();
+  };
 
   const getEleve=(id)=>eleves.find(e=>e.id===id);
 
@@ -2373,7 +2436,10 @@ function Recus({paiements,eleves,cfg}) {
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>🧾 Reçus de paiement</h1>
-        {selected&&<button onClick={imprimer} style={{background:couleur,color:"#fff",border:"none",padding:"9px 20px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🖨️ Imprimer</button>}
+        {selected&&<div style={{display:"flex",gap:8}}>
+          <button onClick={imprimer} style={{background:couleur,color:"#fff",border:"none",padding:"9px 20px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>🖨️ Imprimer</button>
+          <button onClick={imprimerDuplicata} style={{background:"#FF9F0A",color:"#fff",border:"none",padding:"9px 20px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>📋 Duplicata</button>
+        </div>}
       </div>
 
       {/* Aperçu du reçu sélectionné */}
