@@ -710,7 +710,7 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
 }
 function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=""}) {
   const {theme}=useTheme();
-  const {couleur,devise,fraisParClasse,fraisInscriptionParClasse,fraisMensuel,fraisInscription,fraisSpeciaux,typesPaiements,coursDuSoir,fraisCoursSOir}=cfg;
+  const {couleur,devise,fraisParClasse,fraisInscriptionParClasse,fraisJanFevParClasse,fraisMensuel,fraisInscription,fraisSpeciaux,typesPaiements,coursDuSoir,fraisCoursSOir}=cfg;
   const fmt=(n)=>xof(n,devise);
   const [show,setShow]=useState(false);
   const [fMois,setFMois]=useState("");
@@ -720,10 +720,12 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
   const moisCourant=new Date().toISOString().slice(0,7);
   const moisNum=new Date().toISOString().slice(5,7);
 
-  // Frais mensuel selon la classe et le mois
+  // Frais mensuel selon la classe et le mois — Janvier(01) et Février(02) ont un tarif majoré par classe
   const getFraisMensuel=(classe,mois)=>{
     const mm=mois?mois.slice(5,7):moisNum;
-    if(fraisSpeciaux&&fraisSpeciaux[mm]>0) return fraisSpeciaux[mm];
+    if(mm==="01"||mm==="02"){
+      return fraisJanFevParClasse?.[classe]||fraisParClasse?.[classe]||fraisMensuel||0;
+    }
     return fraisParClasse?.[classe]||fraisMensuel||0;
   };
   const getFraisInscription=(classe)=>fraisInscriptionParClasse?.[classe]||fraisInscription||0;
@@ -1791,6 +1793,7 @@ function Parametres({cfg,updateCfg,showToast}) {
   const [editEmail,setEditEmail]=useState(cfg.email||"");
   const [editDevise,setEditDevise]=useState(cfg.devise||"FCFA");
   const [fraisParClasse,setFraisParClasse]=useState(cfg.fraisParClasse||{});
+  const [fraisJanFevParClasse,setFraisJanFevParClasse]=useState(cfg.fraisJanFevParClasse||{});
   const [fraisInsParClasse,setFraisInsParClasse]=useState(cfg.fraisInscriptionParClasse||{});
   const [fraisJanvier,setFraisJanvier]=useState(cfg.fraisSpeciaux?.["01"]||0);
   const [fraisFevier,setFraisFevier]=useState(cfg.fraisSpeciaux?.["02"]||0);
@@ -1841,7 +1844,7 @@ function Parametres({cfg,updateCfg,showToast}) {
   const saveInfos=()=>{
     updateCfg({...cfg,
       nom:editNom,adresse:editAdresse,telephone:editTel,email:editEmail,devise:editDevise,
-      fraisParClasse,fraisInscriptionParClasse:fraisInsParClasse,
+      fraisParClasse,fraisInscriptionParClasse:fraisInsParClasse,fraisJanFevParClasse,
       fraisSpeciaux:{"01":parseInt(fraisJanvier)||0,"02":parseInt(fraisFevier)||0},
       coursDuSoir,fraisCoursSOir:parseInt(fraisCoursSOir)||0,
       typesPaiements,matieresParClasse,
@@ -1905,6 +1908,7 @@ function Parametres({cfg,updateCfg,showToast}) {
               <tr>
                 <Th>Classe</Th>
                 <Th>Frais mensuel ({editDevise})</Th>
+                <Th>Frais Jan/Fév ({editDevise})</Th>
                 <Th>Frais inscription ({editDevise})</Th>
               </tr>
             </thead>
@@ -1916,6 +1920,11 @@ function Parametres({cfg,updateCfg,showToast}) {
                     <input type="number" value={fraisParClasse[c]||""} onChange={e=>setFraisParClasse({...fraisParClasse,[c]:parseInt(e.target.value)||0})}
                       placeholder={`${cfg.fraisMensuel||0}`}
                       style={{width:"100%",background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:8,padding:"7px 10px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+                  </Td>
+                  <Td>
+                    <input type="number" value={fraisJanFevParClasse[c]||""} onChange={e=>setFraisJanFevParClasse({...fraisJanFevParClasse,[c]:parseInt(e.target.value)||0})}
+                      placeholder={`${fraisParClasse[c]||cfg.fraisMensuel||0}`}
+                      style={{width:"100%",background:theme.input,border:`1px solid #FF9F0A55`,borderRadius:8,padding:"7px 10px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
                   </Td>
                   <Td>
                     <input type="number" value={fraisInsParClasse[c]||""} onChange={e=>setFraisInsParClasse({...fraisInsParClasse,[c]:parseInt(e.target.value)||0})}
@@ -2051,15 +2060,21 @@ function Parametres({cfg,updateCfg,showToast}) {
 // ─── SUIVI PAIEMENTS ──────────────────────────────────────────────────────────
 function SuiviPaiements({paiements,eleves,cfg,showToast}) {
   const {theme}=useTheme();
-  const {couleur,devise,fraisMensuel,fraisParClasse,fraisInscriptionParClasse,fraisInscription}=cfg;
+  const {couleur,devise,fraisMensuel,fraisParClasse,fraisInscriptionParClasse,fraisJanFevParClasse,fraisInscription}=cfg;
   const fmt=(n)=>xof(n,devise);
   const [fClasse,setFClasse]=useState("all");
   const [fStatut,setFStatut]=useState("all");
   const [search,setSearch]=useState("");
   const moisCourant=new Date().toISOString().slice(0,7);
+  const moisNumCourant=moisCourant.slice(5,7);
   const classes=[...new Set(eleves.map(e=>e.classe))].filter(Boolean).sort();
 
-  const getFraisMensuel=(classe)=>fraisParClasse?.[classe]||fraisMensuel||0;
+  const getFraisMensuel=(classe)=>{
+    if(moisNumCourant==="01"||moisNumCourant==="02"){
+      return fraisJanFevParClasse?.[classe]||fraisParClasse?.[classe]||fraisMensuel||0;
+    }
+    return fraisParClasse?.[classe]||fraisMensuel||0;
+  };
   const getFraisInscription=(classe)=>fraisInscriptionParClasse?.[classe]||fraisInscription||0;
 
   const ficheEleve=(e)=>{
