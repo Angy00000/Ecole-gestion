@@ -715,6 +715,7 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
   const [show,setShow]=useState(false);
   const [fMois,setFMois]=useState("");
   const [fType,setFType]=useState("all");
+  const [ongletActif,setOngletActif]=useState("mensualite"); // mensualite | inscription | autres
   const [search,setSearch]=useState(rechercheFiltre||"");
   const [editId,setEditId]=useState(null);
   const moisCourant=new Date().toISOString().slice(0,7);
@@ -762,11 +763,12 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
   };
 
   const filtered=paiements.filter(p=>{
+    const ongletOk=ongletActif==="mensualite"?p.type==="Mensualité":ongletActif==="inscription"?p.type==="Inscription":(p.type!=="Mensualité"&&p.type!=="Inscription");
     const typeOk=fType==="all"||p.type===fType;
     const moisOk=!fMois||p.mois===fMois;
     const eleve=eleves.find(e=>e.id===p.eleveId);
     const searchOk=!search||(eleve&&(eleve.nom+eleve.prenom).toLowerCase().includes(search.toLowerCase()));
-    return typeOk&&moisOk&&searchOk;
+    return ongletOk&&typeOk&&moisOk&&searchOk;
   });
   const total=filtered.reduce((s,p)=>s+p.montant,0);
 
@@ -831,23 +833,58 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>💰 Paiements</h1>
+        <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>💰 Paiements — {ongletActif==="mensualite"?"Mensualités":ongletActif==="inscription"?"Inscriptions":"Autres"} ({filtered.length})</h1>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>exportCSV(filtered.map(p=>{const e=eleves.find(x=>x.id===p.eleveId);return{Élève:e?`${e.prenom} ${e.nom}`:"—",Classe:e?.classe||"—",Type:p.type,Mois:p.mois,Montant:p.montant,Date:p.date}}),"paiements-ecole")}
             style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
           <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
-          <Btn onClick={()=>{setShow(!show);setEditId(null);if(show){setForm({eleveId:"",type:(typesPaiements&&typesPaiements[0])||"Mensualité",montant:fraisMensuel||0,date:today(),mois:moisCourant,note:"",coursSoir:false,modePaiement:"Espèces"});}}} color={couleur}>{show?"✕ Annuler":"+ Nouveau paiement"}</Btn>
+          <Btn onClick={()=>{
+            const willShow=!show;
+            setEditId(null);
+            if(willShow){
+              const defaultType=ongletActif==="mensualite"?"Mensualité":ongletActif==="inscription"?"Inscription":((typesPaiements||[]).find(t=>t!=="Mensualité"&&t!=="Inscription")||"Autre");
+              setForm({eleveId:"",type:defaultType,montant:defaultType==="Mensualité"?(fraisMensuel||0):defaultType==="Inscription"?(fraisInscription||0):0,date:today(),mois:moisCourant,note:"",coursSoir:false,modePaiement:"Espèces"});
+            }
+            setShow(willShow);
+          }} color={couleur}>{show?"✕ Annuler":"+ Nouveau paiement"}</Btn>
         </div>
+      </div>
+
+      {/* Onglets Mensualité / Inscription / Autres */}
+      <div style={{display:"flex",gap:8,marginBottom:18,borderBottom:`1px solid ${theme.border}`,paddingBottom:0}}>
+        {[
+          {id:"mensualite",label:"💳 Mensualités",color:"#30D158"},
+          {id:"inscription",label:"📋 Inscriptions",color:"#FF9F0A"},
+          {id:"autres",label:"📦 Autres paiements",color:couleur},
+        ].map(o=>(
+          <button key={o.id} onClick={()=>{setOngletActif(o.id);setShow(false);setEditId(null);}}
+            style={{padding:"10px 18px",border:"none",borderBottom:ongletActif===o.id?`3px solid ${o.color}`:"3px solid transparent",
+              background:"transparent",color:ongletActif===o.id?o.color:theme.textMuted,fontWeight:ongletActif===o.id?700:600,
+              fontSize:14,cursor:"pointer",fontFamily:"inherit",marginBottom:-1}}>
+            {o.label}
+          </button>
+        ))}
       </div>
 
       {show&&(
         <Card style={{marginBottom:16}}>
-          <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>{editId?"✏️ Modifier le paiement":"Nouveau paiement"}</div>
+          <div style={{fontSize:14,fontWeight:700,color:theme.text,marginBottom:14}}>
+            {editId?"✏️ Modifier le paiement":ongletActif==="mensualite"?"💳 Nouvelle mensualité":ongletActif==="inscription"?"📋 Nouvelle inscription":"📦 Nouveau paiement"}
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
             <Sel label="Élève *" value={form.eleveId} onChange={e=>handleEleve(e.target.value)}
               options={[{v:"",l:"-- Choisir un élève --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
-            <Sel label="Type de paiement" value={form.type} onChange={e=>handleType(e.target.value)}
-              options={TYPES}/>
+            {ongletActif==="autres"?(
+              <Sel label="Type de paiement" value={form.type} onChange={e=>handleType(e.target.value)}
+                options={TYPES.filter(t=>t!=="Mensualité"&&t!=="Inscription")}/>
+            ):(
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:theme.textMuted,display:"block",marginBottom:6}}>Type de paiement</label>
+                <div style={{padding:"8px 12px",borderRadius:9,background:(ongletActif==="mensualite"?"#30D158":"#FF9F0A")+"15",border:`1px solid ${ongletActif==="mensualite"?"#30D158":"#FF9F0A"}55`,color:ongletActif==="mensualite"?"#30D158":"#FF9F0A",fontSize:13,fontWeight:700}}>
+                  {ongletActif==="mensualite"?"💳 Mensualité":"📋 Inscription"}
+                </div>
+              </div>
+            )}
             <Inp label={`Montant (${devise}) *`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} placeholder="0"/>
             <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
             <Inp label="Mois concerné" type="month" value={form.mois} onChange={e=>handleMois(e.target.value)}/>
