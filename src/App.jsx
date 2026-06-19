@@ -493,7 +493,7 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
 
   const filtered=eleves.filter(e=>{
     const q=search.toLowerCase();
-    const match=!q||(e.nom+e.prenom+e.classe).toLowerCase().includes(q);
+    const match=!q||(e.nom+e.prenom+e.classe+(e.matricule||"")).toLowerCase().includes(q);
     return match&&(fClasse==="all"||e.classe===fClasse);
   });
 
@@ -653,7 +653,7 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
         </Card>
       )}
       <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher un élève..."
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nom, prénom, matricule..."
           style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
         <select value={fClasse} onChange={e=>setFClasse(e.target.value)}
           style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
@@ -2446,6 +2446,7 @@ function Recus({paiements,eleves,cfg}) {
   const {couleur,devise,nom,adresse,telephone,email}=cfg;
   const fmt=(n)=>xof(n,devise);
   const [selected,setSelected]=useState(null);
+  const [searchMatricule,setSearchMatricule]=useState("");
   const [fEleve,setFEleve]=useState("");
   const [fMois,setFMois]=useState("");
   const [fType,setFType]=useState("all");
@@ -2453,6 +2454,12 @@ function Recus({paiements,eleves,cfg}) {
   const printRef=useRef();
 
   const TYPES_ALL=["Mensualité","Inscription","Cantine mensuelle","Inscription cantine","Cantine journalière","Cours du soir","Uniforme","Fournitures","Cotisation fête","Transport","Autre"];
+
+  // Recherche par matricule, nom ou prénom — sélectionne automatiquement l'élève trouvé
+  const elevesTrouves=searchMatricule.trim()?eleves.filter(e=>{
+    const q=searchMatricule.toLowerCase();
+    return (e.matricule||"").toLowerCase().includes(q)||(e.nom+" "+e.prenom).toLowerCase().includes(q);
+  }):[];
 
   const filtered=paiements.filter(p=>{
     const eleveOk=!fEleve||p.eleveId===Number(fEleve);
@@ -2567,9 +2574,27 @@ function Recus({paiements,eleves,cfg}) {
         );
       })()}
 
+      {/* Recherche par matricule */}
+      <div style={{display:"flex",gap:10,marginBottom:12,position:"relative"}}>
+        <input value={searchMatricule} onChange={e=>{setSearchMatricule(e.target.value);if(!e.target.value.trim())setFEleve("");}}
+          placeholder="🔍 Rechercher par matricule, nom ou prénom..."
+          style={{flex:1,background:theme.input,border:`1px solid ${couleur}55`,borderRadius:9,padding:"10px 14px",color:theme.text,fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+        {elevesTrouves.length>0&&(
+          <div style={{position:"absolute",top:"100%",left:0,right:0,background:theme.card,border:`1px solid ${theme.border}`,borderRadius:10,marginTop:4,zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",maxHeight:220,overflowY:"auto"}}>
+            {elevesTrouves.map(e=>(
+              <div key={e.id} onClick={()=>{setFEleve(String(e.id));setSearchMatricule(`${e.prenom} ${e.nom}`);}}
+                style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${theme.border}`,display:"flex",justifyContent:"space-between"}}>
+                <span style={{color:theme.text,fontSize:13,fontWeight:600}}>{e.prenom} {e.nom}</span>
+                <span style={{color:theme.textMuted,fontSize:12}}>{e.matricule||"—"} · {e.classe}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Filtres */}
       <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
-        <select value={fEleve} onChange={e=>setFEleve(e.target.value)}
+        <select value={fEleve} onChange={e=>{setFEleve(e.target.value);setSearchMatricule("");}}
           style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
           <option value="">Tous les élèves</option>
           {eleves.map(e=><option key={e.id} value={e.id}>{e.prenom} {e.nom} ({e.classe})</option>)}
