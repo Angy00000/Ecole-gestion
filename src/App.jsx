@@ -79,6 +79,11 @@ const dbAdd = async (t, d) => {
   if(isOnline()){
     try{
       const r = await fetch(`${SUPA_URL}/rest/v1/${t}`,{method:"POST",headers:dbHeaders,body:JSON.stringify(d)});
+      if(!r.ok){
+        const errTxt = await r.text();
+        console.error(`dbAdd error on ${t}:`, r.status, errTxt);
+        return null;
+      }
       return r.json();
     }catch(e){
       addToQueue({type:"ADD",table:t,data:d});
@@ -804,6 +809,7 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
       showToast("Paiement modifié ✓");
     } else {
       const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      if(!rows||!rows[0])return showToast("Erreur: paiement non enregistré (vérifiez la connexion)",true);
       setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
       showToast("Paiement enregistré ✓");
     }
