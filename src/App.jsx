@@ -691,11 +691,23 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
           </tbody>
         </table>
       </TableWrap>
+
+      {confirmDel&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:theme.card,borderRadius:20,padding:28,width:320,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+            <div style={{fontSize:36,textAlign:"center",marginBottom:12}}>⚠️</div>
+            <div style={{fontSize:16,fontWeight:700,color:theme.text,textAlign:"center",marginBottom:8}}>Confirmer la suppression</div>
+            <div style={{fontSize:13,color:theme.textMuted,textAlign:"center",marginBottom:24}}>Cette action est irréversible. Toutes les données de cet élève seront définitivement supprimées.</div>
+            <div style={{display:"flex",gap:10}}>
+              <BtnSec onClick={()=>setConfirmDel(null)} style={{flex:1}}>Annuler</BtnSec>
+              <button onClick={confirmerDel} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:"#FF453A",color:"#fff",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700}}>🗑 Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-// ─── Paiements ────────────────────────────────────────────────────────────────
 function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=""}) {
   const {theme}=useTheme();
   const {couleur,devise,fraisParClasse,fraisInscriptionParClasse,fraisMensuel,fraisInscription,fraisSpeciaux,typesPaiements,coursDuSoir,fraisCoursSOir}=cfg;
