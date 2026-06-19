@@ -110,12 +110,20 @@ const dbDel = async (t, id) => {
 const dbPatch = async (t, id, d) => {
   if(isOnline()){
     try{
-      return fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"PATCH",headers:dbHeaders,body:JSON.stringify(d)});
+      const r = await fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"PATCH",headers:dbHeaders,body:JSON.stringify(d)});
+      if(!r.ok){
+        const errTxt = await r.text();
+        console.error(`dbPatch error on ${t}:`, r.status, errTxt);
+        return false;
+      }
+      return true;
     }catch(e){
       addToQueue({type:"PATCH",table:t,id,data:d});
+      return false;
     }
   } else {
     addToQueue({type:"PATCH",table:t,id,data:d});
+    return false;
   }
 };
 
@@ -543,10 +551,11 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
   const add=async()=>{
     if(!form.nom||!form.prenom)return showToast("Nom et prénom requis",true);
     if(editId){
-      await dbPatch("eleves",editId,{matricule:form.matricule,nom:form.nom,prenom:form.prenom,sexe:form.sexe,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,
+      const ok=await dbPatch("eleves",editId,{matricule:form.matricule,nom:form.nom,prenom:form.prenom,sexe:form.sexe,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,
         pere_prenom:form.perePrenom,pere_nom:form.pereNom,pere_fonction:form.pereFonction,pere_telephone:form.pereTelephone,
         mere_prenom:form.merePrenom,mere_nom:form.mereNom,mere_fonction:form.mereFonction,mere_telephone:form.mereTelephone,
         adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note,montant_personnalise:form.montantPersonnalise?Number(form.montantPersonnalise):null,scolarite_gratuite:form.scolariteGratuite,inscription_payee:form.inscriptionPayee});
+      if(!ok)return showToast("Erreur lors de la modification (vérifiez la connexion)",true);
       setEleves(eleves.map(e=>e.id===editId?{...e,...form}:e));
       setEditId(null);showToast("Élève modifié ✓");
     } else {
@@ -803,7 +812,8 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
     if(!form.montant)return showToast("Montant requis",true);
     if(editId){
-      await dbPatch("paiements",editId,{eleve_id:form.eleveId,type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note,mode_paiement:form.modePaiement});
+      const ok=await dbPatch("paiements",editId,{eleve_id:form.eleveId,type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note,mode_paiement:form.modePaiement});
+      if(!ok)return showToast("Erreur modification (vérifiez la connexion)",true);
       setPaiements(paiements.map(p=>p.id===editId?{...p,eleveId:form.eleveId,type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note,modePaiement:form.modePaiement}:p));
       setEditId(null);
       showToast("Paiement modifié ✓");
@@ -1009,11 +1019,13 @@ function Cantine({paiements,setPaiements,eleves,cfg,showToast}) {
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
     if(!form.montant)return showToast("Montant requis",true);
     if(editId){
-      await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      const ok=await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      if(!ok)return showToast("Erreur modification (vérifiez la connexion)",true);
       setPaiements(paiements.map(p=>p.id===editId?{...p,...form,montant:parseInt(form.montant)}:p));
       setEditId(null);showToast("Modifié ✓");
     } else {
       const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      if(!rows||!rows[0])return showToast("Erreur enregistrement (connexion ?)",true);
       setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
       showToast("Paiement cantine enregistré ✓");
     }
@@ -1120,11 +1132,13 @@ function CoursSoir({paiements,setPaiements,eleves,cfg,showToast}) {
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
     if(!form.montant)return showToast("Montant requis",true);
     if(editId){
-      await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      const ok=await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      if(!ok)return showToast("Erreur modification (vérifiez la connexion)",true);
       setPaiements(paiements.map(p=>p.id===editId?{...p,...form,montant:parseInt(form.montant)}:p));
       setEditId(null);showToast("Modifié ✓");
     } else {
       const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:"Cours du soir",montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      if(!rows||!rows[0])return showToast("Erreur enregistrement (connexion ?)",true);
       setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
       showToast("Paiement cours du soir enregistré ✓");
     }
@@ -1214,11 +1228,13 @@ function Uniforme({paiements,setPaiements,eleves,cfg,showToast}) {
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
     if(!form.montant)return showToast("Montant requis",true);
     if(editId){
-      await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,note:form.note});
+      const ok=await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,note:form.note});
+      if(!ok)return showToast("Erreur modification (vérifiez la connexion)",true);
       setPaiements(paiements.map(p=>p.id===editId?{...p,...form,montant:parseInt(form.montant)}:p));
       setEditId(null);showToast("Modifié ✓");
     } else {
       const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:"Uniforme",montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      if(!rows||!rows[0])return showToast("Erreur enregistrement (connexion ?)",true);
       setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
       showToast("Paiement uniforme enregistré ✓");
     }
@@ -1319,11 +1335,13 @@ function Fournitures({paiements,setPaiements,eleves,cfg,showToast}) {
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
     if(!form.montant)return showToast("Montant requis",true);
     if(editId){
-      await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      const ok=await dbPatch("paiements",editId,{type:form.type,montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      if(!ok)return showToast("Erreur modification (vérifiez la connexion)",true);
       setPaiements(paiements.map(p=>p.id===editId?{...p,...form,montant:parseInt(form.montant)}:p));
       setEditId(null);showToast("Modifié ✓");
     } else {
       const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:"Fournitures",montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      if(!rows||!rows[0])return showToast("Erreur enregistrement (connexion ?)",true);
       setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
       showToast("Paiement fournitures enregistré ✓");
     }
@@ -1430,6 +1448,7 @@ function Notes({notes,setNotes,eleves,cfg,showToast}) {
     const n=parseFloat(form.note);
     if(n<0||n>20)return showToast("Note entre 0 et 20",true);
     const rows=await dbAdd("notes",{eleve_id:form.eleveId,matiere:form.matiere,note:n,coeff:parseInt(form.coeff)||1,type:form.type,trimestre:form.trimestre,date:form.date,classe:form.classe||fClasse});
+    if(!rows||!rows[0])return showToast("Erreur enregistrement (connexion ?)",true);
     setNotes([{...rows[0],eleveId:rows[0].eleve_id},...notes]);
     setForm({...form,eleveId:"",note:""});
     showToast("Note enregistrée ✓");
@@ -1539,6 +1558,7 @@ function Absences({absences,setAbsences,eleves,cfg,showToast,rechercheFiltre=""}
   const add=async()=>{
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
     const rows=await dbAdd("absences",{eleve_id:form.eleveId,date:form.date,type:form.type,motif:form.motif,justifie:form.justifie});
+    if(!rows||!rows[0])return showToast("Erreur enregistrement (connexion ?)",true);
     setAbsences([{...rows[0],eleveId:rows[0].eleve_id},...absences]);
     setForm({...form,eleveId:"",motif:"",justifie:false});
     showToast("Absence enregistrée ✓");
@@ -1666,11 +1686,13 @@ function Finances({depenses,setDepenses,recettes,setRecettes,paiements,cfg,showT
   const addDep=async()=>{
     if(!formDep.titre||!formDep.montant)return showToast("Titre et montant requis",true);
     if(editDepId){
-      await dbPatch("depenses",editDepId,{titre:formDep.titre,categorie:formDep.categorie,montant:parseInt(formDep.montant),date:formDep.date,statut:formDep.statut,note:formDep.note});
+      const ok=await dbPatch("depenses",editDepId,{titre:formDep.titre,categorie:formDep.categorie,montant:parseInt(formDep.montant),date:formDep.date,statut:formDep.statut,note:formDep.note});
+      if(!ok)return showToast("Erreur modification (vérifiez la connexion)",true);
       setDepenses(depenses.map(d=>d.id===editDepId?{...d,...formDep,montant:parseInt(formDep.montant)}:d));
       setEditDepId(null);showToast("Dépense modifiée ✓");
     } else {
       const rows=await dbAdd("depenses",{titre:formDep.titre,categorie:formDep.categorie,montant:parseInt(formDep.montant),date:formDep.date,statut:formDep.statut,note:formDep.note});
+      if(!rows||!rows[0])return showToast("Erreur enregistrement (connexion ?)",true);
       setDepenses([rows[0],...depenses]);
       showToast("Dépense enregistrée ✓");
     }
@@ -1680,11 +1702,13 @@ function Finances({depenses,setDepenses,recettes,setRecettes,paiements,cfg,showT
   const addRec=async()=>{
     if(!formRec.titre||!formRec.montant)return showToast("Titre et montant requis",true);
     if(editRecId){
-      await dbPatch("recettes",editRecId,{titre:formRec.titre,categorie:formRec.categorie,montant:parseInt(formRec.montant),date:formRec.date,note:formRec.note});
+      const ok=await dbPatch("recettes",editRecId,{titre:formRec.titre,categorie:formRec.categorie,montant:parseInt(formRec.montant),date:formRec.date,note:formRec.note});
+      if(!ok)return showToast("Erreur modification (vérifiez la connexion)",true);
       setRecettes(recettes.map(r=>r.id===editRecId?{...r,...formRec,montant:parseInt(formRec.montant)}:r));
       setEditRecId(null);showToast("Recette modifiée ✓");
     } else {
       const rows=await dbAdd("recettes",{titre:formRec.titre,categorie:formRec.categorie,montant:parseInt(formRec.montant),date:formRec.date,note:formRec.note});
+      if(!rows||!rows[0])return showToast("Erreur enregistrement (connexion ?)",true);
       setRecettes([rows[0],...recettes]);
       showToast("Recette enregistrée ✓");
     }
@@ -2398,11 +2422,13 @@ function CotisationFetes({paiements,setPaiements,eleves,cfg,showToast}) {
     if(!form.eleveId)return showToast("Sélectionnez un élève",true);
     if(!form.montant)return showToast("Montant requis",true);
     if(editId){
-      await dbPatch("paiements",editId,{montant:parseInt(form.montant),date:form.date,note:form.note});
+      const ok=await dbPatch("paiements",editId,{montant:parseInt(form.montant),date:form.date,note:form.note});
+      if(!ok)return showToast("Erreur modification (vérifiez la connexion)",true);
       setPaiements(paiements.map(p=>p.id===editId?{...p,...form,montant:parseInt(form.montant)}:p));
       setEditId(null);showToast("Modifié ✓");
     } else {
       const rows=await dbAdd("paiements",{eleve_id:form.eleveId,type:"Cotisation fête",montant:parseInt(form.montant),date:form.date,mois:form.mois,note:form.note});
+      if(!rows||!rows[0])return showToast("Erreur enregistrement (connexion ?)",true);
       setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
       showToast("Cotisation enregistrée ✓");
     }
@@ -3373,11 +3399,13 @@ function Professeurs({professeurs,setProfesseurs,cfg,showToast}) {
   const add=async()=>{
     if(!form.nom||!form.prenom)return showToast("Nom et prénom requis",true);
     if(editId){
-      await dbPatch("professeurs",editId,{nom:form.nom,prenom:form.prenom,telephone:form.telephone,email:form.email,matieres:JSON.stringify(form.matieres),classes:JSON.stringify(form.classes),salaire_mensuel:parseInt(form.salaireMensuel)||0,date_embauche:form.dateEmbauche,statut:form.statut,note:form.note});
+      const ok=await dbPatch("professeurs",editId,{nom:form.nom,prenom:form.prenom,telephone:form.telephone,email:form.email,matieres:JSON.stringify(form.matieres),classes:JSON.stringify(form.classes),salaire_mensuel:parseInt(form.salaireMensuel)||0,date_embauche:form.dateEmbauche,statut:form.statut,note:form.note});
+      if(!ok)return showToast("Erreur modification (vérifiez la connexion)",true);
       setProfesseurs(professeurs.map(p=>p.id===editId?{...p,...form}:p));
       setEditId(null);showToast("Professeur modifié ✓");
     } else {
       const rows=await dbAdd("professeurs",{nom:form.nom,prenom:form.prenom,telephone:form.telephone,email:form.email,matieres:JSON.stringify(form.matieres),classes:JSON.stringify(form.classes),salaire_mensuel:parseInt(form.salaireMensuel)||0,date_embauche:form.dateEmbauche,statut:form.statut,note:form.note});
+      if(!rows||!rows[0])return showToast("Erreur enregistrement (connexion ?)",true);
       setProfesseurs([{...rows[0],matieres:form.matieres,classes:form.classes,salaireMensuel:parseInt(form.salaireMensuel)||0},...professeurs]);
       showToast("Professeur ajouté ✓");
     }
@@ -3665,6 +3693,7 @@ function Utilisateurs({utilisateurs,setUtilisateurs,cfg,showToast}) {
   const add=async()=>{
     if(!form.nom||!form.email||!form.mot_de_passe)return showToast("Tous les champs sont requis",true);
     const rows=await dbAdd("utilisateurs",form);
+    if(!rows||!rows[0])return showToast("Erreur enregistrement (connexion ?)",true);
     setUtilisateurs([rows[0],...utilisateurs]);
     setForm({nom:"",prenom:"",email:"",mot_de_passe:"",role:"professeur",actif:true});
     setShow(false);showToast("Utilisateur créé ✓");
