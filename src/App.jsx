@@ -2058,7 +2058,7 @@ function Parametres({cfg,updateCfg,showToast}) {
 
 
 // ─── SUIVI PAIEMENTS ──────────────────────────────────────────────────────────
-function SuiviPaiements({paiements,eleves,cfg,showToast}) {
+function SuiviPaiements({paiements,eleves,setEleves,cfg,showToast}) {
   const {theme}=useTheme();
   const {couleur,devise,fraisMensuel,fraisParClasse,fraisInscriptionParClasse,fraisJanFevParClasse,fraisInscription}=cfg;
   const fmt=(n)=>xof(n,devise);
@@ -2076,6 +2076,12 @@ function SuiviPaiements({paiements,eleves,cfg,showToast}) {
     return fraisParClasse?.[classe]||fraisMensuel||0;
   };
   const getFraisInscription=(classe)=>fraisInscriptionParClasse?.[classe]||fraisInscription||0;
+
+  const marquerInscriptionPayee=async(eleve)=>{
+    await dbPatch("eleves",eleve.id,{inscription_payee:true});
+    if(setEleves) setEleves(prev=>prev.map(e=>e.id===eleve.id?{...e,inscription_payee:true,inscriptionPayee:true}:e));
+    showToast(`✅ Inscription de ${eleve.prenom} ${eleve.nom} marquée payée`);
+  };
 
   const ficheEleve=(e)=>{
     const montantDu=e.montant_personnalise!=null&&e.montant_personnalise!==""?Number(e.montant_personnalise):getFraisMensuel(e.classe);
@@ -2191,9 +2197,9 @@ function SuiviPaiements({paiements,eleves,cfg,showToast}) {
       {/* Tableau */}
       <TableWrap>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr>{["Élève","Classe","Mensualité due","Payé ce mois","Reste mensualité","Reste inscription","Statut"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
+          <thead><tr>{["Élève","Classe","Mensualité due","Payé ce mois","Reste mensualité","Reste inscription","Statut","Action"].map(h=><Th key={h}>{h}</Th>)}</tr></thead>
           <tbody>
-            {elevesFiltered.length===0&&<tr><Td colSpan={7} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun élève</Td></tr>}
+            {elevesFiltered.length===0&&<tr><Td colSpan={8} style={{textAlign:"center",color:theme.textMuted,padding:"2rem"}}>Aucun élève</Td></tr>}
             {elevesFiltered.map(e=>{
               const f=ficheEleve(e);
               return(
@@ -2205,6 +2211,7 @@ function SuiviPaiements({paiements,eleves,cfg,showToast}) {
                   <Td style={{fontWeight:700,color:f.resteMensualite>0?"#FF453A":"#30D158"}}>{fmt(f.resteMensualite)}</Td>
                   <Td style={{fontWeight:700,color:f.resteInscription>0?"#FF9F0A":"#30D158"}}>{fmt(f.resteInscription)}</Td>
                   <Td>{f.gratuit?<Badge label="Gratuit" color="#30D158" bg="#1C3A27"/>:f.resteTotal===0?<Badge label="✅ À jour" color="#30D158" bg="#1C3A27"/>:<Badge label="⚠️ Impayé" color="#FF453A" bg="#3A1C1C"/>}</Td>
+                  <Td>{f.resteInscription>0&&<button onClick={()=>marquerInscriptionPayee(e)} style={{background:"rgba(48,209,88,0.12)",border:"1px solid #30D158",color:"#30D158",padding:"4px 10px",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit",whiteSpace:"nowrap"}}>✅ A payé</button>}</Td>
                 </tr>
               );
             })}
@@ -3944,7 +3951,7 @@ export default function App() {
               {page==="professeurs" &&<Professeurs  professeurs={professeurs} setProfesseurs={setProfesseurs} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
               {page==="paiements"   &&<Paiements    paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
               {page==="recus"       &&<Recus        paiements={paiements} eleves={eleves} cfg={cfg}/>}
-              {page==="suivi"       &&<SuiviPaiements paiements={paiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
+              {page==="suivi"       &&<SuiviPaiements paiements={paiements} eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast}/>}
               {page==="encaissements"&&<EncaissementsJour paiements={paiements} depenses={depenses} eleves={eleves} cfg={cfg}/>}
               {page==="cotisation"  &&<CotisationFetes paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="cantine"     &&<Cantine      paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
