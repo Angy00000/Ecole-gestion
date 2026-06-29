@@ -505,7 +505,7 @@ function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,recherche
     return `${prefix}${String(prochain).padStart(3,"0")}`;
   };
 
-  const [form,setForm]=useState({matricule:genererMatricule(),nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false});
+  const [form,setForm]=useState({matricule:genererMatricule(),nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false,inscriptionStatut:"incomplete",inscriptionMontant:""});
   const printRef=useRef();
 
   const filtered=eleves.filter(e=>{
@@ -552,13 +552,27 @@ function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,recherche
     w.document.write(html);w.document.close();w.print();
   };
 
-  // Crée le paiement "Inscription" correspondant dans la table paiements, si pas déjà existant
-  const creerPaiementInscription=async(eleveId,classe,date)=>{
+  // Crée le paiement "Inscription" correspondant selon le mode choisi (complète/modifiable/incomplète/gratuite)
+  const creerPaiementInscription=async(eleveId,classe,date,statut,montantSaisi)=>{
     const dejaPaye=paiements?.some(p=>p.eleveId===eleveId&&p.type==="Inscription");
     if(dejaPaye)return; // évite les doublons
-    const montant=getFraisInscription(classe);
-    if(!montant)return; // rien à facturer (0 F ou non configuré)
-    const prow=await dbAdd("paiements",{eleve_id:eleveId,type:"Inscription",montant,date:date||today(),mois:(date||today()).slice(0,7),note:"Frais d'inscription"});
+
+    let montant=0,note="";
+    if(statut==="complete"){
+      montant=getFraisInscription(classe);
+      note="Inscription complète (tarif classe)";
+    } else if(statut==="modifiable"){
+      montant=Number(montantSaisi)||0;
+      note="Inscription — montant négocié";
+    } else if(statut==="incomplete"){
+      montant=Number(montantSaisi)||0;
+      const reste=Math.max(0,getFraisInscription(classe)-montant);
+      note=reste>0?`Acompte inscription — reste ${xof(reste,devise)}`:"Acompte inscription";
+    } else if(statut==="gratuite"){
+      return; // 0 F, rien à enregistrer
+    }
+    if(!montant)return; // rien à facturer
+    const prow=await dbAdd("paiements",{eleve_id:eleveId,type:"Inscription",montant,date:date||today(),mois:(date||today()).slice(0,7),note});
     if(prow&&prow[0]&&setPaiements){
       setPaiements(prev=>[{...prow[0],eleveId:prow[0].eleve_id},...prev]);
     }
@@ -576,7 +590,9 @@ function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,recherche
       if(!ok)return showToast("Erreur lors de la modification (vérifiez la connexion)",true);
       setEleves(eleves.map(e=>e.id===editId?{...e,...form}:e));
       if(form.inscriptionPayee&&!etaitDejaPayee){
-        await creerPaiementInscription(editId,form.classe,form.dateInscription);
+        await creerPaiementInscription(editId,form.classe,form.dateInscription,form.inscriptionStatut,form.inscriptionMontant);
+      } else if(form.inscriptionStatut==="incomplete"&&form.inscriptionMontant&&!etaitDejaPayee){
+        await creerPaiementInscription(editId,form.classe,form.dateInscription,form.inscriptionStatut,form.inscriptionMontant);
       }
       setEditId(null);showToast("Élève modifié ✓");
     } else {
@@ -590,19 +606,20 @@ function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,recherche
       setEleves([{...rows[0],dateNaissance:rows[0].date_naissance,dateInscription:rows[0].date_inscription,
         perePrenom:rows[0].pere_prenom,pereNom:rows[0].pere_nom,pereFonction:rows[0].pere_fonction,pereTelephone:rows[0].pere_telephone,
         merePrenom:rows[0].mere_prenom,mereNom:rows[0].mere_nom,mereFonction:rows[0].mere_fonction,mereTelephone:rows[0].mere_telephone},...eleves]);
-      if(form.inscriptionPayee){
-        await creerPaiementInscription(rows[0].id,form.classe,form.dateInscription);
+      if(form.inscriptionStatut!=="gratuite"){
+        await creerPaiementInscription(rows[0].id,form.classe,form.dateInscription,form.inscriptionStatut,form.inscriptionMontant);
       }
       showToast("Élève inscrit ✓");
     }
-    setForm({matricule:genererMatricule(),nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false});
+    setForm({matricule:genererMatricule(),nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false,inscriptionStatut:"incomplete",inscriptionMontant:""});
     setShow(false);
   };
   const startEdit=(e)=>{setForm({...e,matricule:e.matricule||"",sexe:e.sexe||"M",dateNaissance:e.date_naissance||e.dateNaissance||"",
     perePrenom:e.pere_prenom||e.perePrenom||"",pereNom:e.pere_nom||e.pereNom||"",pereFonction:e.pere_fonction||e.pereFonction||"",pereTelephone:e.pere_telephone||e.pereTelephone||"",
     merePrenom:e.mere_prenom||e.merePrenom||"",mereNom:e.mere_nom||e.mereNom||"",mereFonction:e.mere_fonction||e.mereFonction||"",mereTelephone:e.mere_telephone||e.mereTelephone||"",
     dateInscription:e.date_inscription||e.dateInscription||"",
-    montantPersonnalise:e.montant_personnalise||e.montantPersonnalise||"",scolariteGratuite:e.scolarite_gratuite||e.scolariteGratuite||false,inscriptionPayee:e.inscription_payee||e.inscriptionPayee||false});setEditId(e.id);setShow(true);};
+    montantPersonnalise:e.montant_personnalise||e.montantPersonnalise||"",scolariteGratuite:e.scolarite_gratuite||e.scolariteGratuite||false,inscriptionPayee:e.inscription_payee||e.inscriptionPayee||false,
+    inscriptionStatut:(e.inscription_payee||e.inscriptionPayee)?"complete":"incomplete",inscriptionMontant:""});setEditId(e.id);setShow(true);};
   const [confirmDel,setConfirmDel]=useState(null);
   const del=(id)=>setConfirmDel(id);
   const confirmerDel=async()=>{await dbDel("eleves",confirmDel);setEleves(eleves.filter(e=>e.id!==confirmDel));setConfirmDel(null);showToast("Élève supprimé");};
@@ -615,7 +632,7 @@ function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,recherche
           <button onClick={()=>exportCSV(filtered.map(e=>({Matricule:e.matricule||"",Nom:e.nom,Prénom:e.prenom,Sexe:e.sexe||"",Classe:e.classe,Téléphone:e.telephone||"","Père Prénom":e.perePrenom||"","Père Nom":e.pereNom||"","Père Fonction":e.pereFonction||"","Père Téléphone":e.pereTelephone||"","Mère Prénom":e.merePrenom||"","Mère Nom":e.mereNom||"","Mère Fonction":e.mereFonction||"","Mère Téléphone":e.mereTelephone||"",Statut:e.statut,Inscription:e.dateInscription||""})),"eleves-ecole")}
             style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
           <button onClick={imprimer} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
-          <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({matricule:genererMatricule(),nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false});}} color={couleur}>{show?"✕ Annuler":"+ Inscrire un élève"}</Btn>
+          <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({matricule:genererMatricule(),nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false,inscriptionStatut:"incomplete",inscriptionMontant:""});}} color={couleur}>{show?"✕ Annuler":"+ Inscrire un élève"}</Btn>
         </div>
       </div>
       {show&&(
@@ -652,38 +669,86 @@ function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,recherche
           </div>
           <div style={{marginTop:4,marginBottom:12,padding:"14px",background:theme.toggleBg,borderRadius:12,border:`1px solid ${theme.border}`}}>
             <div style={{fontSize:13,fontWeight:700,color:theme.text,marginBottom:12}}>🎓 Statut financier spécial</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
               <div>
-                <label style={{fontSize:12,fontWeight:600,color:theme.textMuted,display:"block",marginBottom:6}}>Mensualité personnalisée ({cfg.devise}) 🔒</label>
+                <label style={{fontSize:12,fontWeight:600,color:theme.textMuted,display:"block",marginBottom:6}}>Mensualité ({cfg.devise}) 🔒</label>
                 <input type="number" min="0" value={form.montantPersonnalise} disabled readOnly
                   style={{width:"100%",background:theme.toggleBg,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.textMuted,fontSize:13,fontFamily:"inherit",outline:"none",cursor:"not-allowed"}} placeholder={`${xof(getFraisMensuelDefaut(form.classe),cfg.devise)} (tarif classe)`}/>
                 <div style={{fontSize:11,color:theme.textMuted,marginTop:4}}>Fixé par le tarif de la classe dans Paramètres — non modifiable ici</div>
               </div>
-              <div style={{display:"flex",flexDirection:"column",justifyContent:"center",gap:10}}>
+              <div style={{display:"flex",alignItems:"flex-end",paddingBottom:6}}>
                 <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
                   <input type="checkbox" checked={form.scolariteGratuite} onChange={e=>setForm({...form,scolariteGratuite:e.target.checked,montantPersonnalise:e.target.checked?"0":form.montantPersonnalise})} style={{width:16,height:16,cursor:"pointer"}}/>
                   <span style={{fontSize:13,fontWeight:600,color:"#30D158"}}>✅ Scolarité gratuite (0 F)</span>
                 </label>
-                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
-                  <input type="checkbox" checked={form.inscriptionPayee} onChange={e=>setForm({...form,inscriptionPayee:e.target.checked})} style={{width:16,height:16,cursor:"pointer"}}/>
-                  <span style={{fontSize:13,fontWeight:600,color:couleur}}>💰 Frais d'inscription déjà payés</span>
-                </label>
-                <div style={{fontSize:11,color:theme.textMuted,marginLeft:24}}>Coché = crée automatiquement le paiement correspondant. Décoché = à régler plus tard.</div>
               </div>
-              {form.montantPersonnalise&&!form.scolariteGratuite&&(
-                <div style={{background:couleur+"11",borderRadius:10,padding:"10px 14px"}}>
-                  <div style={{fontSize:12,color:theme.textMuted}}>Mensualité appliquée</div>
-                  <div style={{fontSize:18,fontWeight:800,color:couleur}}>{xof(Number(form.montantPersonnalise),cfg.devise)}</div>
-                  <div style={{fontSize:11,color:theme.textMuted}}>au lieu de {xof(getFraisMensuelDefaut(form.classe),cfg.devise)}</div>
+            </div>
+
+            <div style={{borderTop:`1px solid ${theme.border}`,paddingTop:14}}>
+              <div style={{fontSize:13,fontWeight:700,color:theme.text,marginBottom:10}}>💰 Frais d'inscription — {xof(getFraisInscription(form.classe),cfg.devise)} ({form.classe||"—"})</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+                {[
+                  {v:"complete",label:"✅ Complète",sub:"Tarif fixe, payé en totalité",color:"#30D158"},
+                  {v:"modifiable",label:"✏️ Modifiable",sub:"Montant négocié",color:"#FF9F0A"},
+                  {v:"incomplete",label:"⏳ Incomplète",sub:"Acompte, reste à payer",color:"#0A84FF"},
+                  {v:"gratuite",label:"🎁 Gratuite",sub:"0 F, aucun frais",color:"#BF5AF2"},
+                ].map(opt=>(
+                  <button key={opt.v} type="button" onClick={()=>setForm({...form,inscriptionStatut:opt.v,inscriptionPayee:opt.v==="complete"||opt.v==="modifiable"||opt.v==="gratuite",inscriptionMontant:opt.v==="modifiable"?String(getFraisInscription(form.classe)):""})}
+                    style={{padding:"10px 8px",borderRadius:10,border:"2px solid",cursor:"pointer",fontFamily:"inherit",textAlign:"left",
+                      borderColor:form.inscriptionStatut===opt.v?opt.color:theme.border,
+                      background:form.inscriptionStatut===opt.v?opt.color+"18":"transparent"}}>
+                    <div style={{fontSize:12,fontWeight:700,color:form.inscriptionStatut===opt.v?opt.color:theme.text}}>{opt.label}</div>
+                    <div style={{fontSize:10,color:theme.textMuted,marginTop:2}}>{opt.sub}</div>
+                  </button>
+                ))}
+              </div>
+
+              {form.inscriptionStatut==="complete"&&(
+                <div style={{background:"#30D15811",borderRadius:10,padding:"10px 14px",fontSize:12,color:theme.textMuted}}>
+                  Le paiement complet de <strong style={{color:"#30D158"}}>{xof(getFraisInscription(form.classe),cfg.devise)}</strong> sera enregistré automatiquement dans Paiements.
                 </div>
               )}
-              {form.scolariteGratuite&&(
-                <div style={{background:"#30D15811",borderRadius:10,padding:"10px 14px"}}>
-                  <div style={{fontSize:12,color:"#30D158"}}>Scolarité</div>
-                  <div style={{fontSize:18,fontWeight:800,color:"#30D158"}}>GRATUITE</div>
+
+              {form.inscriptionStatut==="modifiable"&&(
+                <div>
+                  <label style={{fontSize:12,fontWeight:600,color:theme.textMuted,display:"block",marginBottom:6}}>Montant négocié, payé en totalité ({cfg.devise})</label>
+                  <input type="number" min="0" value={form.inscriptionMontant} onChange={e=>setForm({...form,inscriptionMontant:e.target.value})}
+                    style={{width:"100%",background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit",outline:"none"}} placeholder={`Tarif normal: ${xof(getFraisInscription(form.classe),cfg.devise)}`}/>
+                  <div style={{fontSize:11,color:theme.textMuted,marginTop:4}}>Ce montant sera considéré comme le règlement intégral (aucun reste).</div>
+                </div>
+              )}
+
+              {form.inscriptionStatut==="incomplete"&&(
+                <div>
+                  <label style={{fontSize:12,fontWeight:600,color:theme.textMuted,display:"block",marginBottom:6}}>Acompte versé maintenant ({cfg.devise})</label>
+                  <input type="number" min="0" value={form.inscriptionMontant} onChange={e=>setForm({...form,inscriptionMontant:e.target.value})}
+                    style={{width:"100%",background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit",outline:"none"}} placeholder="0 (laisser vide si rien versé aujourd'hui)"/>
+                  <div style={{fontSize:11,marginTop:6,color:"#0A84FF",fontWeight:600}}>
+                    Reste à payer : {xof(Math.max(0,getFraisInscription(form.classe)-(Number(form.inscriptionMontant)||0)),cfg.devise)}
+                  </div>
+                </div>
+              )}
+
+              {form.inscriptionStatut==="gratuite"&&(
+                <div style={{background:"#BF5AF211",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#BF5AF2",fontWeight:600}}>
+                  🎁 Aucun frais d'inscription ne sera facturé pour cet élève.
                 </div>
               )}
             </div>
+
+            {form.montantPersonnalise&&!form.scolariteGratuite&&(
+              <div style={{marginTop:12,background:couleur+"11",borderRadius:10,padding:"10px 14px"}}>
+                <div style={{fontSize:12,color:theme.textMuted}}>Mensualité appliquée</div>
+                <div style={{fontSize:18,fontWeight:800,color:couleur}}>{xof(Number(form.montantPersonnalise),cfg.devise)}</div>
+                <div style={{fontSize:11,color:theme.textMuted}}>au lieu de {xof(getFraisMensuelDefaut(form.classe),cfg.devise)}</div>
+              </div>
+            )}
+            {form.scolariteGratuite&&(
+              <div style={{marginTop:12,background:"#30D15811",borderRadius:10,padding:"10px 14px"}}>
+                <div style={{fontSize:12,color:"#30D158"}}>Scolarité</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#30D158"}}>GRATUITE</div>
+              </div>
+            )}
           </div>
           <div style={{display:"flex",gap:10}}>
             <Btn onClick={add} color={couleur}>{editId?"💾 Sauvegarder":"Inscrire"}</Btn>
