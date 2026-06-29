@@ -172,13 +172,15 @@ const NIVEAUX      = ["Primaire","Collège","Lycée","Université"];
 const DEVISES      = ["FCFA","€","$","MAD","DZD"];
 
 // ─── UI ───────────────────────────────────────────────────────────────────────
-const Inp = ({label,value,onChange,type="text",placeholder=""}) => {
+const Inp = ({label,value,onChange,type="text",placeholder="",disabled=false,lockNote=""}) => {
   const {theme}=useTheme();
   return (
     <div style={{display:"flex",flexDirection:"column",gap:5}}>
-      {label&&<label style={{fontSize:12,fontWeight:600,color:theme.textMuted}}>{label}</label>}
-      <input type={type} value={value} onChange={onChange} placeholder={placeholder}
-        style={{background:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"9px 13px",color:theme.text,fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+      {label&&<label style={{fontSize:12,fontWeight:600,color:theme.textMuted}}>{label}{disabled&&" 🔒"}</label>}
+      <input type={type} value={value} onChange={disabled?undefined:onChange} placeholder={placeholder} disabled={disabled} readOnly={disabled}
+        style={{background:disabled?theme.toggleBg:theme.input,border:`1px solid ${theme.inputBorder}`,borderRadius:9,padding:"9px 13px",
+          color:disabled?theme.textMuted:theme.text,fontSize:14,outline:"none",fontFamily:"inherit",cursor:disabled?"not-allowed":"text"}}/>
+      {disabled&&lockNote&&<div style={{fontSize:10,color:theme.textFaint}}>{lockNote}</div>}
     </div>
   );
 };
@@ -746,7 +748,7 @@ function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,recherche
 }
 function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=""}) {
   const {theme}=useTheme();
-  const {couleur,devise,fraisParClasse,fraisInscriptionParClasse,fraisJanFevParClasse,fraisMensuel,fraisInscription,fraisSpeciaux,typesPaiements,coursDuSoir,fraisCoursSOir}=cfg;
+  const {couleur,devise,fraisParClasse,fraisInscriptionParClasse,fraisJanFevParClasse,fraisMensuel,fraisInscription,fraisSpeciaux,typesPaiements,coursDuSoir,fraisCoursSOir,fraisCantine,fraisFournitures,fraisUniforme,fraisCotisation}=cfg;
   const fmt=(n)=>xof(n,devise);
   const [show,setShow]=useState(false);
   const [fMois,setFMois]=useState("");
@@ -773,6 +775,10 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
     mois:moisCourant,note:"",coursSoir:false,modePaiement:"Espèces"
   });
 
+  // Types dont le montant est fixé par les Paramètres (verrouillé, non modifiable à la main)
+  const TYPES_VERROUILLES={"Mensualité":1,"Inscription":1,"Cours du soir":1,"Cantine":1,"Fournitures":1,"Uniforme":1,"Cotisation fête":1};
+  const montantVerrouille=!!TYPES_VERROUILLES[form.type];
+
   // Auto-calculer le montant selon type + classe + mois
   const handleType=(type)=>{
     const eleve=eleves.find(e=>e.id===form.eleveId);
@@ -780,6 +786,10 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
     if(type==="Mensualité") montant=getFraisMensuel(eleve?.classe,form.mois);
     else if(type==="Inscription") montant=getFraisInscription(eleve?.classe);
     else if(type==="Cours du soir") montant=fraisCoursSOir||0;
+    else if(type==="Cantine") montant=fraisCantine||0;
+    else if(type==="Fournitures") montant=fraisFournitures||0;
+    else if(type==="Uniforme") montant=fraisUniforme||0;
+    else if(type==="Cotisation fête") montant=fraisCotisation||0;
     setForm({...form,type,montant});
   };
 
@@ -803,7 +813,7 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
     const typeOk=fType==="all"||p.type===fType;
     const moisOk=!fMois||p.mois===fMois;
     const eleve=eleves.find(e=>e.id===p.eleveId);
-    const searchOk=!search||(eleve&&(eleve.nom+eleve.prenom).toLowerCase().includes(search.toLowerCase()));
+    const searchOk=!search||(eleve&&(eleve.nom+eleve.prenom+(eleve.matricule||"")+eleve.classe).toLowerCase().includes(search.toLowerCase()));
     return ongletOk&&typeOk&&moisOk&&searchOk;
   });
   const total=filtered.reduce((s,p)=>s+p.montant,0);
@@ -923,7 +933,7 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
                 </div>
               </div>
             )}
-            <Inp label={`Montant (${devise}) *`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} placeholder="0"/>
+            <Inp label={`Montant (${devise}) *`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} placeholder="0" disabled={montantVerrouille} lockNote="Modifiable uniquement dans Paramètres"/>
             <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
             <Inp label="Mois concerné" type="month" value={form.mois} onChange={e=>handleMois(e.target.value)}/>
             <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Optionnel"/>
@@ -973,6 +983,8 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
       )}
 
       <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nom, prénom, matricule..."
+          style={{flex:1,minWidth:200,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
         <input type="month" value={fMois} onChange={e=>setFMois(e.target.value)}
           style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}/>
         <select value={fType} onChange={e=>setFType(e.target.value)}
@@ -1020,18 +1032,25 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
 // ─── MODULE CANTINE ───────────────────────────────────────────────────────────
 function Cantine({paiements,setPaiements,eleves,cfg,showToast}) {
   const {theme}=useTheme();
-  const {couleur,devise}=cfg;
+  const {couleur,devise,fraisCantine,fraisCantineJournaliere,fraisInscriptionCantine}=cfg;
   const fmt=(n)=>xof(n,devise);
   const [show,setShow]=useState(false);
   const [editId,setEditId]=useState(null);
   const [search,setSearch]=useState("");
   const [fMois,setFMois]=useState("");
-  const [form,setForm]=useState({eleveId:"",type:"Cantine mensuelle",montant:cfg.fraisCantine||5000,date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+  const getMontantCantine=(type)=>{
+    if(type==="Inscription cantine")return fraisInscriptionCantine||0;
+    if(type==="Cantine journalière")return fraisCantineJournaliere||0;
+    return fraisCantine||0; // Cantine mensuelle
+  };
+  const [form,setForm]=useState({eleveId:"",type:"Cantine mensuelle",montant:getMontantCantine("Cantine mensuelle"),date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+  const handleType=(type)=>setForm({...form,type,montant:getMontantCantine(type)});
 
-  const canPaiements=paiements.filter(p=>p.type==="Cantine mensuelle"||p.type==="Inscription cantine"||p.type==="Cantine");
+  const canPaiements=paiements.filter(p=>p.type==="Cantine mensuelle"||p.type==="Inscription cantine"||p.type==="Cantine journalière"||p.type==="Cantine");
   const filtered=canPaiements.filter(p=>{
     const e=eleves.find(x=>x.id===p.eleveId);
-    const ok=!search||(e&&(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase()));
+    const q=search.toLowerCase();
+    const ok=!search||(e&&(e.nom+e.prenom+(e.matricule||"")+e.classe).toLowerCase().includes(q));
     const mok=!fMois||p.mois===fMois;
     return ok&&mok;
   });
@@ -1079,9 +1098,9 @@ function Cantine({paiements,setPaiements,eleves,cfg,showToast}) {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
           <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
             options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
-          <Sel label="Type" value={form.type} onChange={e=>setForm({...form,type:e.target.value})}
+          <Sel label="Type" value={form.type} onChange={e=>handleType(e.target.value)}
             options={["Cantine mensuelle","Inscription cantine","Cantine journalière"]}/>
-          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} disabled lockNote="Modifiable uniquement dans Paramètres"/>
           <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
           <Inp label="Mois" type="month" value={form.mois} onChange={e=>setForm({...form,mois:e.target.value})}/>
           <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Optionnel"/>
@@ -1097,7 +1116,7 @@ function Cantine({paiements,setPaiements,eleves,cfg,showToast}) {
       </Card>)}
 
       <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..."
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nom, prénom, matricule..."
           style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
         <input type="month" value={fMois} onChange={e=>setFMois(e.target.value)}
           style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit"}}/>
@@ -1144,7 +1163,7 @@ function CoursSoir({paiements,setPaiements,eleves,cfg,showToast}) {
   const csPaiements=paiements.filter(p=>p.type==="Cours du soir");
   const filtered=csPaiements.filter(p=>{
     const e=eleves.find(x=>x.id===p.eleveId);
-    const ok=!search||(e&&(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase()));
+    const ok=!search||(e&&(e.nom+e.prenom+(e.matricule||"")+e.classe).toLowerCase().includes(search.toLowerCase()));
     const mok=!fMois||p.mois===fMois;
     return ok&&mok;
   });
@@ -1188,7 +1207,7 @@ function CoursSoir({paiements,setPaiements,eleves,cfg,showToast}) {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
           <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
             options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
-          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} disabled lockNote="Modifiable uniquement dans Paramètres"/>
           <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
           <Inp label="Mois" type="month" value={form.mois} onChange={e=>setForm({...form,mois:e.target.value})}/>
           <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Optionnel"/>
@@ -1197,7 +1216,7 @@ function CoursSoir({paiements,setPaiements,eleves,cfg,showToast}) {
       </Card>)}
 
       <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..."
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nom, prénom, matricule..."
           style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
         <input type="month" value={fMois} onChange={e=>setFMois(e.target.value)}
           style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit"}}/>
@@ -1242,7 +1261,7 @@ function Uniforme({paiements,setPaiements,eleves,cfg,showToast}) {
   const uniPaiements=paiements.filter(p=>p.type==="Uniforme");
   const filtered=uniPaiements.filter(p=>{
     const e=eleves.find(x=>x.id===p.eleveId);
-    return !search||(e&&(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase()));
+    return !search||(e&&(e.nom+e.prenom+(e.matricule||"")+e.classe).toLowerCase().includes(search.toLowerCase()));
   });
   const total=filtered.reduce((s,p)=>s+p.montant,0);
 
@@ -1288,7 +1307,7 @@ function Uniforme({paiements,setPaiements,eleves,cfg,showToast}) {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
           <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
             options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
-          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} disabled lockNote="Modifiable uniquement dans Paramètres"/>
           <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
           <Inp label="Note (taille, couleur...)" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Ex: Taille M, 2 pantalons"/>
         </div>
@@ -1303,7 +1322,7 @@ function Uniforme({paiements,setPaiements,eleves,cfg,showToast}) {
       </Card>)}
 
       <div style={{display:"flex",gap:10,marginBottom:14}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..."
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nom, prénom, matricule..."
           style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
         <div style={{color:theme.textMuted,fontSize:13,display:"flex",alignItems:"center"}}>Total : <strong style={{color:"#30D158",marginLeft:4}}>{fmt(total)}</strong></div>
       </div>
@@ -1347,7 +1366,7 @@ function Fournitures({paiements,setPaiements,eleves,cfg,showToast}) {
   const fourPaiements=paiements.filter(p=>p.type==="Fournitures");
   const filtered=fourPaiements.filter(p=>{
     const e=eleves.find(x=>x.id===p.eleveId);
-    const ok=!search||(e&&(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase()));
+    const ok=!search||(e&&(e.nom+e.prenom+(e.matricule||"")+e.classe).toLowerCase().includes(search.toLowerCase()));
     const mok=!fMois||p.mois===fMois;
     return ok&&mok;
   });
@@ -1391,7 +1410,7 @@ function Fournitures({paiements,setPaiements,eleves,cfg,showToast}) {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
           <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
             options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
-          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} disabled lockNote="Modifiable uniquement dans Paramètres"/>
           <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
           <Inp label="Mois" type="month" value={form.mois} onChange={e=>setForm({...form,mois:e.target.value})}/>
           <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Ex: Kit complet CI"/>
@@ -1400,7 +1419,7 @@ function Fournitures({paiements,setPaiements,eleves,cfg,showToast}) {
       </Card>)}
 
       <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..."
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nom, prénom, matricule..."
           style={{flex:1,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
         <input type="month" value={fMois} onChange={e=>setFMois(e.target.value)}
           style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit"}}/>
@@ -1888,6 +1907,12 @@ function Parametres({cfg,updateCfg,showToast}) {
   const [fraisFevier,setFraisFevier]=useState(cfg.fraisSpeciaux?.["02"]||0);
   const [coursDuSoir,setCoursDuSoir]=useState(cfg.coursDuSoir||false);
   const [fraisCoursSOir,setFraisCoursSOir]=useState(cfg.fraisCoursSOir||0);
+  const [fraisCantine,setFraisCantine]=useState(cfg.fraisCantine||0);
+  const [fraisCantineJournaliere,setFraisCantineJournaliere]=useState(cfg.fraisCantineJournaliere||0);
+  const [fraisInscriptionCantine,setFraisInscriptionCantine]=useState(cfg.fraisInscriptionCantine||0);
+  const [fraisUniforme,setFraisUniforme]=useState(cfg.fraisUniforme||0);
+  const [fraisFournitures,setFraisFournitures]=useState(cfg.fraisFournitures||0);
+  const [fraisCotisation,setFraisCotisation]=useState(cfg.fraisCotisation||0);
   const [typesPaiements,setTypesPaiements]=useState(cfg.typesPaiements||["Mensualité","Inscription","Cantine","Fournitures","Transport","Cours du soir","Autre"]);
   const [matieresParClasse,setMatieresParClasse]=useState(cfg.matieresParClasse||{});
   const [newMatiereClasse,setNewMatiereClasse]=useState("");
@@ -1936,6 +1961,12 @@ function Parametres({cfg,updateCfg,showToast}) {
       fraisParClasse,fraisInscriptionParClasse:fraisInsParClasse,fraisJanFevParClasse,
       fraisSpeciaux:{"01":parseInt(fraisJanvier)||0,"02":parseInt(fraisFevier)||0},
       coursDuSoir,fraisCoursSOir:parseInt(fraisCoursSOir)||0,
+      fraisCantine:parseInt(fraisCantine)||0,
+      fraisCantineJournaliere:parseInt(fraisCantineJournaliere)||0,
+      fraisInscriptionCantine:parseInt(fraisInscriptionCantine)||0,
+      fraisUniforme:parseInt(fraisUniforme)||0,
+      fraisFournitures:parseInt(fraisFournitures)||0,
+      fraisCotisation:parseInt(fraisCotisation)||0,
       typesPaiements,matieresParClasse,
     });
     showToast("Paramètres sauvegardés ✓");
@@ -1987,6 +2018,22 @@ function Parametres({cfg,updateCfg,showToast}) {
           </Card>
         </div>
       </div>
+
+      {/* Autres frais (cantine, uniforme, fournitures, cotisation) */}
+      <Card style={{marginBottom:16}}>
+        <CardTitle color={couleur}>🍽️ Autres frais (montants automatiques)</CardTitle>
+        <div style={{fontSize:12,color:theme.textMuted,marginBottom:14}}>
+          Ces montants seront proposés automatiquement dans les modules Cantine, Uniforme, Fournitures et Cotisation fêtes.
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+          <Inp label={`Cantine — mensuelle (${editDevise})`} type="number" value={fraisCantine} onChange={e=>setFraisCantine(e.target.value)} placeholder="5000"/>
+          <Inp label={`Cantine — journalière (${editDevise})`} type="number" value={fraisCantineJournaliere} onChange={e=>setFraisCantineJournaliere(e.target.value)} placeholder="1000"/>
+          <Inp label={`Cantine — inscription (${editDevise})`} type="number" value={fraisInscriptionCantine} onChange={e=>setFraisInscriptionCantine(e.target.value)} placeholder="2000"/>
+          <Inp label={`Uniforme (${editDevise})`} type="number" value={fraisUniforme} onChange={e=>setFraisUniforme(e.target.value)} placeholder="15000"/>
+          <Inp label={`Fournitures (${editDevise})`} type="number" value={fraisFournitures} onChange={e=>setFraisFournitures(e.target.value)} placeholder="20000"/>
+          <Inp label={`Cotisation fêtes (${editDevise})`} type="number" value={fraisCotisation} onChange={e=>setFraisCotisation(e.target.value)} placeholder="5000"/>
+        </div>
+      </Card>
 
       {/* Frais par classe */}
       <Card style={{marginBottom:16}}>
@@ -2198,7 +2245,7 @@ function SuiviPaiements({paiements,setPaiements,eleves,setEleves,cfg,showToast})
 
   const elevesFiltered=eleves.filter(e=>{
     if(e.statut!=="Actif")return false;
-    const ok=!search||(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase());
+    const ok=!search||(e.nom+e.prenom+(e.matricule||"")+e.classe).toLowerCase().includes(search.toLowerCase());
     const classOk=fClasse==="all"||e.classe===fClasse;
     const {resteTotal,gratuit}=ficheEleve(e);
     const statutOk=fStatut==="all"||(fStatut==="impaye"&&resteTotal>0&&!gratuit)||(fStatut==="paye"&&(resteTotal===0||gratuit))||(fStatut==="gratuit"&&gratuit);
@@ -2447,7 +2494,7 @@ function CotisationFetes({paiements,setPaiements,eleves,cfg,showToast}) {
   const fetePaiements=paiements.filter(p=>p.type==="Cotisation fête"||p.type==="Cotisation");
   const filtered=fetePaiements.filter(p=>{
     const e=eleves.find(x=>x.id===p.eleveId);
-    return !search||(e&&(e.nom+e.prenom).toLowerCase().includes(search.toLowerCase()));
+    return !search||(e&&(e.nom+e.prenom+(e.matricule||"")+e.classe).toLowerCase().includes(search.toLowerCase()));
   });
   const total=filtered.reduce((s,p)=>s+p.montant,0);
 
@@ -2489,7 +2536,7 @@ function CotisationFetes({paiements,setPaiements,eleves,cfg,showToast}) {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
           <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
             options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
-          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} disabled lockNote="Modifiable uniquement dans Paramètres"/>
           <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
           <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Ex: Fête de fin d'année"/>
         </div>
@@ -2514,7 +2561,7 @@ function CotisationFetes({paiements,setPaiements,eleves,cfg,showToast}) {
         </div>
       </div>)}
 
-      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..."
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nom, prénom, matricule..."
         style={{width:"100%",background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:14}}/>
 
       <TableWrap>
