@@ -481,9 +481,10 @@ function Dashboard({eleves,paiements,depenses,recettes,absences,cfg}) {
 }
 
 // ─── Élèves ───────────────────────────────────────────────────────────────────
-function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
+function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,rechercheFiltre=""}) {
   const {theme}=useTheme();
-  const {couleur,classes,devise}=cfg;
+  const {couleur,classes,devise,fraisInscriptionParClasse,fraisInscription}=cfg;
+  const getFraisInscription=(classe)=>fraisInscriptionParClasse?.[classe]||fraisInscription||0;
   const [show,setShow]=useState(false);
   const [search,setSearch]=useState(rechercheFiltre||"");
   const [fClasse,setFClasse]=useState("all");
@@ -548,15 +549,32 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
     w.document.write(html);w.document.close();w.print();
   };
 
+  // Crée le paiement "Inscription" correspondant dans la table paiements, si pas déjà existant
+  const creerPaiementInscription=async(eleveId,classe,date)=>{
+    const dejaPaye=paiements?.some(p=>p.eleveId===eleveId&&p.type==="Inscription");
+    if(dejaPaye)return; // évite les doublons
+    const montant=getFraisInscription(classe);
+    if(!montant)return; // rien à facturer (0 F ou non configuré)
+    const prow=await dbAdd("paiements",{eleve_id:eleveId,type:"Inscription",montant,date:date||today(),mois:(date||today()).slice(0,7),note:"Frais d'inscription"});
+    if(prow&&prow[0]&&setPaiements){
+      setPaiements(prev=>[{...prow[0],eleveId:prow[0].eleve_id},...prev]);
+    }
+  };
+
   const add=async()=>{
     if(!form.nom||!form.prenom)return showToast("Nom et prénom requis",true);
     if(editId){
+      const eleveAvant=eleves.find(e=>e.id===editId);
+      const etaitDejaPayee=eleveAvant&&(eleveAvant.inscription_payee||eleveAvant.inscriptionPayee);
       const ok=await dbPatch("eleves",editId,{matricule:form.matricule,nom:form.nom,prenom:form.prenom,sexe:form.sexe,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,
         pere_prenom:form.perePrenom,pere_nom:form.pereNom,pere_fonction:form.pereFonction,pere_telephone:form.pereTelephone,
         mere_prenom:form.merePrenom,mere_nom:form.mereNom,mere_fonction:form.mereFonction,mere_telephone:form.mereTelephone,
         adresse:form.adresse,date_inscription:form.dateInscription,statut:form.statut,note:form.note,montant_personnalise:form.montantPersonnalise?Number(form.montantPersonnalise):null,scolarite_gratuite:form.scolariteGratuite,inscription_payee:form.inscriptionPayee});
       if(!ok)return showToast("Erreur lors de la modification (vérifiez la connexion)",true);
       setEleves(eleves.map(e=>e.id===editId?{...e,...form}:e));
+      if(form.inscriptionPayee&&!etaitDejaPayee){
+        await creerPaiementInscription(editId,form.classe,form.dateInscription);
+      }
       setEditId(null);showToast("Élève modifié ✓");
     } else {
       const rows=await dbAdd("eleves",{matricule:form.matricule,nom:form.nom,prenom:form.prenom,sexe:form.sexe,classe:form.classe,date_naissance:form.dateNaissance,telephone:form.telephone,
@@ -569,6 +587,9 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
       setEleves([{...rows[0],dateNaissance:rows[0].date_naissance,dateInscription:rows[0].date_inscription,
         perePrenom:rows[0].pere_prenom,pereNom:rows[0].pere_nom,pereFonction:rows[0].pere_fonction,pereTelephone:rows[0].pere_telephone,
         merePrenom:rows[0].mere_prenom,mereNom:rows[0].mere_nom,mereFonction:rows[0].mere_fonction,mereTelephone:rows[0].mere_telephone},...eleves]);
+      if(form.inscriptionPayee){
+        await creerPaiementInscription(rows[0].id,form.classe,form.dateInscription);
+      }
       showToast("Élève inscrit ✓");
     }
     setForm({matricule:genererMatricule(),nom:"",prenom:"",sexe:"M",classe:classes[0]||"",dateNaissance:"",telephone:"",perePrenom:"",pereNom:"",pereFonction:"",pereTelephone:"",merePrenom:"",mereNom:"",mereFonction:"",mereTelephone:"",adresse:"",dateInscription:today(),statut:"Actif",note:"",montantPersonnalise:"",scolariteGratuite:false,inscriptionPayee:false});
@@ -642,8 +663,9 @@ function Eleves({eleves,setEleves,cfg,showToast,rechercheFiltre=""}) {
                 </label>
                 <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
                   <input type="checkbox" checked={form.inscriptionPayee} onChange={e=>setForm({...form,inscriptionPayee:e.target.checked})} style={{width:16,height:16,cursor:"pointer"}}/>
-                  <span style={{fontSize:13,fontWeight:600,color:couleur}}>📋 Inscription sans paiement immédiat</span>
+                  <span style={{fontSize:13,fontWeight:600,color:couleur}}>💰 Frais d'inscription déjà payés</span>
                 </label>
+                <div style={{fontSize:11,color:theme.textMuted,marginLeft:24}}>Coché = crée automatiquement le paiement correspondant. Décoché = à régler plus tard.</div>
               </div>
               {form.montantPersonnalise&&!form.scolariteGratuite&&(
                 <div style={{background:couleur+"11",borderRadius:10,padding:"10px 14px"}}>
@@ -2125,7 +2147,7 @@ function Parametres({cfg,updateCfg,showToast}) {
 
 
 // ─── SUIVI PAIEMENTS ──────────────────────────────────────────────────────────
-function SuiviPaiements({paiements,eleves,setEleves,cfg,showToast}) {
+function SuiviPaiements({paiements,setPaiements,eleves,setEleves,cfg,showToast}) {
   const {theme}=useTheme();
   const {couleur,devise,fraisMensuel,fraisParClasse,fraisInscriptionParClasse,fraisJanFevParClasse,fraisInscription}=cfg;
   const fmt=(n)=>xof(n,devise);
@@ -2145,8 +2167,19 @@ function SuiviPaiements({paiements,eleves,setEleves,cfg,showToast}) {
   const getFraisInscription=(classe)=>fraisInscriptionParClasse?.[classe]||fraisInscription||0;
 
   const marquerInscriptionPayee=async(eleve)=>{
-    await dbPatch("eleves",eleve.id,{inscription_payee:true});
+    const ok=await dbPatch("eleves",eleve.id,{inscription_payee:true});
+    if(!ok)return showToast("Erreur (vérifiez la connexion)",true);
     if(setEleves) setEleves(prev=>prev.map(e=>e.id===eleve.id?{...e,inscription_payee:true,inscriptionPayee:true}:e));
+    const montant=getFraisInscription(eleve.classe);
+    if(montant>0&&setPaiements){
+      const dejaPaye=paiements?.some(p=>p.eleveId===eleve.id&&p.type==="Inscription");
+      if(!dejaPaye){
+        const prow=await dbAdd("paiements",{eleve_id:eleve.id,type:"Inscription",montant,date:today(),mois:today().slice(0,7),note:"Frais d'inscription"});
+        if(prow&&prow[0]){
+          setPaiements(prev=>[{...prow[0],eleveId:prow[0].eleve_id},...prev]);
+        }
+      }
+    }
     showToast(`✅ Inscription de ${eleve.prenom} ${eleve.nom} marquée payée`);
   };
 
@@ -4044,11 +4077,11 @@ export default function App() {
           {loading?<div style={{textAlign:"center",padding:"60px",fontSize:32}}>⏳ Chargement...</div>:(
             <>
               {page==="dashboard"   &&<Dashboard    eleves={eleves} paiements={paiements} depenses={depenses} recettes={recettes} absences={absences} cfg={cfg}/>}
-              {page==="eleves"      &&<Eleves       eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
+              {page==="eleves"      &&<Eleves       eleves={eleves} setEleves={setEleves} paiements={paiements} setPaiements={setPaiements} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
               {page==="professeurs" &&<Professeurs  professeurs={professeurs} setProfesseurs={setProfesseurs} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
               {page==="paiements"   &&<Paiements    paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast} rechercheFiltre={rechercheFiltre}/>}
               {page==="recus"       &&<Recus        paiements={paiements} eleves={eleves} cfg={cfg}/>}
-              {page==="suivi"       &&<SuiviPaiements paiements={paiements} eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast}/>}
+              {page==="suivi"       &&<SuiviPaiements paiements={paiements} setPaiements={setPaiements} eleves={eleves} setEleves={setEleves} cfg={cfg} showToast={showToast}/>}
               {page==="encaissements"&&<EncaissementsJour paiements={paiements} depenses={depenses} eleves={eleves} cfg={cfg}/>}
               {page==="cotisation"  &&<CotisationFetes paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
               {page==="cantine"     &&<Cantine      paiements={paiements} setPaiements={setPaiements} eleves={eleves} cfg={cfg} showToast={showToast}/>}
