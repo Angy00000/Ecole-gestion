@@ -151,6 +151,49 @@ const exportCSV = (data, filename) => {
   document.body.removeChild(a);URL.revokeObjectURL(url);
 };
 
+// ─── Impression — base commune bien réglée pour tous les documents imprimés ────
+// - encodage UTF-8 explicite (accents français toujours corrects)
+// - couleurs de fond/badges qui s'imprimaient pas par défaut (forcées avec print-color-adjust)
+// - en-têtes de tableau répétés sur chaque page si la liste est longue
+// - une ligne n'est jamais coupée entre deux pages
+// - orientation (portrait/paysage) adaptée au contenu
+const PRINT_BASE_CSS = `
+  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  body{font-family:Arial,Helvetica,sans-serif;color:#1C1C1E;margin:0;padding:24px;}
+  table{border-collapse:collapse;width:100%;}
+  thead{display:table-header-group;}
+  tfoot{display:table-footer-group;}
+  tr{page-break-inside:avoid;break-inside:avoid;}
+  img{max-width:100%;}
+  @media print{
+    a{color:inherit;text-decoration:none;}
+  }
+`;
+const ouvrirImpression = (titre, contenuHtml, {extraCss="",landscape=false}={}) => {
+  const fullHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${titre}</title><style>
+    @page{ size:A4 ${landscape?"landscape":"portrait"}; margin:12mm 10mm; }
+    ${PRINT_BASE_CSS}
+    ${extraCss}
+  </style></head><body>${contenuHtml}
+  <script>
+    window.addEventListener('load', function(){
+      setTimeout(function(){ try{ window.focus(); window.print(); }catch(e){} }, 200);
+    });
+  </script>
+  </body></html>`;
+  // On ouvre une vraie URL (blob:) plutôt qu'une fenêtre vide — évite l'erreur Windows
+  // "obtenir une application pour ouvrir ce lien 'about'" rencontrée en mode application installée.
+  const blob = new Blob([fullHtml], {type: "text/html"});
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, "_blank");
+  if(!w){
+    alert("⚠️ Le navigateur a bloqué la fenêtre d'impression. Autorisez les pop-ups pour ce site puis réessayez.");
+    URL.revokeObjectURL(url);
+    return;
+  }
+  setTimeout(()=>URL.revokeObjectURL(url), 60000);
+};
+
 const saveCfg = async (c) => {
   localStorage.setItem(STORAGE, JSON.stringify(c));
   try {
@@ -515,25 +558,15 @@ function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,recherche
   });
 
   const imprimer=()=>{
-    const w=window.open("","_blank");
     const parClasse=classes.reduce((acc,c)=>{acc[c]=filtered.filter(e=>e.classe===c);return acc;},{});
-    let html=`<html><head><title>Liste élèves — ${cfg.nom}</title><style>
-      *{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:30px;color:#1C1C1E;}
-      h1{font-size:20px;margin-bottom:4px;}h2{font-size:15px;color:#0A84FF;margin:20px 0 8px;}
-      table{width:100%;border-collapse:collapse;margin-bottom:20px;}
-      th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}
-      th{background:#f5f5f7;font-weight:700;}
-      .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;}
-      .actif{background:#D4EFDD;color:#1A7A35;}.inactif{background:#FDDEDE;color:#C0392B;}
-    </style></head><body>
-    <h1>${cfg.nom} — Liste des élèves</h1>
+    let html=`<h1 style="font-size:20px;margin-bottom:4px;">${cfg.nom} — Liste des élèves</h1>
     <p style="color:#636366;font-size:13px;">Date : ${today()} · Total : ${filtered.length} élève${filtered.length!==1?"s":""}</p>`;
 
     if(fClasse==="all"){
       classes.forEach(c=>{
         const elvs=parClasse[c]||[];
         if(elvs.length===0)return;
-        html+=`<h2>${c} (${elvs.length} élève${elvs.length!==1?"s":""})</h2>
+        html+=`<h2 style="font-size:15px;color:#0A84FF;margin:20px 0 8px;">${c} (${elvs.length} élève${elvs.length!==1?"s":""})</h2>
         <table><thead><tr><th>#</th><th>Matricule</th><th>Nom complet</th><th>Sexe</th><th>Parent/Tuteur</th><th>Téléphone</th><th>Inscription</th><th>Statut</th></tr></thead><tbody>`;
         elvs.forEach((e,i)=>{
           html+=`<tr><td>${i+1}</td><td>${e.matricule||"—"}</td><td><strong>${e.prenom} ${e.nom}</strong></td><td>${e.sexe||"—"}</td><td>${(e.perePrenom||e.pereNom)?("👨 "+(e.perePrenom||"")+" "+(e.pereNom||"")).trim():"—"}</td><td>${e.pereTelephone||e.mereTelephone||e.telephone||"—"}</td><td>${e.dateInscription||"—"}</td><td><span class="badge ${e.statut==="Actif"?"actif":"inactif"}">${e.statut}</span></td></tr>`;
@@ -541,15 +574,20 @@ function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,recherche
         html+=`</tbody></table>`;
       });
     } else {
-      html+=`<h2>${fClasse} (${filtered.length} élève${filtered.length!==1?"s":""})</h2>
+      html+=`<h2 style="font-size:15px;color:#0A84FF;margin:20px 0 8px;">${fClasse} (${filtered.length} élève${filtered.length!==1?"s":""})</h2>
       <table><thead><tr><th>#</th><th>Matricule</th><th>Nom complet</th><th>Sexe</th><th>Parent/Tuteur</th><th>Téléphone</th><th>Inscription</th><th>Statut</th></tr></thead><tbody>`;
       filtered.forEach((e,i)=>{
         html+=`<tr><td>${i+1}</td><td>${e.matricule||"—"}</td><td><strong>${e.prenom} ${e.nom}</strong></td><td>${e.sexe||"—"}</td><td>${(e.perePrenom||e.pereNom)?("👨 "+(e.perePrenom||"")+" "+(e.pereNom||"")).trim():"—"}</td><td>${e.pereTelephone||e.mereTelephone||e.telephone||"—"}</td><td>${e.dateInscription||"—"}</td><td><span class="badge ${e.statut==="Actif"?"actif":"inactif"}">${e.statut}</span></td></tr>`;
       });
       html+=`</tbody></table>`;
     }
-    html+=`<p style="text-align:center;font-size:11px;color:#8E8E93;margin-top:30px;border-top:1px solid #e5e5ea;padding-top:10px;">${cfg.nom} · Liste officielle des élèves · ${today()}</p></body></html>`;
-    w.document.write(html);w.document.close();w.print();
+    html+=`<p style="text-align:center;font-size:11px;color:#8E8E93;margin-top:30px;border-top:1px solid #e5e5ea;padding-top:10px;">${cfg.nom} · Liste officielle des élèves · ${today()}</p>`;
+    ouvrirImpression(`Liste élèves — ${cfg.nom}`, html, {landscape:true, extraCss:`
+      th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}
+      th{background:#f5f5f7;font-weight:700;}
+      .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;}
+      .actif{background:#D4EFDD;color:#1A7A35;}.inactif{background:#FDDEDE;color:#C0392B;}
+    `});
   };
 
   // Crée le paiement "Inscription" correspondant selon le mode choisi (complète/modifiable/incomplète/gratuite)
@@ -842,7 +880,7 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
   });
 
   // Types dont le montant est fixé par les Paramètres (verrouillé, non modifiable à la main)
-  const TYPES_VERROUILLES={"Mensualité":1,"Inscription":1,"Cours du soir":1,"Cantine":1,"Fournitures":1,"Uniforme":1,"Cotisation fête":1};
+  const TYPES_VERROUILLES={"Mensualité":1,"Inscription":1,"Cours du soir":1,"Cantine":1,"Uniforme":1};
   const montantVerrouille=!!TYPES_VERROUILLES[form.type];
 
   // Auto-calculer le montant selon type + classe + mois
@@ -853,9 +891,9 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
     else if(type==="Inscription") montant=getFraisInscription(eleve?.classe);
     else if(type==="Cours du soir") montant=fraisCoursSOir||0;
     else if(type==="Cantine") montant=fraisCantine||0;
-    else if(type==="Fournitures") montant=fraisFournitures||0;
+    else if(type==="Fournitures") montant=""; // pas de tarif fixe, montant variable
     else if(type==="Uniforme") montant=fraisUniforme||0;
-    else if(type==="Cotisation fête") montant=fraisCotisation||0;
+    else if(type==="Cotisation fête") montant=""; // pas de tarif fixe, montant variable
     setForm({...form,type,montant});
   };
 
@@ -885,14 +923,7 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
   const total=filtered.reduce((s,p)=>s+p.montant,0);
 
   const imprimer=()=>{
-    const w=window.open("","_blank");
-    let html=`<html><head><title>Paiements — ${cfg.nom}</title><style>
-      *{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:30px;color:#1C1C1E;}
-      h1{font-size:18px;}table{width:100%;border-collapse:collapse;margin-top:14px;}
-      th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}
-      th{background:#f5f5f7;font-weight:700;}
-    </style></head><body>
-    <h1>${cfg.nom} — Liste des paiements${fMois?" ("+fMois+")":""}</h1>
+    let html=`<h1 style="font-size:18px;">${cfg.nom} — Liste des paiements${fMois?" ("+fMois+")":""}</h1>
     <p style="color:#636366;font-size:12px;">Date : ${today()} · Total : ${fmt(total)} · ${filtered.length} paiement(s)</p>
     <table><thead><tr><th>#</th><th>Élève</th><th>Classe</th><th>Type</th><th>Mois</th><th>Montant</th><th>Date</th></tr></thead><tbody>`;
     filtered.forEach((p,i)=>{
@@ -901,9 +932,11 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
     });
     html+=`</tbody></table>
     <p style="margin-top:10px;font-weight:700;">Total : ${fmt(total)}</p>
-    <p style="text-align:center;font-size:11px;color:#8E8E93;margin-top:20px;border-top:1px solid #e5e5ea;padding-top:10px;">${cfg.nom} · ${today()}</p>
-    </body></html>`;
-    w.document.write(html);w.document.close();w.print();
+    <p style="text-align:center;font-size:11px;color:#8E8E93;margin-top:20px;border-top:1px solid #e5e5ea;padding-top:10px;">${cfg.nom} · ${today()}</p>`;
+    ouvrirImpression(`Paiements — ${cfg.nom}`, html, {landscape:true, extraCss:`
+      th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}
+      th{background:#f5f5f7;font-weight:700;}
+    `});
   };
 
   const add=async()=>{
@@ -1429,7 +1462,7 @@ function Fournitures({paiements,setPaiements,eleves,cfg,showToast}) {
   const [editId,setEditId]=useState(null);
   const [search,setSearch]=useState("");
   const [fMois,setFMois]=useState("");
-  const [form,setForm]=useState({eleveId:"",type:"Fournitures",montant:cfg.fraisFournitures||20000,date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+  const [form,setForm]=useState({eleveId:"",type:"Fournitures",montant:"",date:today(),mois:new Date().toISOString().slice(0,7),note:""});
 
   const fourPaiements=paiements.filter(p=>p.type==="Fournitures");
   const filtered=fourPaiements.filter(p=>{
@@ -1454,7 +1487,7 @@ function Fournitures({paiements,setPaiements,eleves,cfg,showToast}) {
       setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
       showToast("Paiement fournitures enregistré ✓");
     }
-    setForm({...form,eleveId:"",note:""});setShow(false);
+    setForm({...form,eleveId:"",note:"",montant:""});setShow(false);
   };
   const startEdit=(p)=>{setForm({eleveId:p.eleveId,type:p.type,montant:p.montant,date:p.date,mois:p.mois,note:p.note||""});setEditId(p.id);setShow(true);};
   const del=async(id)=>{
@@ -1478,7 +1511,7 @@ function Fournitures({paiements,setPaiements,eleves,cfg,showToast}) {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
           <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
             options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
-          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} disabled lockNote="Modifiable uniquement dans Paramètres"/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
           <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
           <Inp label="Mois" type="month" value={form.mois} onChange={e=>setForm({...form,mois:e.target.value})}/>
           <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Ex: Kit complet CI"/>
@@ -1691,14 +1724,15 @@ function Absences({absences,setAbsences,eleves,cfg,showToast,rechercheFiltre=""}
           <button onClick={()=>exportCSV(filtered.map(a=>{const e=eleves.find(x=>x.id===a.eleveId);return{Élève:e?`${e.prenom} ${e.nom}`:"—",Classe:e?.classe||"—",Date:a.date,Type:a.type,Motif:a.motif||"",Justifiée:a.justifie?"Oui":"Non"}}),"absences-ecole")}
             style={{background:theme.toggleBg,border:`1px solid #30D158`,color:"#30D158",padding:"8px 14px",borderRadius:10,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>📊 Excel</button>
           <button onClick={()=>{
-            const w=window.open("","_blank");
-            let html=`<html><head><title>Absences — ${cfg.nom}</title><style>*{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:30px;color:#1C1C1E;}h1{font-size:18px;}table{width:100%;border-collapse:collapse;margin-top:14px;}th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}th{background:#f5f5f7;font-weight:700;}</style></head><body>
-            <h1>${cfg.nom} — Registre des absences</h1>
+            let html=`<h1 style="font-size:18px;">${cfg.nom} — Registre des absences</h1>
             <p style="color:#636366;font-size:12px;">Total : ${filtered.length} absence(s) · ${today()}</p>
             <table><thead><tr><th>#</th><th>Élève</th><th>Classe</th><th>Date</th><th>Type</th><th>Motif</th><th>Statut</th></tr></thead><tbody>`;
             filtered.forEach((a,i)=>{const e=eleves.find(x=>x.id===a.eleveId);html+=`<tr><td>${i+1}</td><td>${e?`${e.prenom} ${e.nom}`:"—"}</td><td>${e?.classe||"—"}</td><td>${a.date}</td><td>${a.type}</td><td>${a.motif||"—"}</td><td>${a.justifie?"✓ Justifiée":"✕ Non justifiée"}</td></tr>`;});
-            html+=`</tbody></table></body></html>`;
-            w.document.write(html);w.document.close();w.print();
+            html+=`</tbody></table>`;
+            ouvrirImpression(`Absences — ${cfg.nom}`, html, {landscape:true, extraCss:`
+              th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}
+              th{background:#f5f5f7;font-weight:700;}
+            `});
           }} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
           <Btn onClick={()=>setShow(!show)} color={couleur}>{show?"✕ Annuler":"+ Enregistrer une absence"}</Btn>
         </div>
@@ -1981,8 +2015,6 @@ function Parametres({cfg,updateCfg,showToast}) {
   const [fraisCantineJournaliere,setFraisCantineJournaliere]=useState(cfg.fraisCantineJournaliere||0);
   const [fraisInscriptionCantine,setFraisInscriptionCantine]=useState(cfg.fraisInscriptionCantine||0);
   const [fraisUniforme,setFraisUniforme]=useState(cfg.fraisUniforme||0);
-  const [fraisFournitures,setFraisFournitures]=useState(cfg.fraisFournitures||0);
-  const [fraisCotisation,setFraisCotisation]=useState(cfg.fraisCotisation||0);
   const [typesPaiements,setTypesPaiements]=useState(cfg.typesPaiements||["Mensualité","Inscription","Cantine","Fournitures","Transport","Cours du soir","Autre"]);
   const [matieresParClasse,setMatieresParClasse]=useState(cfg.matieresParClasse||{});
   const [newMatiereClasse,setNewMatiereClasse]=useState("");
@@ -2037,8 +2069,6 @@ function Parametres({cfg,updateCfg,showToast}) {
       fraisCantineJournaliere:parseInt(fraisCantineJournaliere)||0,
       fraisInscriptionCantine:parseInt(fraisInscriptionCantine)||0,
       fraisUniforme:parseInt(fraisUniforme)||0,
-      fraisFournitures:parseInt(fraisFournitures)||0,
-      fraisCotisation:parseInt(fraisCotisation)||0,
       typesPaiements,matieresParClasse,
     });
     showToast("Paramètres sauvegardés ✓");
@@ -2091,19 +2121,17 @@ function Parametres({cfg,updateCfg,showToast}) {
         </div>
       </div>
 
-      {/* Autres frais (cantine, uniforme, fournitures, cotisation) */}
+      {/* Autres frais (cantine, uniforme) */}
       <Card style={{marginBottom:16}}>
         <CardTitle color={couleur}>🍽️ Autres frais (montants automatiques)</CardTitle>
         <div style={{fontSize:12,color:theme.textMuted,marginBottom:14}}>
-          Ces montants seront proposés automatiquement dans les modules Cantine, Uniforme, Fournitures et Cotisation fêtes.
+          Ces montants seront proposés automatiquement dans les modules Cantine et Uniforme. Fournitures et Cotisation fêtes n'ont pas de tarif fixe — le montant se saisit librement à chaque fois.
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
           <Inp label={`Cantine — mensuelle (${editDevise})`} type="number" value={fraisCantine} onChange={e=>setFraisCantine(e.target.value)} placeholder="5000"/>
           <Inp label={`Cantine — journalière (${editDevise})`} type="number" value={fraisCantineJournaliere} onChange={e=>setFraisCantineJournaliere(e.target.value)} placeholder="1000"/>
           <Inp label={`Cantine — inscription (${editDevise})`} type="number" value={fraisInscriptionCantine} onChange={e=>setFraisInscriptionCantine(e.target.value)} placeholder="2000"/>
           <Inp label={`Uniforme (${editDevise})`} type="number" value={fraisUniforme} onChange={e=>setFraisUniforme(e.target.value)} placeholder="15000"/>
-          <Inp label={`Fournitures (${editDevise})`} type="number" value={fraisFournitures} onChange={e=>setFraisFournitures(e.target.value)} placeholder="20000"/>
-          <Inp label={`Cotisation fêtes (${editDevise})`} type="number" value={fraisCotisation} onChange={e=>setFraisCotisation(e.target.value)} placeholder="5000"/>
         </div>
       </Card>
 
@@ -2332,15 +2360,7 @@ function SuiviPaiements({paiements,setPaiements,eleves,setEleves,cfg,showToast})
   const totalRestant=elevesFiltered.reduce((s,e)=>s+ficheEleve(e).resteTotal,0);
 
   const imprimer=()=>{
-    const w=window.open("","_blank");
-    let html=`<html><head><title>Suivi paiements</title><style>
-      body{font-family:Arial;padding:20px;font-size:12px;}
-      table{width:100%;border-collapse:collapse;}
-      th,td{border:1px solid #ddd;padding:6px 8px;}
-      th{background:#f5f5f7;font-weight:700;}
-      .ok{color:#30D158;font-weight:700;} .ko{color:#FF453A;font-weight:700;}
-    </style></head><body>
-    <h2>Suivi des paiements — ${cfg.nom||"École"}</h2>
+    let html=`<h2>Suivi des paiements — ${cfg.nom||"École"}</h2>
     <p>Mois : ${moisCourant} | Classe : ${fClasse==="all"?"Toutes":fClasse} | ${elevesFiltered.length} élèves</p>
     <table><thead><tr><th>#</th><th>Élève</th><th>Classe</th><th>Mensualité due</th><th>Payé ce mois</th><th>Reste mensualité</th><th>Reste inscription</th><th>Statut</th></tr></thead><tbody>`;
     elevesFiltered.forEach((e,i)=>{
@@ -2352,8 +2372,13 @@ function SuiviPaiements({paiements,setPaiements,eleves,setEleves,cfg,showToast})
         <td class="${f.resteInscription>0?"ko":"ok"}">${fmt(f.resteInscription)}</td>
         <td class="${f.resteTotal>0&&!f.gratuit?"ko":"ok"}">${f.gratuit?"✅ Gratuit":f.resteTotal===0?"✅ OK":"⚠️ Impayé"}</td></tr>`;
     });
-    html+=`</tbody></table><p><strong>Total restant à encaisser : ${fmt(totalRestant)}</strong></p></body></html>`;
-    w.document.write(html);w.document.close();w.print();
+    html+=`</tbody></table><p><strong>Total restant à encaisser : ${fmt(totalRestant)}</strong></p>`;
+    ouvrirImpression(`Suivi paiements — ${cfg.nom||"École"}`, html, {landscape:true, extraCss:`
+      body{font-size:12px;}
+      th,td{border:1px solid #ddd;padding:6px 8px;}
+      th{background:#f5f5f7;font-weight:700;}
+      .ok{color:#30D158;font-weight:700;} .ko{color:#FF453A;font-weight:700;}
+    `});
   };
 
   return (
@@ -2466,14 +2491,7 @@ function EncaissementsJour({paiements,depenses,eleves,cfg}) {
   const byType=paiementsJour.reduce((acc,p)=>{acc[p.type]=(acc[p.type]||0)+p.montant;return acc;},{});
 
   const imprimer=()=>{
-    const w=window.open("","_blank");
-    let html=`<html><head><title>Encaissements ${date}</title><style>
-      body{font-family:Arial;padding:30px;font-size:13px;}
-      table{width:100%;border-collapse:collapse;margin:10px 0;}
-      th,td{border:1px solid #ddd;padding:7px 10px;}th{background:#f5f5f7;font-weight:700;}
-      .total{font-weight:700;font-size:15px;}
-    </style></head><body>
-    <h2>${cfg.nom||"École"} — Encaissements du ${date}</h2>
+    let html=`<h2>${cfg.nom||"École"} — Encaissements du ${date}</h2>
     <h3>💰 Recettes (${fmt(totalEncaisse)})</h3>
     <table><thead><tr><th>#</th><th>Élève</th><th>Type</th><th>Montant</th><th>Mode</th></tr></thead><tbody>
     ${paiementsJour.map((p,i)=>{const e=eleves.find(x=>x.id===p.eleveId);return`<tr><td>${i+1}</td><td>${e?e.prenom+" "+e.nom:"—"}</td><td>${p.type}</td><td><strong>${fmt(p.montant)}</strong></td><td>${p.modePaiement||"Espèces"}</td></tr>`;}).join("")}
@@ -2484,9 +2502,13 @@ function EncaissementsJour({paiements,depenses,eleves,cfg}) {
     </tbody></table>
     <div class="total" style="margin-top:15px;padding:12px;background:${solde>=0?"#e8f5e9":"#ffeaea"};border-radius:8px;">
       SOLDE DU JOUR : ${fmt(solde)} ${solde>=0?"✅":"⚠️"}
-    </div>
-    </body></html>`;
-    w.document.write(html);w.document.close();w.print();
+    </div>`;
+    ouvrirImpression(`Encaissements ${date}`, html, {extraCss:`
+      body{font-size:13px;}
+      table{margin:10px 0;}
+      th,td{border:1px solid #ddd;padding:7px 10px;}th{background:#f5f5f7;font-weight:700;}
+      .total{font-weight:700;font-size:15px;}
+    `});
   };
 
   return (
@@ -2566,7 +2588,7 @@ function CotisationFetes({paiements,setPaiements,eleves,cfg,showToast}) {
   const [show,setShow]=useState(false);
   const [editId,setEditId]=useState(null);
   const [search,setSearch]=useState("");
-  const [form,setForm]=useState({eleveId:"",type:"Cotisation fête",montant:cfg.fraisCotisation||5000,date:today(),mois:new Date().toISOString().slice(0,7),note:""});
+  const [form,setForm]=useState({eleveId:"",type:"Cotisation fête",montant:"",date:today(),mois:new Date().toISOString().slice(0,7),note:""});
 
   const fetePaiements=paiements.filter(p=>p.type==="Cotisation fête"||p.type==="Cotisation");
   const filtered=fetePaiements.filter(p=>{
@@ -2589,7 +2611,7 @@ function CotisationFetes({paiements,setPaiements,eleves,cfg,showToast}) {
       setPaiements([{...rows[0],eleveId:rows[0].eleve_id},...paiements]);
       showToast("Cotisation enregistrée ✓");
     }
-    setForm({...form,eleveId:"",note:""});setShow(false);
+    setForm({...form,eleveId:"",note:"",montant:""});setShow(false);
   };
   const startEdit=(p)=>{setForm({eleveId:p.eleveId,type:p.type,montant:p.montant,date:p.date,mois:p.mois,note:p.note||""});setEditId(p.id);setShow(true);};
   const del=async(id)=>{if(!window.confirm("Supprimer ?"))return;await dbDel("paiements",id);setPaiements(paiements.filter(p=>p.id!==id));showToast("Supprimé");};
@@ -2613,7 +2635,7 @@ function CotisationFetes({paiements,setPaiements,eleves,cfg,showToast}) {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
           <Sel label="Élève *" value={form.eleveId} onChange={e=>setForm({...form,eleveId:Number(e.target.value)})}
             options={[{v:"",l:"-- Choisir --"},...eleves.filter(e=>e.statut==="Actif").map(e=>({v:e.id,l:`${e.prenom} ${e.nom} (${e.classe})`}))]}/>
-          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} disabled lockNote="Modifiable uniquement dans Paramètres"/>
+          <Inp label={`Montant (${devise})`} type="number" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})}/>
           <Inp label="Date" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
           <Inp label="Note" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Ex: Fête de fin d'année"/>
         </div>
@@ -2701,25 +2723,17 @@ function Recus({paiements,eleves,cfg}) {
   const imprimer=()=>{
     if(!printRef.current)return;
     const content=printRef.current.innerHTML;
-    const w=window.open("","_blank");
-    w.document.write(`<html><head><title>Reçu ${nom}</title><style>
-      *{box-sizing:border-box;}
-      body{font-family:Arial,sans-serif;margin:0;padding:40px;color:#1C1C1E;}
+    ouvrirImpression(`Reçu ${nom}`, content, {extraCss:`
       .recu{max-width:500px;margin:0 auto;border:2px solid #eee;padding:30px;border-radius:12px;}
-    </style></head><body>${content}</body></html>`);
-    w.document.close();w.print();
+    `});
   };
   const imprimerDuplicata=()=>{
     if(!printRef.current)return;
     const c=printRef.current.innerHTML;
-    const w=window.open("","_blank");
-    w.document.write(`<html><head><title>Duplicata Reçu ${nom}</title><style>
-      *{box-sizing:border-box;}
-      body{font-family:Arial,sans-serif;margin:0;padding:40px;color:#1C1C1E;}
+    ouvrirImpression(`Duplicata Reçu ${nom}`, `<div style="position:relative">${c}<div class="duplicata-stamp">DUPLICATA</div></div>`, {extraCss:`
       .recu{max-width:500px;margin:0 auto;border:2px solid #eee;padding:30px;border-radius:12px;position:relative;}
       .duplicata-stamp{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);font-size:72px;font-weight:900;color:rgba(255,69,58,0.15);white-space:nowrap;pointer-events:none;z-index:10;}
-    </style></head><body><div style="position:relative">${c}<div class="duplicata-stamp">DUPLICATA</div></div></body></html>`);
-    w.document.close();w.print();
+    `});
   };
 
   const getEleve=(id)=>eleves.find(e=>e.id===id);
@@ -2950,15 +2964,12 @@ function Rapports({paiements,depenses,recettes,eleves,cfg}) {
 
   const imprimer=()=>{
     const content=printRef.current.innerHTML;
-    const w=window.open("","_blank");
-    w.document.write(`<html><head><title>Rapport financier ${cfg.nom}</title><style>
-      *{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:30px;color:#1C1C1E;}
+    ouvrirImpression(`Rapport financier ${cfg.nom}`, content, {extraCss:`
       h1{font-size:20px;}h2{font-size:15px;color:#636366;}
-      table{width:100%;border-collapse:collapse;margin:10px 0;}
+      table{margin:10px 0;}
       th,td{border:1px solid #e5e5ea;padding:8px 10px;font-size:12px;text-align:left;}
       th{background:#f5f5f7;font-weight:700;}
-    </style></head><body>${content}</body></html>`);
-    w.document.close();w.print();
+    `});
   };
 
   return (
@@ -3144,15 +3155,11 @@ function EmploiDuTemps({cfg,professeurs}) {
 
   const imprimer=()=>{
     const content=printRef.current.innerHTML;
-    const w=window.open("","_blank");
-    w.document.write(`<html><head><title>Emploi du temps ${fClasse}</title><style>
-      *{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:20px;color:#1C1C1E;}
-      table{width:100%;border-collapse:collapse;}
+    ouvrirImpression(`Emploi du temps ${fClasse}`, content, {landscape:true, extraCss:`
       th,td{border:1px solid #e5e5ea;padding:6px 8px;font-size:12px;text-align:center;}
       th{background:#f5f5f7;font-weight:700;}
       .cours{background:#EAF4FF;border-radius:4px;padding:4px;}
-    </style></head><body>${content}</body></html>`);
-    w.document.close();w.print();
+    `});
   };
 
   const matiereColor=(matiere)=>{
@@ -3319,18 +3326,13 @@ function Bulletins({notes,eleves,absences,cfg}) {
 
   const imprimer=()=>{
     const content=printRef.current.innerHTML;
-    const w=window.open("","_blank");
-    w.document.write(`<html><head><title>Bulletin ${selectedEleve?.prenom} ${selectedEleve?.nom}</title><style>
-      *{box-sizing:border-box;margin:0;padding:0;}
-      body{font-family:Arial,sans-serif;padding:20px;color:#1C1C1E;}
-      table{width:100%;border-collapse:collapse;}
+    ouvrirImpression(`Bulletin ${selectedEleve?.prenom} ${selectedEleve?.nom}`, content, {extraCss:`
       th{background:#f5f5f7;padding:8px 10px;text-align:left;font-size:12px;font-weight:700;border:1px solid #e5e5ea;}
       td{padding:8px 10px;font-size:13px;border:1px solid #e5e5ea;}
       .bien{color:#30D158;font-weight:700;}
       .moyen{color:#FF9F0A;font-weight:700;}
       .faible{color:#FF453A;font-weight:700;}
-    </style></head><body>${content}</body></html>`);
-    w.document.close();w.print();
+    `});
   };
 
   const matieres=getMatieres(fClasse);
@@ -3604,9 +3606,7 @@ function Professeurs({professeurs,setProfesseurs,cfg,showToast}) {
         <h1 style={{fontWeight:800,fontSize:24,margin:0,color:theme.text}}>👨‍🏫 Professeurs ({professeurs.length})</h1>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>{
-            const w=window.open("","_blank");
-            let html=`<html><head><title>Professeurs — ${cfg.nom}</title><style>*{box-sizing:border-box;}body{font-family:Arial,sans-serif;padding:30px;color:#1C1C1E;}h1{font-size:18px;}table{width:100%;border-collapse:collapse;margin-top:14px;}th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}th{background:#f5f5f7;font-weight:700;}</style></head><body>
-            <h1>${cfg.nom} — Liste des professeurs</h1>
+            let html=`<h1 style="font-size:18px;">${cfg.nom} — Liste des professeurs</h1>
             <p style="color:#636366;font-size:12px;">Date : ${today()} · Total : ${professeurs.length} professeur(s)</p>
             <table><thead><tr><th>#</th><th>Nom complet</th><th>Téléphone</th><th>Matières</th><th>Classes</th><th>Salaire mensuel</th><th>Statut</th></tr></thead><tbody>`;
             professeurs.forEach((p,i)=>{
@@ -3614,8 +3614,11 @@ function Professeurs({professeurs,setProfesseurs,cfg,showToast}) {
               const cls=Array.isArray(p.classes)?p.classes:(typeof p.classes==="string"?JSON.parse(p.classes||"[]"):[]);
               html+=`<tr><td>${i+1}</td><td><strong>${p.prenom} ${p.nom}</strong></td><td>${p.telephone||"—"}</td><td>${mats.join(", ")||"—"}</td><td>${cls.join(", ")||"—"}</td><td>${xof(p.salaire_mensuel||0,devise)}</td><td>${p.statut||"Actif"}</td></tr>`;
             });
-            html+=`</tbody></table><p style="text-align:center;font-size:11px;color:#8E8E93;margin-top:20px;border-top:1px solid #e5e5ea;padding-top:10px;">${cfg.nom} · ${today()}</p></body></html>`;
-            w.document.write(html);w.document.close();w.print();
+            html+=`</tbody></table><p style="text-align:center;font-size:11px;color:#8E8E93;margin-top:20px;border-top:1px solid #e5e5ea;padding-top:10px;">${cfg.nom} · ${today()}</p>`;
+            ouvrirImpression(`Professeurs — ${cfg.nom}`, html, {landscape:true, extraCss:`
+              th,td{border:1px solid #e5e5ea;padding:7px 10px;font-size:12px;text-align:left;}
+              th{background:#f5f5f7;font-weight:700;}
+            `});
           }} style={{background:theme.toggleBg,border:`1px solid ${theme.border}`,color:theme.textMuted,padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>🖨️ Imprimer</button>
           <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({nom:"",prenom:"",telephone:"",email:"",matieres:[],classes:[],salaireMensuel:0,dateEmbauche:today(),statut:"Actif",note:""});}} color={couleur}>{show?"✕ Annuler":"+ Ajouter un professeur"}</Btn>
         </div>
