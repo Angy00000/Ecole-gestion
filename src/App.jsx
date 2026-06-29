@@ -485,8 +485,9 @@ function Dashboard({eleves,paiements,depenses,recettes,absences,cfg}) {
 // ─── Élèves ───────────────────────────────────────────────────────────────────
 function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,rechercheFiltre=""}) {
   const {theme}=useTheme();
-  const {couleur,classes,devise,fraisInscriptionParClasse,fraisInscription}=cfg;
+  const {couleur,classes,devise,fraisInscriptionParClasse,fraisInscription,fraisParClasse,fraisMensuel}=cfg;
   const getFraisInscription=(classe)=>fraisInscriptionParClasse?.[classe]||fraisInscription||0;
+  const getFraisMensuelDefaut=(classe)=>fraisParClasse?.[classe]||fraisMensuel||0;
   const [show,setShow]=useState(false);
   const [search,setSearch]=useState(rechercheFiltre||"");
   const [fClasse,setFClasse]=useState("all");
@@ -653,10 +654,10 @@ function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,recherche
             <div style={{fontSize:13,fontWeight:700,color:theme.text,marginBottom:12}}>🎓 Statut financier spécial</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
               <div>
-                <label style={{fontSize:12,fontWeight:600,color:theme.textMuted,display:"block",marginBottom:6}}>Mensualité personnalisée ({cfg.devise})</label>
-                <input type="number" min="0" value={form.montantPersonnalise} onChange={e=>setForm({...form,montantPersonnalise:e.target.value,scolariteGratuite:Number(e.target.value)===0&&e.target.value!==""?true:false})}
-                  style={{width:"100%",background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,fontFamily:"inherit",outline:"none"}} placeholder={`Défaut: ${xof(cfg.fraisMensuel||0,cfg.devise)}`}/>
-                <div style={{fontSize:11,color:theme.textMuted,marginTop:4}}>Laisser vide = tarif normal de la classe</div>
+                <label style={{fontSize:12,fontWeight:600,color:theme.textMuted,display:"block",marginBottom:6}}>Mensualité personnalisée ({cfg.devise}) 🔒</label>
+                <input type="number" min="0" value={form.montantPersonnalise} disabled readOnly
+                  style={{width:"100%",background:theme.toggleBg,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.textMuted,fontSize:13,fontFamily:"inherit",outline:"none",cursor:"not-allowed"}} placeholder={`${xof(getFraisMensuelDefaut(form.classe),cfg.devise)} (tarif classe)`}/>
+                <div style={{fontSize:11,color:theme.textMuted,marginTop:4}}>Fixé par le tarif de la classe dans Paramètres — non modifiable ici</div>
               </div>
               <div style={{display:"flex",flexDirection:"column",justifyContent:"center",gap:10}}>
                 <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
@@ -673,7 +674,7 @@ function Eleves({eleves,setEleves,paiements,setPaiements,cfg,showToast,recherche
                 <div style={{background:couleur+"11",borderRadius:10,padding:"10px 14px"}}>
                   <div style={{fontSize:12,color:theme.textMuted}}>Mensualité appliquée</div>
                   <div style={{fontSize:18,fontWeight:800,color:couleur}}>{xof(Number(form.montantPersonnalise),cfg.devise)}</div>
-                  <div style={{fontSize:11,color:theme.textMuted}}>au lieu de {xof(cfg.fraisMensuel||0,cfg.devise)}</div>
+                  <div style={{fontSize:11,color:theme.textMuted}}>au lieu de {xof(getFraisMensuelDefaut(form.classe),cfg.devise)}</div>
                 </div>
               )}
               {form.scolariteGratuite&&(
@@ -905,7 +906,7 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
           {id:"inscription",label:"📋 Inscriptions",color:"#FF9F0A"},
           {id:"autres",label:"📦 Autres paiements",color:couleur},
         ].map(o=>(
-          <button key={o.id} onClick={()=>{setOngletActif(o.id);setShow(false);setEditId(null);}}
+          <button key={o.id} onClick={()=>{setOngletActif(o.id);setShow(false);setEditId(null);setFType("all");}}
             style={{padding:"10px 18px",border:"none",borderBottom:ongletActif===o.id?`3px solid ${o.color}`:"3px solid transparent",
               background:"transparent",color:ongletActif===o.id?o.color:theme.textMuted,fontWeight:ongletActif===o.id?700:600,
               fontSize:14,cursor:"pointer",fontFamily:"inherit",marginBottom:-1}}>
@@ -987,11 +988,13 @@ function Paiements({paiements,setPaiements,eleves,cfg,showToast,rechercheFiltre=
           style={{flex:1,minWidth:200,background:theme.input,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 13px",color:theme.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
         <input type="month" value={fMois} onChange={e=>setFMois(e.target.value)}
           style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}/>
-        <select value={fType} onChange={e=>setFType(e.target.value)}
-          style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
-          <option value="all">Tous types</option>
-          {TYPES.map(t=><option key={t} value={t}>{t}</option>)}
-        </select>
+        {ongletActif==="autres"&&(
+          <select value={fType} onChange={e=>setFType(e.target.value)}
+            style={{background:theme.sel,border:`1px solid ${theme.border}`,borderRadius:9,padding:"8px 12px",color:theme.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+            <option value="all">Tous types</option>
+            {TYPES.filter(t=>t!=="Mensualité"&&t!=="Inscription").map(t=><option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
         <div style={{marginLeft:"auto",color:theme.textMuted,fontSize:13}}>
           Total : <strong style={{color:"#30D158"}}>{fmt(total)}</strong> — {filtered.length} paiement{filtered.length!==1?"s":""}
         </div>
@@ -1900,6 +1903,8 @@ function Parametres({cfg,updateCfg,showToast}) {
   const [editTel,setEditTel]=useState(cfg.telephone||"");
   const [editEmail,setEditEmail]=useState(cfg.email||"");
   const [editDevise,setEditDevise]=useState(cfg.devise||"FCFA");
+  const [editFraisMensuel,setEditFraisMensuel]=useState(cfg.fraisMensuel||0);
+  const [editFraisInscription,setEditFraisInscription]=useState(cfg.fraisInscription||0);
   const [fraisParClasse,setFraisParClasse]=useState(cfg.fraisParClasse||{});
   const [fraisJanFevParClasse,setFraisJanFevParClasse]=useState(cfg.fraisJanFevParClasse||{});
   const [fraisInsParClasse,setFraisInsParClasse]=useState(cfg.fraisInscriptionParClasse||{});
@@ -1958,6 +1963,8 @@ function Parametres({cfg,updateCfg,showToast}) {
   const saveInfos=()=>{
     updateCfg({...cfg,
       nom:editNom,adresse:editAdresse,telephone:editTel,email:editEmail,devise:editDevise,
+      fraisMensuel:parseInt(editFraisMensuel)||0,
+      fraisInscription:parseInt(editFraisInscription)||0,
       fraisParClasse,fraisInscriptionParClasse:fraisInsParClasse,fraisJanFevParClasse,
       fraisSpeciaux:{"01":parseInt(fraisJanvier)||0,"02":parseInt(fraisFevier)||0},
       coursDuSoir,fraisCoursSOir:parseInt(fraisCoursSOir)||0,
@@ -2038,6 +2045,11 @@ function Parametres({cfg,updateCfg,showToast}) {
       {/* Frais par classe */}
       <Card style={{marginBottom:16}}>
         <CardTitle color={couleur}>💰 Frais par classe</CardTitle>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16,padding:"12px 14px",background:theme.toggleBg,borderRadius:10}}>
+          <Inp label={`Frais mensuel par défaut (${editDevise})`} type="number" value={editFraisMensuel} onChange={e=>setEditFraisMensuel(e.target.value)} placeholder="15000"/>
+          <Inp label={`Frais d'inscription par défaut (${editDevise})`} type="number" value={editFraisInscription} onChange={e=>setEditFraisInscription(e.target.value)} placeholder="50000"/>
+        </div>
+        <div style={{fontSize:11,color:theme.textMuted,marginBottom:12}}>Ces montants s'appliquent à toute classe sans tarif spécifique défini ci-dessous.</div>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
             <thead>
