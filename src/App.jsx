@@ -165,56 +165,48 @@ const PRINT_BASE_CSS = `
   tfoot{display:table-footer-group;}
   tr{page-break-inside:avoid;break-inside:avoid;}
   img{max-width:100%;}
-  @media print{
-    a{color:inherit;text-decoration:none;}
-  }
+  a{color:inherit;text-decoration:none;}
 `;
 const ouvrirImpression = (titre, contenuHtml, {extraCss="",landscape=false}={}) => {
-  const fullHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${titre}</title><style>
-    @page{ size:A4 ${landscape?"landscape":"portrait"}; margin:12mm 10mm; }
-    ${PRINT_BASE_CSS}
-    ${extraCss}
-  </style></head><body>${contenuHtml}</body></html>`;
+  // On injecte le contenu à imprimer directement dans la page actuelle, on masque
+  // tout le reste uniquement à l'impression (@media print), puis on imprime la
+  // fenêtre principale elle-même — celle dont on sait qu'elle s'imprime correctement.
+  // (Les iframes/fenêtres séparées ne sont pas fiables dans ce mode application Windows.)
+  const ancienTitre = document.title;
 
-  // On imprime via un <iframe> caché DANS la page (au lieu d'ouvrir une nouvelle fenêtre).
-  // Aucun bloqueur de pop-up ni gestion de fenêtre externe ne peut interférer.
-  let iframe = document.getElementById("print-frame-hidden");
-  if(!iframe){
-    iframe = document.createElement("iframe");
-    iframe.id = "print-frame-hidden";
-    // Taille réelle mais positionné hors écran : certains moteurs d'impression
-    // (notamment en mode application Windows installée) affichent une page blanche
-    // si le cadre fait 0x0 pixels — ils calculent la mise en page sur cette taille.
-    iframe.style.position = "fixed";
-    iframe.style.left = "-99999px";
-    iframe.style.top = "0";
-    iframe.style.width = "210mm";
-    iframe.style.height = "297mm";
-    iframe.style.border = "0";
-    iframe.setAttribute("aria-hidden","true");
-    document.body.appendChild(iframe);
-  }
-
-  let dejaImprime=false;
-  const lancerImpression = () => {
-    if(dejaImprime)return;
-    dejaImprime=true;
-    try{
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    }catch(e){
-      alert("⚠️ Impossible d'ouvrir l'impression. Réessayez, ou utilisez Ctrl+P après avoir ouvert le document.");
+  const style = document.createElement("style");
+  style.id = "print-style-temp";
+  style.innerHTML = `
+    @media print {
+      @page{ size:A4 ${landscape?"landscape":"portrait"}; margin:12mm 10mm; }
+      body > *:not(#print-content-temp){ display:none !important; }
+      #print-content-temp{ display:block !important; position:static !important; }
+      ${PRINT_BASE_CSS}
+      ${extraCss}
     }
-  };
+  `;
 
-  const doc = iframe.contentWindow.document;
-  doc.open();
-  doc.write(fullHtml);
-  doc.close();
-  // on attend le vrai chargement du document (images/polices) avant d'imprimer,
-  // avec un filet de sécurité si l'événement ne se déclenche pas comme attendu
-  iframe.onload = () => setTimeout(lancerImpression, 150);
-  setTimeout(lancerImpression, 600);
+  const container = document.createElement("div");
+  container.id = "print-content-temp";
+  container.innerHTML = contenuHtml;
+
+  document.body.appendChild(style);
+  document.body.appendChild(container);
+  document.title = titre;
+
+  const nettoyer = () => {
+    document.title = ancienTitre;
+    style.remove();
+    container.remove();
+    window.removeEventListener("afterprint", nettoyer);
+  };
+  window.addEventListener("afterprint", nettoyer);
+
+  setTimeout(()=>{
+    window.print();
+    // filet de sécurité si l'évènement afterprint ne se déclenche pas (certains environnements)
+    setTimeout(nettoyer, 3000);
+  }, 150);
 };
 
 const saveCfg = async (c) => {
