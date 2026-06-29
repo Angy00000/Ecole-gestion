@@ -182,17 +182,23 @@ const ouvrirImpression = (titre, contenuHtml, {extraCss="",landscape=false}={}) 
   if(!iframe){
     iframe = document.createElement("iframe");
     iframe.id = "print-frame-hidden";
+    // Taille réelle mais positionné hors écran : certains moteurs d'impression
+    // (notamment en mode application Windows installée) affichent une page blanche
+    // si le cadre fait 0x0 pixels — ils calculent la mise en page sur cette taille.
     iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
+    iframe.style.left = "-99999px";
+    iframe.style.top = "0";
+    iframe.style.width = "210mm";
+    iframe.style.height = "297mm";
     iframe.style.border = "0";
     iframe.setAttribute("aria-hidden","true");
     document.body.appendChild(iframe);
   }
 
+  let dejaImprime=false;
   const lancerImpression = () => {
+    if(dejaImprime)return;
+    dejaImprime=true;
     try{
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
@@ -205,8 +211,10 @@ const ouvrirImpression = (titre, contenuHtml, {extraCss="",landscape=false}={}) 
   doc.open();
   doc.write(fullHtml);
   doc.close();
-  // léger délai pour laisser le contenu (polices, mise en page) se stabiliser avant l'impression
-  setTimeout(lancerImpression, 300);
+  // on attend le vrai chargement du document (images/polices) avant d'imprimer,
+  // avec un filet de sécurité si l'événement ne se déclenche pas comme attendu
+  iframe.onload = () => setTimeout(lancerImpression, 150);
+  setTimeout(lancerImpression, 600);
 };
 
 const saveCfg = async (c) => {
