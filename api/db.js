@@ -2,7 +2,7 @@
 import { neon } from "@neondatabase/serverless";
 import crypto from "node:crypto";
 
-const sql = neon(process.env.DATABASE_URL);
+let sql;
 const SECRET = process.env.AUTH_SECRET;
 const TABLES = ["eleves","paiements","depenses","recettes","notes","absences","professeurs","utilisateurs","config"];
 const ADMIN_ONLY = ["utilisateurs","config"];          // écriture réservée aux admins
@@ -38,6 +38,9 @@ const ret = (t) => (t === "utilisateurs" ? USER_COLS : "*");
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST uniquement" });
+  if (!process.env.DATABASE_URL || !process.env.AUTH_SECRET)
+    return res.status(503).json({ error: "Configuration serveur incomplète (DATABASE_URL / AUTH_SECRET)" });
+  sql ||= neon(process.env.DATABASE_URL);
   const { action, table, id, data, token } = req.body || {};
   try {
     // Public : lecture de la config (nom, couleur de l'école sur l'écran de connexion)
