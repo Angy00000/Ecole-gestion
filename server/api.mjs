@@ -441,8 +441,13 @@ route("GET", "/journal", async (ctx) => {
 });
 
 // ── Santé ─────────────────────────────────────────────────────────────────
-route("GET", "/", async () => ({ ok: true, service: "ecole-gestion api v2", base: await one(
-  "select (select count(*) from app.eleves) as eleves, (select count(*) from app.classes) as classes, now() as heure") }), { public: true });
+route("GET", "/", async () => {
+  const [[base], [a]] = await tx([
+    ["select (select count(*) from app.eleves) as eleves, (select count(*) from app.classes) as classes, now() as heure"],
+    ["select libelle from app.annees where active"],
+  ]);
+  return { ok: true, service: "ecole-gestion api v2", annee: a?.libelle, base };
+}, { public: true });
 
 // ═══════════════════════════════════════════════════════════════════════════
 export default {
