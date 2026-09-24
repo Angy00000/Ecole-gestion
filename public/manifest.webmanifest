@@ -1,0 +1,12 @@
+{
+  "name": "ESJBM — Gestion scolaire",
+  "short_name": "ESJBM",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5F8F8",
+  "theme_color": "#1D4F5C",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
