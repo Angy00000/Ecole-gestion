@@ -26,15 +26,17 @@ const loadSession = () => { try { return JSON.parse(localStorage.getItem(SESSION
 const saveSession = (u) => localStorage.setItem(SESSION_KEY, JSON.stringify(u));
 const clearSession = () => localStorage.removeItem(SESSION_KEY);
 
-// ─── Config Supabase ──────────────────────────────────────────────────────────
-const SUPA_URL = "https://faeltgluscxmijqotlip.supabase.co";
-const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZWx0Z2x1c2N4bWlqcW90bGlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM2OTMsImV4cCI6MjA5NjQ5OTY5M30.FaBj5kAEKf4Vlhkt5U9bEOxkRAHbEP_YXuQXuBxB4_o";
+// ─── API (Neon via fonction Vercel sécurisée) ─────────────────────────────────
+const API_URL = /^https?:$/.test(location.protocol) ? "/api/db" : "https://ecole-gestion-eta.vercel.app/api/db";
 
-const dbHeaders = {
-  "apikey": SUPA_KEY,
-  "Authorization": `Bearer ${SUPA_KEY}`,
-  "Content-Type": "application/json",
-  "Prefer": "return=representation",
+const api = async (action, payload={}) => {
+  const token = loadSession()?.token;
+  const r = await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({action,token,...payload})});
+  const body = await r.json().catch(()=>({}));
+  if(r.status===401 && action!=="login"){ clearSession(); location.reload(); }
+  if(!r.ok) throw new Error(body.error||`Erreur ${r.status}`);
+  return body;
 };
 
 // ─── File d'attente offline ───────────────────────────────────────────────────
@@ -44,87 +46,64 @@ const saveQueue = (q) => localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
 
 const addToQueue = (action) => {
   const q = loadQueue();
-  q.push({...action, id: Date.now(), timestamp: new Date().toISOString()});
+  q.push({...action, qid: Date.now(), timestamp: new Date().toISOString()});
   saveQueue(q);
 };
 
 // Vérifier si en ligne
 const isOnline = () => navigator.onLine;
 
-// Synchroniser la file d'attente avec Supabase
+// Synchroniser la file d'attente avec la base
 const syncQueue = async () => {
   const q = loadQueue();
   if(q.length === 0) return;
   const remaining = [];
-  for(const action of q){
+  for(const a of q){
     try{
-      if(action.type === "ADD"){
-        await fetch(`${SUPA_URL}/rest/v1/${action.table}`,{method:"POST",headers:dbHeaders,body:JSON.stringify(action.data)});
-      } else if(action.type === "DEL"){
-        await fetch(`${SUPA_URL}/rest/v1/${action.table}?id=eq.${action.id}`,{method:"DELETE",headers:dbHeaders});
-      } else if(action.type === "PATCH"){
-        await fetch(`${SUPA_URL}/rest/v1/${action.table}?id=eq.${action.id}`,{method:"PATCH",headers:dbHeaders,body:JSON.stringify(action.data)});
-      }
+      if(a.type === "ADD")        await api("add",  {table:a.table,data:a.data});
+      else if(a.type === "DEL")   await api("del",  {table:a.table,id:a.id});
+      else if(a.type === "PATCH") await api("patch",{table:a.table,id:a.id,data:a.data});
     } catch(e){
-      remaining.push(action); // Réessayer plus tard
+      remaining.push(a); // Réessayer plus tard
     }
   }
   saveQueue(remaining);
 };
 
 // Fonctions DB avec fallback offline
-const dbGet = (t) => fetch(`${SUPA_URL}/rest/v1/${t}?order=id.desc`,{headers:dbHeaders}).then(r=>r.json());
+const dbGet = (t) => api("get",{table:t});
 
 const dbAdd = async (t, d) => {
   if(isOnline()){
-    try{
-      const r = await fetch(`${SUPA_URL}/rest/v1/${t}`,{method:"POST",headers:dbHeaders,body:JSON.stringify(d)});
-      if(!r.ok){
-        const errTxt = await r.text();
-        console.error(`dbAdd error on ${t}:`, r.status, errTxt);
-        return null;
-      }
-      return r.json();
-    }catch(e){
-      addToQueue({type:"ADD",table:t,data:d});
-      return [{...d, id: Date.now()}]; // ID temporaire
+    try{ return await api("add",{table:t,data:d}); }
+    catch(e){
+      console.error(`dbAdd error on ${t}:`, e.message);
+      if(e instanceof TypeError){ addToQueue({type:"ADD",table:t,data:d}); return [{...d, id: Date.now()}]; }
+      return null;
     }
-  } else {
-    addToQueue({type:"ADD",table:t,data:d});
-    return [{...d, id: Date.now()}]; // ID temporaire
   }
+  addToQueue({type:"ADD",table:t,data:d});
+  return [{...d, id: Date.now()}]; // ID temporaire
 };
 
 const dbDel = async (t, id) => {
   if(isOnline()){
-    try{
-      return fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"DELETE",headers:dbHeaders});
-    }catch(e){
-      addToQueue({type:"DEL",table:t,id});
-    }
-  } else {
-    addToQueue({type:"DEL",table:t,id});
-  }
+    try{ return await api("del",{table:t,id}); }
+    catch(e){ if(e instanceof TypeError) addToQueue({type:"DEL",table:t,id}); }
+  } else addToQueue({type:"DEL",table:t,id});
 };
 
 const dbPatch = async (t, id, d) => {
   if(isOnline()){
-    try{
-      const r = await fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"PATCH",headers:dbHeaders,body:JSON.stringify(d)});
-      if(!r.ok){
-        const errTxt = await r.text();
-        console.error(`dbPatch error on ${t}:`, r.status, errTxt);
-        return false;
-      }
-      return true;
-    }catch(e){
-      addToQueue({type:"PATCH",table:t,id,data:d});
+    try{ await api("patch",{table:t,id,data:d}); return true; }
+    catch(e){
+      console.error(`dbPatch error on ${t}:`, e.message);
+      if(e instanceof TypeError) addToQueue({type:"PATCH",table:t,id,data:d});
       return false;
     }
-  } else {
-    addToQueue({type:"PATCH",table:t,id,data:d});
-    return false;
   }
+  addToQueue({type:"PATCH",table:t,id,data:d});
+  return false;
 };
 
 // ─── Config locale + Cache offline ───────────────────────────────────────────
@@ -211,15 +190,8 @@ const ouvrirImpression = (titre, contenuHtml, {extraCss="",landscape=false}={}) 
 
 const saveCfg = async (c) => {
   localStorage.setItem(STORAGE, JSON.stringify(c));
-  try {
-    const res = await fetch(`${SUPA_URL}/rest/v1/config?select=id`,{headers:dbHeaders});
-    const rows = await res.json();
-    if(rows&&rows.length>0){
-      await dbPatch("config",rows[0].id,{data:c});
-    } else {
-      await dbAdd("config",{data:c});
-    }
-  } catch(e){ console.error("Config sync error",e); }
+  try { await api("config_save",{data:c}); }
+  catch(e){ console.error("Config sync error",e); }
 };
 
 const today = () => new Date().toISOString().split("T")[0];
@@ -3790,13 +3762,15 @@ function LoginScreen({onLogin,cfg}) {
     if(!email||!mdp)return setErreur("Email et mot de passe requis");
     setLoading(true);setErreur("");
     try{
-      const res=await fetch(`${SUPA_URL}/rest/v1/utilisateurs?email=eq.${email}&mot_de_passe=eq.${mdp}&actif=eq.true`,{headers:dbHeaders});
-      const rows=await res.json();
-      if(rows&&rows.length>0){
-        saveSession(rows[0]);
-        onLogin(rows[0]);
+      const r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({action:"login",data:{email:email.trim(),mdp}})});
+      const body=await r.json().catch(()=>({}));
+      if(r.ok&&body.user){
+        const u={...body.user,token:body.token};
+        saveSession(u);
+        onLogin(u);
       } else {
-        setErreur("Email ou mot de passe incorrect");
+        setErreur(body.error||"Email ou mot de passe incorrect");
       }
     }catch(e){setErreur("Erreur de connexion");}
     setLoading(false);
@@ -3848,7 +3822,7 @@ function Utilisateurs({utilisateurs,setUtilisateurs,cfg,showToast}) {
   const [loadingData,setLoadingData]=useState(true);
   const [form,setForm]=useState({nom:"",prenom:"",email:"",mot_de_passe:"",role:"professeur",actif:true});
 
-  // Charger utilisateurs depuis Supabase
+  // Charger utilisateurs depuis la base
   useEffect(()=>{
     (async()=>{
       try{
@@ -3944,7 +3918,7 @@ export default function App() {
   const [dark,setDark]=useState(()=>window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);
   const theme=dark?DARK:LIGHT;
   const [cfg,setCfg]=useState(()=>loadCfg());
-  const [user,setUser]=useState(()=>loadSession());
+  const [user,setUser]=useState(()=>{const u=loadSession();return u?.token?u:null;}); // anciennes sessions sans jeton → reconnexion
   const [page,setPage]=useState("dashboard");
   const [toast,setToast]=useState(null);
   const [loading,setLoading]=useState(true);
@@ -3966,20 +3940,22 @@ export default function App() {
   const [recettes,setRecettesRaw]=useState([]);
   const [professeurs,setProfesseursRaw]=useState([]);
 
-  // Charger config + données depuis Supabase au démarrage
+  // Charger config + données depuis la base au démarrage
   useEffect(()=>{
     (async()=>{
       try{
-        // Charger config depuis Supabase
-        const cfgRes=await fetch(`${SUPA_URL}/rest/v1/config?select=data&order=id.desc&limit=1`,{headers:dbHeaders});
-        const cfgRows=await cfgRes.json();
+        // Charger config depuis la base
+        const cfgRows=await api("config_get");
         if(cfgRows&&cfgRows.length>0&&cfgRows[0].data){
           const remoteCfg=cfgRows[0].data;
           setCfg(remoteCfg);
           localStorage.setItem(STORAGE,JSON.stringify(remoteCfg));
         }
 
-        // Charger données depuis Supabase
+        // Pas encore connecté : on s'arrête à la config (écran de connexion)
+        if(!user?.token){ setLoading(false); return; }
+
+        // Charger données depuis la base
         const [e,p,n,a,d,r,pr,ut]=await Promise.all([
           dbGet("eleves"),dbGet("paiements"),dbGet("notes"),
           dbGet("absences"),dbGet("depenses"),dbGet("recettes"),
@@ -4023,15 +3999,16 @@ export default function App() {
       }
       setLoading(false);
     })();
-  },[]);
+  },[user?.token]);
 
   // Détecter retour connexion → resynchroniser
   useEffect(()=>{
     const handleOnline=async()=>{
+      if(!loadSession()?.token) return;
       // Synchroniser la file d'attente
       await syncQueue();
       setOffline(false);
-      // Recharger les données depuis Supabase
+      // Recharger les données depuis la base
       try{
         const [e,p,n,a,d,r]=await Promise.all([
           dbGet("eleves"),dbGet("paiements"),dbGet("notes"),
@@ -4259,12 +4236,10 @@ export default function App() {
               <div style={{display:"flex",gap:10}}>
                 <button onClick={async()=>{
                   if(!ancienMdp||!nouveauMdp||!confirmMdp)return showToast("Tous les champs sont requis",true);
-                  if(ancienMdp!==user.mot_de_passe)return showToast("Ancien mot de passe incorrect",true);
                   if(nouveauMdp!==confirmMdp)return showToast("Les mots de passe ne correspondent pas",true);
                   if(nouveauMdp.length<6)return showToast("Minimum 6 caractères",true);
-                  await dbPatch("utilisateurs",user.id,{mot_de_passe:nouveauMdp});
-                  const newUser={...user,mot_de_passe:nouveauMdp};
-                  setUser(newUser);saveSession(newUser);
+                  try{ await api("change_password",{data:{ancien:ancienMdp,nouveau:nouveauMdp}}); }
+                  catch(e){ return showToast(e.message,true); }
                   setAncienMdp("");setNouveauMdp("");setConfirmMdp("");
                   setChangeMdp(false);showToast("Mot de passe changé ✓");
                 }} style={{flex:1,background:couleur,color:"#fff",border:"none",padding:"11px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>
