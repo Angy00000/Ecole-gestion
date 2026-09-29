@@ -15,9 +15,9 @@ const NAV = [
   { to: "/eleves", label: "Élèves", icon: Users },
   { to: "/classes", label: "Classes et tarifs", icon: School },
   { group: "Finances" },
-  { to: "/paiements", label: "Encaissements", icon: Wallet, soon: true },
-  { to: "/impayes", label: "Impayés", icon: AlertTriangle, soon: true },
-  { to: "/depenses", label: "Dépenses", icon: Receipt, soon: true },
+  { to: "/paiements", label: "Encaissements", icon: Wallet, droit: "finances.lire" },
+  { to: "/impayes", label: "Impayés", icon: AlertTriangle, droit: "finances.lire" },
+  { to: "/depenses", label: "Dépenses", icon: Receipt, droit: "depenses.lire" },
   { group: "Pédagogie" },
   { to: "/notes", label: "Notes et bulletins", icon: BookOpen, soon: true },
   { to: "/absences", label: "Absences", icon: CalendarCheck, soon: true },
@@ -53,7 +53,7 @@ export default function Layout() {
           <div><strong>ESJBM</strong><span>Saint Jean Baptiste<br />de Malika</span></div>
         </div>
         <nav className="nav" aria-label="Navigation principale">
-          {NAV.map((n, i) => n.group
+          {NAV.filter((n) => !n.droit || s.peut(n.droit)).map((n, i) => n.group
             ? <div key={i} className="nav-group">{n.group}</div>
             : <NavLink key={n.to} to={n.to} end={n.end} className={n.soon ? "soon" : undefined}><n.icon size={19} />{n.label}</NavLink>)}
         </nav>

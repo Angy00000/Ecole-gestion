@@ -1,14 +1,65 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt } from "lucide-react";
+import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateLongue, age, initiales } from "../lib/format";
 import { Spinner, ErrorBox, Empty, Modal, Field, Select, Input, Confirm, useToast } from "../components/ui";
 import EleveForm from "./EleveForm";
+import Encaissement from "../components/Encaissement";
+import { moisNom, moisLong, libelleLigne, TYPES_COURTS } from "../lib/format";
 
-const TYPES = { inscription: "Inscription", uniforme: "Uniforme", mensualite: "Mensualité", cantine: "Cantine", fournitures: "Fournitures", cours_vacances: "Cours de vacances", autre: "Autre" };
+function Situation({ inscription, peutEncaisser, onEncaisser }) {
+  const { data, isLoading, error } = useQuery({ queryKey: ["situation", inscription.id], queryFn: () => api.get(`/inscriptions/${inscription.id}/situation`) });
+  if (isLoading) return <Spinner />;
+  if (error) return <ErrorBox error={error} />;
+  const cur = new Date().toISOString().slice(0, 7);
+  const pct = data.total_du ? Math.min(100, (data.total_paye / data.total_du) * 100) : 100;
+  const frais = data.lignes.filter((l) => l.groupe === "frais");
+  const mois = data.lignes.filter((l) => l.groupe === "mois");
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h3>Situation financière {inscription.annee}</h3>
+        {peutEncaisser && <button className="btn primary" onClick={onEncaisser}><Wallet size={17} />Encaisser un paiement</button>}
+      </div>
+      <div className="sit-head" style={{ marginTop: 16, borderTop: "1px solid var(--line)" }}>
+        <div><div className="l">Total de l'année</div><div className="v">{fcfa(data.total_du)}</div></div>
+        <div><div className="l">Payé</div><div className="v" style={{ color: "var(--green)" }}>{fcfa(data.total_paye)}</div></div>
+        <div><div className="l">En retard aujourd'hui</div><div className="v" style={{ color: data.reste_echu ? "var(--coral)" : "var(--green)" }}>{fcfa(data.reste_echu)}</div></div>
+        <div><div className="l">Reste sur l'année</div><div className="v">{fcfa(data.reste_annee)}</div></div>
+      </div>
+      <div className="card-body" style={{ borderTop: "1px solid var(--line)" }}>
+        <div className="between small" style={{ marginBottom: 8 }}><strong>Progression des paiements</strong><span className="muted">{Math.round(pct)} %</span></div>
+        <div className="progress"><i style={{ width: `${pct}%` }} /></div>
+
+        {frais.length > 0 && <>
+          <h4 className="enc-h">Frais d'inscription</h4>
+          <div className="timeline">
+            {frais.map((l) => { const st = l.paye >= l.du ? "paid" : l.paye ? "partial" : "late"; return (
+              <div key={l.type} className={`tl ${st}`}><div className="mn">{TYPES_COURTS[l.type]}</div><div className="mv">{fcfa(l.du)}</div>
+                <span className="ms">{st === "paid" ? <><Check size={12} />Payé</> : st === "partial" ? `Reste ${fcfa(l.du - l.paye)}` : "À payer"}</span></div>); })}
+          </div>
+        </>}
+
+        <h4 className="enc-h">Mensualités</h4>
+        <div className="timeline">
+          {mois.map((l) => {
+            const st = l.du === 0 ? "free" : l.paye >= l.du ? "paid" : l.paye ? "partial" : l.mois <= cur ? "late" : "upcoming";
+            return (
+              <div key={l.mois} className={`tl ${st}`} title={moisLong(l.mois)}>
+                <div className="mn">{moisNom(l.mois)}</div>
+                <div className="mv">{l.du ? fcfa(l.du) : "—"}</div>
+                <span className="ms">{st === "paid" ? <><Check size={12} />Payé</> : st === "partial" ? `Reste ${fcfa(l.du - l.paye)}` : st === "late" ? "En retard" : st === "free" ? "Réparti jan./fév." : "À venir"}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 const MODES = { especes: "Espèces", wave: "Wave", orange_money: "Orange Money", cheque: "Chèque", virement: "Virement" };
 const STATUTS = { active: "Inscrit", abandon: "Abandon", transfert: "Transféré" };
 
@@ -90,6 +141,7 @@ export default function EleveFiche() {
   const [edit, setEdit] = useState(false);
   const [insc, setInsc] = useState(null);
   const [del, setDel] = useState(false);
+  const [enc, setEnc] = useState(false);
   const { data, isLoading, error } = useQuery({ queryKey: ["eleve", id], queryFn: () => api.get(`/eleves/${id}`) });
 
   if (isLoading) return <Spinner />;
@@ -97,7 +149,7 @@ export default function EleveFiche() {
   const { eleve: e, inscriptions, paiements } = data;
   const courante = inscriptions.find((i) => i.annee_id === s.annee?.id);
   const a = age(e.date_naissance);
-  const totalPaye = paiements.filter((p) => !p.annule).reduce((t, p) => t + p.montant, 0);
+  const totalPaye = paiements.filter((p) => !p.annule && p.annee_id === s.annee?.id).reduce((t, p) => t + p.montant, 0);
 
   const supprimer = async () => {
     try {
@@ -132,6 +184,7 @@ export default function EleveFiche() {
           <div className="actions">
             <button className="btn" onClick={() => window.print()}><Printer size={17} /><span className="hide-m">Imprimer</span></button>
             {s.peut("eleves.ecrire") && !courante && <button className="btn primary" onClick={() => setInsc("new")}><RefreshCcw size={17} />Réinscrire</button>}
+            {s.peut("finances.encaisser") && courante && <button className="btn primary" onClick={() => setEnc(true)}><Wallet size={17} />Encaisser</button>}
             {s.peut("eleves.ecrire") && <button className="btn" onClick={() => setEdit(true)}><Pencil size={17} />Modifier</button>}
             {s.peut("eleves.supprimer") && <button className="btn danger icon" onClick={() => setDel(true)} aria-label="Supprimer l'élève"><Trash2 size={17} /></button>}
           </div>
@@ -140,7 +193,7 @@ export default function EleveFiche() {
           <div className="mini-stat"><span className="ic teal" style={{ display: "grid", placeItems: "center" }}><School size={18} /></span><div><div className="l">Classe</div><div className="v">{courante?.classe || "—"}</div></div></div>
           <div className="mini-stat"><span className={`ic ${e.sexe === "F" ? "rose" : "azure"}`} style={{ display: "grid", placeItems: "center" }}><Cake size={18} /></span><div><div className="l">Âge</div><div className="v">{a != null ? `${a} ans` : "—"}</div></div></div>
           <div className="mini-stat"><span className="ic gold" style={{ display: "grid", placeItems: "center" }}><CalendarCheck2 size={18} /></span><div><div className="l">Inscrit depuis</div><div className="v">{inscriptions.length ? inscriptions[inscriptions.length - 1].annee : "—"}</div></div></div>
-          <div className="mini-stat"><span className="ic green" style={{ display: "grid", placeItems: "center" }}><Wallet size={18} /></span><div><div className="l">Total payé</div><div className="v">{s.peut("finances.lire") ? fcfa(totalPaye) : "—"}</div></div></div>
+          <div className="mini-stat"><span className="ic green" style={{ display: "grid", placeItems: "center" }}><Wallet size={18} /></span><div><div className="l">Payé cette année</div><div className="v">{s.peut("finances.lire") ? fcfa(totalPaye) : "—"}</div></div></div>
         </div>
       </div>
 
@@ -199,30 +252,35 @@ export default function EleveFiche() {
       )}
 
       {tab === "paiements" && (
-        <div className="card">
-          {paiements.length ? (
-            <div className="table-wrap">
-              <table className="table" style={{ marginTop: -1 }}>
-                <thead><tr><th>Reçu</th><th>Date</th><th>Motif</th><th className="hide-m">Mode</th><th className="hide-m">Encaissé par</th><th className="r">Montant</th></tr></thead>
-                <tbody>
-                  {paiements.map((p) => (
-                    <tr key={p.id} style={p.annule ? { opacity: 0.5, textDecoration: "line-through" } : undefined}>
-                      <td><span className="badge teal">{p.numero}</span></td>
-                      <td className="num">{date(p.date_paiement)}</td>
-                      <td><strong>{TYPES[p.type]}</strong>{p.note ? <div className="xs muted">{p.note}</div> : ""}</td>
-                      <td className="hide-m">{MODES[p.mode]}</td>
-                      <td className="hide-m">{p.encaisse_par_nom || "—"}</td>
-                      <td className="r amount">{fcfa(p.montant)}</td>
-                    </tr>
-                  ))}
-                  <tr><td colSpan={5} className="r" style={{ background: "var(--surface-2)" }}><strong>Total payé</strong></td><td className="r amount" style={{ background: "var(--surface-2)", color: "var(--green)" }}>{fcfa(totalPaye)}</td></tr>
-                </tbody>
-              </table>
-            </div>
-          ) : <Empty icon={Wallet} title="Aucun paiement enregistré">L'encaissement des paiements arrive avec le module Finances.</Empty>}
+        <div className="stack">
+          {courante ? <Situation inscription={courante} peutEncaisser={s.peut("finances.encaisser")} onEncaisser={() => setEnc(true)} />
+            : <div className="card"><Empty icon={Wallet} title={`Pas d'inscription en ${s.annee?.libelle}`}>Réinscrivez l'élève pour suivre ses paiements de l'année.</Empty></div>}
+          <div className="card">
+            <div className="card-head" style={{ paddingBottom: 14 }}><h3>Reçus</h3><span className="badge teal">{paiements.length}</span></div>
+            {paiements.length ? (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead><tr><th>Reçu</th><th>Date</th><th>Détail</th><th className="hide-m">Mode</th><th className="hide-m">Encaissé par</th><th className="r">Montant</th></tr></thead>
+                  <tbody>
+                    {paiements.map((p) => (
+                      <tr key={p.id} className="click" onClick={() => nav(`/recus/${p.id}`)} style={p.annule ? { opacity: 0.5, textDecoration: "line-through" } : undefined}>
+                        <td><span className="badge teal">{p.numero}</span></td>
+                        <td className="num">{date(p.date_paiement)}</td>
+                        <td className="small">{(p.lignes || []).map((l) => libelleLigne({ ...l, mois: l.mois?.slice(0, 7) })).join(", ")}</td>
+                        <td className="hide-m">{MODES[p.mode]}</td>
+                        <td className="hide-m">{p.encaisse_par_nom || "—"}</td>
+                        <td className="r amount">{fcfa(p.montant)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <Empty icon={Wallet} title="Aucun reçu">Les paiements encaissés apparaîtront ici.</Empty>}
+          </div>
         </div>
       )}
 
+      {enc && courante && <Encaissement inscriptionId={courante.id} eleve={e} onClose={() => setEnc(false)} onSaved={(r) => { setEnc(false); nav(`/recus/${r.id}`); }} />}
       {edit && <EleveForm eleve={e} onClose={() => setEdit(false)} onSaved={() => setEdit(false)} />}
       {insc && <InscriptionModal eleve={e} inscription={insc === "new" ? null : insc} onClose={() => setInsc(null)} />}
       {del && <Confirm danger title="Supprimer cet élève ?" confirmLabel="Supprimer"

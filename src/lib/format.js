@@ -31,3 +31,50 @@ export const ROLES = {
   professeur: "Enseignant",
 };
 export const CYCLES = { garderie: "Garderie", prescolaire: "Préscolaire", elementaire: "Élémentaire" };
+
+export const TYPES = {
+  inscription: "Droit d'inscription", uniforme: "Uniforme et tenue de sport", cantine: "Inscription cantine",
+  mensualite: "Mensualité", fournitures: "Fournitures", cours_vacances: "Cours de vacances", transport: "Transport", autre: "Autre",
+};
+export const TYPES_COURTS = { inscription: "Inscription", uniforme: "Uniforme", cantine: "Cantine", mensualite: "Mensualité", fournitures: "Fournitures", cours_vacances: "Cours de vacances", transport: "Transport", autre: "Autre" };
+export const MODES = { especes: "Espèces", wave: "Wave", orange_money: "Orange Money", cheque: "Chèque", virement: "Virement" };
+export const MODE_COULEUR = { especes: "var(--green)", wave: "#1da1f2", orange_money: "#f47b20", cheque: "var(--azure)", virement: "var(--teal)" };
+export const CATEGORIES = {
+  salaires: "Salaires", loyer: "Loyer", electricite_eau: "Électricité et eau", fournitures: "Fournitures", cantine: "Cantine",
+  entretien: "Entretien et réparations", transport: "Transport", communication: "Téléphone et internet", evenements: "Fêtes et événements", impots: "Impôts et taxes", autre: "Autre",
+};
+const MOIS_L = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+export const moisLong = (ym) => { if (!ym) return ""; const [y, m] = String(ym).split("-"); return `${MOIS_L[+m - 1]} ${y}`; };
+export const moisNom = (ym) => { if (!ym) return ""; const m = String(ym).split("-")[1]; const n = MOIS_L[+m - 1]; return n[0].toUpperCase() + n.slice(1); };
+export const libelleLigne = (l) => (l.type === "mensualite" ? `Mensualité ${moisLong(l.mois)}` : TYPES[l.type] || l.type);
+
+// Montant en lettres (français, usage au Sénégal : soixante-dix, quatre-vingt-dix).
+const U = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"];
+const D = ["", "", "vingt", "trente", "quarante", "cinquante", "soixante", "soixante", "quatre-vingt", "quatre-vingt"];
+function sous100(n) {
+  if (n < 20) return U[n];
+  const d = Math.floor(n / 10), u = n % 10;
+  if (d === 7 || d === 9) return `${D[d]}${d === 7 && u === 1 ? "-et-" : "-"}${U[10 + u]}`;
+  if (u === 0) return d === 8 ? "quatre-vingts" : D[d];
+  if (u === 1 && d !== 8) return `${D[d]}-et-un`;
+  return `${D[d]}-${U[u]}`;
+}
+function sous1000(n) {
+  const c = Math.floor(n / 100), r = n % 100;
+  const cent = c === 0 ? "" : c === 1 ? "cent" : `${U[c]} cent${r === 0 ? "s" : ""}`;
+  return [cent, r ? sous100(r) : ""].filter(Boolean).join(" ");
+}
+export function enLettres(n) {
+  n = Math.round(Number(n) || 0);
+  if (n === 0) return "zéro";
+  const parts = [];
+  const mds = Math.floor(n / 1e9), mil = Math.floor((n % 1e9) / 1e6), k = Math.floor((n % 1e6) / 1000), r = n % 1000;
+  if (mds) parts.push(`${sous1000(mds)} milliard${mds > 1 ? "s" : ""}`);
+  if (mil) parts.push(`${sous1000(mil)} million${mil > 1 ? "s" : ""}`);
+  if (k) parts.push(k === 1 ? "mille" : `${sous1000(k).replace(/cents$/, "cent").replace(/vingts$/, "vingt")} mille`);
+  if (r) parts.push(sous1000(r));
+  return parts.join(" ");
+}
+export const telWa = (t) => { const d = String(t || "").replace(/\D/g, ""); return d.length === 9 ? "221" + d : d; };
+const MOIS_ABR = ["Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."];
+export const moisAbr = (ym) => (ym ? MOIS_ABR[+String(ym).split("-")[1] - 1] : "");
