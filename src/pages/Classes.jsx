@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, School, LayoutGrid, Table2, Receipt, CalendarRange, Settings2, Baby } from "lucide-react";
+import { Plus, Pencil, Trash2, School, LayoutGrid, Table2, Receipt, CalendarRange, Settings2, Baby, BookOpen, UserRound } from "lucide-react";
+import Matieres from "../components/Matieres";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, CYCLES } from "../lib/format";
@@ -13,7 +14,7 @@ const Sec = ({ icon: I, tone, title, sub, children }) => (
 );
 const COL = { garderie: "var(--gold-ink)", prescolaire: "var(--coral)", elementaire: "var(--teal)" };
 
-const VIDE = { nom: "", cycle: "elementaire", ordre: 0, capacite: null, frais_inscription: 0, uniforme: 0, mensualite: 0, mensualite_jan_fev: 0, mensualite_cantine: 0, mensualite_cantine_jan_fev: 0, frais_cantine: 0 };
+const VIDE = { nom: "", cycle: "elementaire", ordre: 0, capacite: null, titulaire_id: null, bareme: 10, frais_inscription: 0, uniforme: 0, mensualite: 0, mensualite_jan_fev: 0, mensualite_cantine: 0, mensualite_cantine_jan_fev: 0, frais_cantine: 0 };
 
 function ClasseForm({ classe, onClose }) {
   const s = useSession();
@@ -22,10 +23,11 @@ function ClasseForm({ classe, onClose }) {
   const [v, setV] = useState({ ...VIDE, ...(classe || {}) });
   const [error, setError] = useState(null);
   const m = (k) => ({ value: v[k], onChange: (x) => setV({ ...v, [k]: x ?? 0 }) });
+  const ens = useQuery({ queryKey: ["enseignants"], queryFn: () => api.get("/enseignants") });
 
   const save = async () => {
     setError(null);
-    const { id, annee_id, effectif, filles, ...data } = v;
+    const { id, annee_id, effectif, filles, titulaire, nb_matieres, ...data } = v;
     try {
       if (classe) await api.put(`/classes/${classe.id}`, data);
       else await api.post("/classes", { ...data, annee_id: s.annee?.id });
@@ -53,6 +55,12 @@ function ClasseForm({ classe, onClose }) {
           </Field>
           <Field label="Places" hint="Laisser vide si illimité"><Money value={v.capacite} onChange={(x) => setV({ ...v, capacite: x })} /></Field>
           <Field label="Ordre d'affichage"><Money value={v.ordre} onChange={(x) => setV({ ...v, ordre: x ?? 0 })} /></Field>
+          <Field label="Enseignant titulaire" className="span2">
+            <Select value={v.titulaire_id || ""} onChange={(e) => setV({ ...v, titulaire_id: e.target.value ? Number(e.target.value) : null })}>
+              <option value="">Aucun</option>{ens.data?.filter((x) => x.statut === "actif").map((x) => <option key={x.id} value={x.id}>{x.prenom} {x.nom}</option>)}
+            </Select>
+          </Field>
+          <Field label="Moyennes sur" hint="Barème des bulletins"><Select value={v.bareme} onChange={(e) => setV({ ...v, bareme: Number(e.target.value) })}><option value={10}>10</option><option value={20}>20</option></Select></Field>
         </div>
         </Sec>
         <Sec icon={Receipt} tone="gold" title="Frais d'inscription">
@@ -81,6 +89,7 @@ export default function Classes() {
   const qc = useQueryClient();
   const [edit, setEdit] = useState(null);
   const [del, setDel] = useState(null);
+  const [mat, setMat] = useState(null);
   const { data, isLoading, error } = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }) });
   const peut = s.peut("classes.ecrire");
 
@@ -136,6 +145,10 @@ export default function Classes() {
                   <dt>Mensualité</dt><dd>{fcfa(c.mensualite)}</dd>
                   <dt>Avec cantine</dt><dd style={{ color: COL[c.cycle] }}>{fcfa(c.mensualite_cantine)}</dd>
                 </dl>
+                <div className="row" style={{ justifyContent: "space-between", fontSize: 13 }}>
+                  <span className="row muted" style={{ gap: 6 }}><UserRound size={15} />{c.titulaire || "Pas de titulaire"}</span>
+                  {c.cycle !== "garderie" && <button className="btn sm" onClick={() => setMat(c)}><BookOpen size={14} />{c.nb_matieres} matière{c.nb_matieres > 1 ? "s" : ""}</button>}
+                </div>
               </div>
             );
           })}
@@ -170,6 +183,7 @@ export default function Classes() {
           </div>
         </div>
       )}
+      {mat && <Matieres classe={mat} onClose={() => setMat(null)} />}
       {edit && <ClasseForm classe={edit === "new" ? null : edit} onClose={() => setEdit(null)} />}
       {del && <Confirm danger title={`Supprimer la classe ${del.nom} ?`} confirmLabel="Supprimer" message="Seule une classe sans élève peut être supprimée." onConfirm={supprimer} onClose={() => setDel(null)} />}
     </>

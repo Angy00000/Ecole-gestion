@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, School, Wallet, Receipt, AlertTriangle, BookOpen, CalendarCheck,
-  GraduationCap, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange,
+  GraduationCap, CalendarClock, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange,
 } from "lucide-react";
 import { useSession } from "../lib/session";
 import { ROLES, initiales } from "../lib/format";
@@ -19,9 +19,10 @@ const NAV = [
   { to: "/impayes", label: "Impayés", icon: AlertTriangle, droit: "finances.lire" },
   { to: "/depenses", label: "Dépenses", icon: Receipt, droit: "depenses.lire" },
   { group: "Pédagogie" },
-  { to: "/notes", label: "Notes et bulletins", icon: BookOpen, soon: true },
-  { to: "/absences", label: "Absences", icon: CalendarCheck, soon: true },
-  { to: "/enseignants", label: "Enseignants", icon: GraduationCap, soon: true },
+  { to: "/notes", label: "Notes et bulletins", icon: BookOpen, droit: "pedagogie.lire" },
+  { to: "/absences", label: "Absences", icon: CalendarCheck, droit: "pedagogie.lire" },
+  { to: "/emploi", label: "Emploi du temps", icon: CalendarClock, droit: "pedagogie.lire" },
+  { to: "/enseignants", label: "Enseignants", icon: GraduationCap, droit: "pedagogie.lire" },
   { group: "Administration" },
   { to: "/parametres", label: "Paramètres", icon: Settings },
 ];
@@ -53,7 +54,7 @@ export default function Layout() {
           <div><strong>ESJBM</strong><span>Saint Jean Baptiste<br />de Malika</span></div>
         </div>
         <nav className="nav" aria-label="Navigation principale">
-          {NAV.filter((n) => !n.droit || s.peut(n.droit)).map((n, i) => n.group
+          {NAV.filter((n) => !n.droit || s.peut(n.droit)).filter((n, i, arr) => !n.group || (arr[i + 1] && !arr[i + 1].group)).map((n, i) => n.group
             ? <div key={i} className="nav-group">{n.group}</div>
             : <NavLink key={n.to} to={n.to} end={n.end} className={n.soon ? "soon" : undefined}><n.icon size={19} />{n.label}</NavLink>)}
         </nav>

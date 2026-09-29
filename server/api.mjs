@@ -83,10 +83,11 @@ const readToken = async (t) => {
 const DROITS = {
   admin:      ["*"],
   direction:  ["eleves.lire", "eleves.ecrire", "eleves.supprimer", "classes.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire",
-               "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire"],
+               "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire",
+               "pedagogie.lire", "pedagogie.ecrire", "enseignants.ecrire", "absences.ecrire"],
   comptable:  ["eleves.lire", "finances.lire", "finances.encaisser", "depenses.lire", "depenses.ecrire"],
-  secretaire: ["eleves.lire", "eleves.ecrire", "finances.lire", "finances.encaisser"],
-  professeur: ["eleves.lire"],
+  secretaire: ["eleves.lire", "eleves.ecrire", "finances.lire", "finances.encaisser", "pedagogie.lire", "absences.ecrire"],
+  professeur: ["eleves.lire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire"],
 };
 const peut = (role, droit) => (DROITS[role] || []).some((d) => d === "*" || d === droit);
 const exige = (ctx, droit) => { if (!peut(ctx.user.role, droit)) fail(403, "Vous n'avez pas les droits pour cette action."); };
@@ -98,7 +99,7 @@ const journal = (ctx, action, entite, entite_id, details) =>
 // ── Validation ────────────────────────────────────────────────────────────
 const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in obj).map((k) => [k, obj[k] === "" ? null : obj[k]]));
 const COLS_ELEVE = ["nom","prenom","sexe","date_naissance","lieu_naissance","adresse","pere_nom","pere_prenom","pere_profession","pere_telephone","mere_nom","mere_prenom","mere_profession","mere_telephone","tuteur_nom","tuteur_telephone","observations","statut"];
-const COLS_CLASSE = ["nom","cycle","ordre","capacite","frais_inscription","uniforme","mensualite","mensualite_jan_fev","mensualite_cantine","mensualite_cantine_jan_fev","frais_cantine"];
+const COLS_CLASSE = ["nom","cycle","ordre","capacite","titulaire_id","bareme","frais_inscription","uniforme","mensualite","mensualite_jan_fev","mensualite_cantine","mensualite_cantine_jan_fev","frais_cantine"];
 const COLS_INSC = ["classe_id","cantine","statut","mensualite_speciale","gratuit","date_inscription","type"];
 const COLS_ETAB = ["nom","slogan","adresse","telephones","email","site_web","ninea","bp","autorisation","logo"];
 const insertSql = (table, data) => {
@@ -178,9 +179,14 @@ route("POST", "/annees", async (ctx) => {
   const { libelle, debut, fin, copier_de } = ctx.body;
   requis(ctx.body, [["libelle", "Le libellé"], ["debut", "La date de début"], ["fin", "La date de fin"]]);
   const a = await one("insert into app.annees (libelle, debut, fin) values ($1,$2,$3) returning *", [libelle, debut, fin]);
-  if (copier_de) await q(
-    `insert into app.classes (annee_id, ${COLS_CLASSE.join(",")})
-     select $1, ${COLS_CLASSE.join(",")} from app.classes where annee_id=$2`, [a.id, copier_de]);
+  if (copier_de) await tx([
+    [`insert into app.classes (annee_id, ${COLS_CLASSE.join(",")})
+     select $1, ${COLS_CLASSE.join(",")} from app.classes where annee_id=$2`, [a.id, copier_de]],
+    [`insert into app.matieres (classe_id, nom, coefficient, bareme, ordre, enseignant_id)
+     select cn.id, m.nom, m.coefficient, m.bareme, m.ordre, m.enseignant_id
+     from app.matieres m join app.classes co on co.id=m.classe_id and co.annee_id=$2
+     join app.classes cn on cn.annee_id=$1 and cn.nom=co.nom`, [a.id, copier_de]],
+  ]);
   await journal(ctx, "creation", "annee", a.id, { libelle });
   return a;
 });
@@ -203,10 +209,11 @@ route("POST", "/annees/:id/activer", async (ctx) => {
 // ── Classes & tarifs ──────────────────────────────────────────────────────
 route("GET", "/classes", async (ctx) => {
   const annee = await anneeCourante(ctx.query.annee_id);
-  return q(`select c.*,
+  return q(`select c.*, t.prenom || ' ' || t.nom as titulaire,
+      (select count(*) from app.matieres m where m.classe_id=c.id) as nb_matieres,
       (select count(*) from app.inscriptions i where i.classe_id=c.id and i.statut='active') as effectif,
       (select count(*) filter (where e.sexe='F') from app.inscriptions i join app.eleves e on e.id=i.eleve_id where i.classe_id=c.id and i.statut='active') as filles
-    from app.classes c where c.annee_id=$1 order by c.ordre, c.nom`, [annee]);
+    from app.classes c left join app.enseignants t on t.id=c.titulaire_id where c.annee_id=$1 order by c.ordre, c.nom`, [annee]);
 });
 
 route("POST", "/classes", async (ctx) => {
@@ -334,7 +341,9 @@ route("GET", "/eleves/:id", async (ctx) => {
       : ["select null where false"],
   ]);
   if (!eleve) fail(404, "Élève introuvable.");
-  return { eleve, inscriptions, paiements };
+  const absences = peut(ctx.user.role, "pedagogie.lire") ? await q(`select a.id, a.date_absence, a.moment, a.type, a.justifiee, a.motif, i.annee_id
+    from app.absences a join app.inscriptions i on i.id=a.inscription_id where i.eleve_id=$1 order by a.date_absence desc limit 100`, [id]) : [];
+  return { eleve, inscriptions, paiements, absences };
 });
 
 const prochainMatricule = async (anneeId) => {
@@ -628,6 +637,289 @@ route("DELETE", "/depenses/:id", async (ctx) => {
   exige(ctx, "depenses.ecrire");
   const r = await one("delete from app.depenses where id=$1 returning id, libelle, montant", [ctx.params.id]);
   await journal(ctx, "suppression", "depense", Number(ctx.params.id), r);
+  return { ok: true };
+});
+
+
+// ═══ PÉDAGOGIE ═════════════════════════════════════════════════════════════
+const COLS_ENS = ["nom", "prenom", "sexe", "telephone", "email", "adresse", "specialite", "diplome", "date_embauche", "salaire", "statut", "observations"];
+route("GET", "/enseignants", async (ctx) => {
+  exige(ctx, "pedagogie.lire");
+  const annee = await anneeCourante(ctx.query.annee_id);
+  return q(`select e.*,
+      (select string_agg(c.nom, ', ' order by c.ordre) from app.classes c where c.titulaire_id=e.id and c.annee_id=$1) as classes_titulaire,
+      (select string_agg(distinct m.nom, ', ') from app.matieres m join app.classes c on c.id=m.classe_id and c.annee_id=$1 where m.enseignant_id=e.id) as matieres,
+      (select count(*) from app.emploi_temps t join app.classes c on c.id=t.classe_id and c.annee_id=$1 where t.enseignant_id=e.id) as creneaux
+    from app.enseignants e order by e.statut, e.nom, e.prenom`, [annee]);
+});
+route("POST", "/enseignants", async (ctx) => {
+  exige(ctx, "enseignants.ecrire");
+  const d = pick(ctx.body, COLS_ENS);
+  requis(d, [["nom", "Le nom"], ["prenom", "Le prénom"]]);
+  d.nom = d.nom.trim().toUpperCase();
+  const r = await one(...insertSql("app.enseignants", d));
+  await journal(ctx, "creation", "enseignant", r.id, { nom: `${r.prenom} ${r.nom}` });
+  return r;
+});
+route("PUT", "/enseignants/:id", async (ctx) => {
+  exige(ctx, "enseignants.ecrire");
+  const d = pick(ctx.body, COLS_ENS);
+  if (d.nom) d.nom = d.nom.trim().toUpperCase();
+  const r = await one(...updateSql("app.enseignants", ctx.params.id, d));
+  await journal(ctx, "modification", "enseignant", r.id);
+  return r;
+});
+route("DELETE", "/enseignants/:id", async (ctx) => {
+  exige(ctx, "enseignants.ecrire");
+  const id = ctx.params.id;
+  await tx([
+    ["update app.classes set titulaire_id=null where titulaire_id=$1", [id]],
+    ["update app.matieres set enseignant_id=null where enseignant_id=$1", [id]],
+    ["update app.emploi_temps set enseignant_id=null where enseignant_id=$1", [id]],
+    ["delete from app.enseignants where id=$1", [id]],
+  ]);
+  await journal(ctx, "suppression", "enseignant", Number(id));
+  return { ok: true };
+});
+
+// ── Matières ──
+route("GET", "/classes/:id/matieres", async (ctx) => {
+  exige(ctx, "pedagogie.lire");
+  return q(`select m.*, e.prenom || ' ' || e.nom as enseignant from app.matieres m left join app.enseignants e on e.id=m.enseignant_id
+    where m.classe_id=$1 order by m.ordre, m.nom`, [ctx.params.id]);
+});
+route("POST", "/matieres", async (ctx) => {
+  exige(ctx, "classes.ecrire");
+  const d = pick(ctx.body, ["classe_id", "nom", "coefficient", "bareme", "ordre", "enseignant_id"]);
+  requis(d, [["classe_id", "La classe"], ["nom", "Le nom de la matière"]]);
+  return one(...insertSql("app.matieres", d));
+});
+route("PUT", "/matieres/:id", async (ctx) => {
+  exige(ctx, "classes.ecrire");
+  return one(...updateSql("app.matieres", ctx.params.id, pick(ctx.body, ["nom", "coefficient", "bareme", "ordre", "enseignant_id"])));
+});
+route("DELETE", "/matieres/:id", async (ctx) => {
+  exige(ctx, "classes.ecrire");
+  const n = await one("select count(*) as n from app.evaluations where matiere_id=$1", [ctx.params.id]);
+  if (n.n > 0) fail(400, `Impossible : ${n.n} évaluation(s) existent pour cette matière.`);
+  await q("delete from app.matieres where id=$1", [ctx.params.id]);
+  return { ok: true };
+});
+
+// ── Évaluations & notes ──
+route("GET", "/evaluations", async (ctx) => {
+  exige(ctx, "pedagogie.lire");
+  const { classe_id, trimestre } = ctx.query;
+  requis(ctx.query, [["classe_id", "La classe"]]);
+  const p = [classe_id]; let w = "ev.classe_id=$1";
+  if (trimestre) { p.push(trimestre); w += " and ev.trimestre=$2"; }
+  return q(`select ev.*, m.nom as matiere, m.ordre as matiere_ordre,
+      (select count(*) from app.notes n where n.evaluation_id=ev.id and (n.note is not null or n.absent)) as saisies,
+      (select round(avg(n.note), 2) from app.notes n where n.evaluation_id=ev.id and n.note is not null) as moyenne,
+      (select count(*) from app.inscriptions i where i.classe_id=ev.classe_id and i.statut='active') as effectif
+    from app.evaluations ev join app.matieres m on m.id=ev.matiere_id where ${w}
+    order by ev.trimestre, m.ordre, ev.date_eval, ev.id`, p);
+});
+route("POST", "/evaluations", async (ctx) => {
+  exige(ctx, "pedagogie.ecrire");
+  const d = pick(ctx.body, ["classe_id", "matiere_id", "trimestre", "type", "libelle", "date_eval", "bareme"]);
+  requis(d, [["classe_id", "La classe"], ["matiere_id", "La matière"], ["trimestre", "Le trimestre"]]);
+  if (!d.bareme) d.bareme = (await one("select bareme from app.matieres where id=$1", [d.matiere_id])).bareme;
+  d.created_by = ctx.user.id;
+  const r = await one(...insertSql("app.evaluations", d));
+  await journal(ctx, "creation", "evaluation", r.id, { type: r.type, trimestre: r.trimestre });
+  return r;
+});
+route("PUT", "/evaluations/:id", async (ctx) => {
+  exige(ctx, "pedagogie.ecrire");
+  return one(...updateSql("app.evaluations", ctx.params.id, pick(ctx.body, ["matiere_id", "trimestre", "type", "libelle", "date_eval", "bareme"])));
+});
+route("DELETE", "/evaluations/:id", async (ctx) => {
+  exige(ctx, "pedagogie.ecrire");
+  await q("delete from app.evaluations where id=$1", [ctx.params.id]);
+  await journal(ctx, "suppression", "evaluation", Number(ctx.params.id));
+  return { ok: true };
+});
+route("GET", "/evaluations/:id/notes", async (ctx) => {
+  exige(ctx, "pedagogie.lire");
+  const [[ev], rows] = await tx([
+    [`select ev.*, m.nom as matiere, c.nom as classe from app.evaluations ev join app.matieres m on m.id=ev.matiere_id join app.classes c on c.id=ev.classe_id where ev.id=$1`, [ctx.params.id]],
+    [`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, n.note, coalesce(n.absent,false) as absent
+      from app.inscriptions i join app.eleves e on e.id=i.eleve_id
+      left join app.notes n on n.inscription_id=i.id and n.evaluation_id=$1
+      where i.classe_id=(select classe_id from app.evaluations where id=$1) and i.statut='active' order by e.nom, e.prenom`, [ctx.params.id]],
+  ]);
+  if (!ev) fail(404, "Évaluation introuvable.");
+  return { evaluation: ev, notes: rows };
+});
+route("PUT", "/evaluations/:id/notes", async (ctx) => {
+  exige(ctx, "pedagogie.ecrire");
+  const ev = await one("select bareme from app.evaluations where id=$1", [ctx.params.id]);
+  if (!ev) fail(404, "Évaluation introuvable.");
+  const list = (ctx.body.notes || []).map((n) => {
+    const note = n.note === "" || n.note == null ? null : Number(String(n.note).replace(",", "."));
+    if (note != null && (isNaN(note) || note < 0 || note > ev.bareme)) fail(400, `Note invalide (${n.note}) : elle doit être entre 0 et ${ev.bareme}.`);
+    return [`insert into app.notes (evaluation_id, inscription_id, note, absent, updated_at) values ($1,$2,$3,$4,now())
+      on conflict (evaluation_id, inscription_id) do update set note=excluded.note, absent=excluded.absent, updated_at=now()`,
+      [ctx.params.id, n.inscription_id, note, !!n.absent]];
+  });
+  if (list.length) await tx(list);
+  await journal(ctx, "saisie_notes", "evaluation", Number(ctx.params.id), { nombre: list.length });
+  return { ok: true, nombre: list.length };
+});
+
+// ── Bulletins ──
+const TRIMESTRES = { 1: [10, 11, 12], 2: [1, 2, 3], 3: [4, 5, 6] };
+const mention = (m, b) => {
+  const x = (m / b) * 20;
+  return x >= 16 ? "Excellent travail" : x >= 14 ? "Très bien" : x >= 12 ? "Bien" : x >= 10 ? "Assez bien" : x >= 8 ? "Passable, peut mieux faire" : "Insuffisant, doit redoubler d'efforts";
+};
+route("GET", "/bulletins", async (ctx) => {
+  exige(ctx, "pedagogie.lire");
+  const { classe_id } = ctx.query;
+  const tri = Number(ctx.query.trimestre) || 1;
+  requis(ctx.query, [["classe_id", "La classe"]]);
+  const [[classe], matieres, eleves, notes, apps, abs] = await tx([
+    [`select c.*, a.libelle as annee, a.debut, a.fin, t.prenom || ' ' || t.nom as titulaire from app.classes c join app.annees a on a.id=c.annee_id left join app.enseignants t on t.id=c.titulaire_id where c.id=$1`, [classe_id]],
+    [`select m.*, e.prenom || ' ' || e.nom as enseignant from app.matieres m left join app.enseignants e on e.id=m.enseignant_id where m.classe_id=$1 order by m.ordre, m.nom`, [classe_id]],
+    [`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, e.date_naissance, e.lieu_naissance
+      from app.inscriptions i join app.eleves e on e.id=i.eleve_id where i.classe_id=$1 and i.statut='active' order by e.nom, e.prenom`, [classe_id]],
+    [`select ev.matiere_id, ev.type, ev.bareme, n.inscription_id, n.note from app.notes n join app.evaluations ev on ev.id=n.evaluation_id
+      where ev.classe_id=$1 and ev.trimestre=$2 and n.note is not null`, [classe_id, tri]],
+    [`select ap.* from app.appreciations ap join app.inscriptions i on i.id=ap.inscription_id where i.classe_id=$1 and ap.trimestre=$2`, [classe_id, tri]],
+    [`select ab.inscription_id, count(*) filter (where ab.type='absence') as absences, count(*) filter (where ab.type='absence' and ab.justifiee) as justifiees, count(*) filter (where ab.type='retard') as retards
+      from app.absences ab join app.inscriptions i on i.id=ab.inscription_id
+      where i.classe_id=$1 and extract(month from ab.date_absence) = any($2::int[]) group by 1`, [classe_id, `{${TRIMESTRES[tri].join(",")}}`]],
+  ]);
+  if (!classe) fail(404, "Classe introuvable.");
+  const B = classe.bareme;
+  const res = eleves.map((el) => {
+    let somme = 0, coefs = 0;
+    const lignes = matieres.map((m) => {
+      const ns = notes.filter((n) => n.inscription_id === el.inscription_id && n.matiere_id === m.id);
+      // Composition comptant double par rapport aux devoirs
+      let tot = 0, poids = 0;
+      ns.forEach((n) => { const w = n.type === "composition" ? 2 : 1; tot += (n.note / n.bareme) * m.bareme * w; poids += w; });
+      const moy = poids ? tot / poids : null;
+      if (moy != null) { somme += (moy / m.bareme) * B * Number(m.coefficient); coefs += Number(m.coefficient); }
+      return { matiere_id: m.id, matiere: m.nom, coefficient: Number(m.coefficient), bareme: m.bareme, moyenne: moy, enseignant: m.enseignant };
+    });
+    const ap = apps.find((a) => a.inscription_id === el.inscription_id);
+    const ab = abs.find((a) => a.inscription_id === el.inscription_id);
+    return { ...el, lignes, moyenne: coefs ? somme / coefs : null, observation: ap?.observation || null, decision: ap?.decision || null,
+      absences: ab?.absences || 0, absences_justifiees: ab?.justifiees || 0, retards: ab?.retards || 0 };
+  });
+  const classes = res.filter((r) => r.moyenne != null).sort((a, b) => b.moyenne - a.moyenne);
+  classes.forEach((r, i) => { r.rang = i > 0 && Math.abs(r.moyenne - classes[i - 1].moyenne) < 1e-9 ? classes[i - 1].rang : i + 1; r.mention = mention(r.moyenne, B); });
+  const moys = classes.map((r) => r.moyenne);
+  // moyennes de classe par matière
+  const parMatiere = matieres.map((m, k) => { const v = res.map((r) => r.lignes[k].moyenne).filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; });
+  return {
+    classe, trimestre: tri, matieres, eleves: res,
+    stats: { effectif: res.length, classes: classes.length, moyenne: moys.length ? moys.reduce((a, b) => a + b, 0) / moys.length : null,
+      max: moys.length ? Math.max(...moys) : null, min: moys.length ? Math.min(...moys) : null,
+      admis: moys.filter((m) => m >= B / 2).length, par_matiere: parMatiere },
+  };
+});
+route("PUT", "/appreciations", async (ctx) => {
+  exige(ctx, "pedagogie.ecrire");
+  const { inscription_id, trimestre, observation, decision } = ctx.body;
+  requis(ctx.body, [["inscription_id", "L'élève"], ["trimestre", "Le trimestre"]]);
+  await q(`insert into app.appreciations (inscription_id, trimestre, observation, decision) values ($1,$2,$3,$4)
+    on conflict (inscription_id, trimestre) do update set observation=excluded.observation, decision=excluded.decision`,
+    [inscription_id, trimestre, observation || null, decision || null]);
+  return { ok: true };
+});
+
+// ── Absences ──
+route("GET", "/appel", async (ctx) => {
+  exige(ctx, "pedagogie.lire");
+  requis(ctx.query, [["classe_id", "La classe"]]);
+  const jour = ctx.query.date || new Date().toISOString().slice(0, 10);
+  const rows = await q(`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe,
+      coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
+      (select json_agg(json_build_object('id', a.id, 'type', a.type, 'moment', a.moment, 'justifiee', a.justifiee, 'motif', a.motif)) from app.absences a where a.inscription_id=i.id and a.date_absence=$2) as marques
+    from app.inscriptions i join app.eleves e on e.id=i.eleve_id where i.classe_id=$1 and i.statut='active' order by e.nom, e.prenom`, [ctx.query.classe_id, jour]);
+  return { date: jour, rows };
+});
+route("PUT", "/appel", async (ctx) => {
+  exige(ctx, "absences.ecrire");
+  const { classe_id, date: jour, items } = ctx.body;
+  requis(ctx.body, [["classe_id", "La classe"], ["date", "La date"]]);
+  const list = [[`delete from app.absences a using app.inscriptions i where a.inscription_id=i.id and i.classe_id=$1 and a.date_absence=$2`, [classe_id, jour]]];
+  (items || []).filter((it) => it.statut === "absent" || it.statut === "retard").forEach((it) => list.push([
+    `insert into app.absences (inscription_id, date_absence, moment, type, justifiee, motif, saisi_par) values ($1,$2,$3,$4,$5,$6,$7)`,
+    [it.inscription_id, jour, it.moment || "journee", it.statut === "retard" ? "retard" : "absence", !!it.justifiee, it.motif || null, ctx.user.id]]));
+  await tx(list);
+  await journal(ctx, "appel", "classe", Number(classe_id), { date: jour, absents: list.length - 1 });
+  return { ok: true, marques: list.length - 1 };
+});
+route("GET", "/absences", async (ctx) => {
+  exige(ctx, "pedagogie.lire");
+  const annee = await anneeCourante(ctx.query.annee_id);
+  const { du, au, classe_id, eleve_id } = ctx.query;
+  const p = [annee]; const w = ["i.annee_id=$1"];
+  if (du) { p.push(du); w.push(`a.date_absence >= $${p.length}`); }
+  if (au) { p.push(au); w.push(`a.date_absence <= $${p.length}`); }
+  if (classe_id) { p.push(classe_id); w.push(`i.classe_id=$${p.length}`); }
+  if (eleve_id) { p.push(eleve_id); w.push(`i.eleve_id=$${p.length}`); }
+  const base = `from app.absences a join app.inscriptions i on i.id=a.inscription_id join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id where ${w.join(" and ")}`;
+  const [rows, parEleve, [tot]] = await tx([
+    [`select a.*, e.id as eleve_id, e.nom, e.prenom, e.sexe, e.matricule, c.nom as classe, c.cycle ${base} order by a.date_absence desc, e.nom limit 500`, p],
+    [`select e.id as eleve_id, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle, count(*) filter (where a.type='absence') as absences,
+        count(*) filter (where a.type='absence' and not a.justifiee) as non_justifiees, count(*) filter (where a.type='retard') as retards,
+        coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone
+      ${base} group by e.id, c.nom, c.cycle order by 7 desc, 6 desc limit 30`, p],
+    [`select count(*) filter (where a.type='absence') as absences, count(*) filter (where a.type='absence' and not a.justifiee) as non_justifiees, count(*) filter (where a.type='retard') as retards ${base}`, p],
+  ]);
+  return { rows, par_eleve: parEleve, ...tot };
+});
+route("PUT", "/absences/:id", async (ctx) => {
+  exige(ctx, "absences.ecrire");
+  return one(...updateSql("app.absences", ctx.params.id, pick(ctx.body, ["justifiee", "motif", "moment"])));
+});
+route("DELETE", "/absences/:id", async (ctx) => {
+  exige(ctx, "absences.ecrire");
+  await q("delete from app.absences where id=$1", [ctx.params.id]);
+  return { ok: true };
+});
+
+// ── Emploi du temps ──
+route("GET", "/emploi", async (ctx) => {
+  exige(ctx, "pedagogie.lire");
+  const annee = await anneeCourante(ctx.query.annee_id);
+  const p = [annee]; let w = "c.annee_id=$1";
+  if (ctx.query.classe_id) { p.push(ctx.query.classe_id); w += ` and t.classe_id=$${p.length}`; }
+  if (ctx.query.enseignant_id) { p.push(ctx.query.enseignant_id); w += ` and t.enseignant_id=$${p.length}`; }
+  return q(`select t.id, t.classe_id, t.jour, to_char(t.heure_debut,'HH24:MI') as heure_debut, to_char(t.heure_fin,'HH24:MI') as heure_fin,
+      t.matiere_id, t.libelle, t.enseignant_id, t.salle, m.nom as matiere, c.nom as classe, e.prenom || ' ' || e.nom as enseignant
+    from app.emploi_temps t join app.classes c on c.id=t.classe_id left join app.matieres m on m.id=t.matiere_id left join app.enseignants e on e.id=t.enseignant_id
+    where ${w} order by t.jour, t.heure_debut`, p);
+});
+const COLS_EDT = ["classe_id", "jour", "heure_debut", "heure_fin", "matiere_id", "libelle", "enseignant_id", "salle"];
+const conflitEdt = async (d, id) => {
+  if (!d.enseignant_id) return;
+  const c = await one(`select c.nom from app.emploi_temps t join app.classes c on c.id=t.classe_id
+    where t.enseignant_id=$1 and t.jour=$2 and t.heure_debut < $4::time and t.heure_fin > $3::time and t.id <> coalesce($5, 0) limit 1`,
+    [d.enseignant_id, d.jour, d.heure_debut, d.heure_fin, id || null]);
+  if (c) fail(400, `Cet enseignant a déjà cours en ${c.nom} sur ce créneau.`);
+};
+route("POST", "/emploi", async (ctx) => {
+  exige(ctx, "classes.ecrire");
+  const d = pick(ctx.body, COLS_EDT);
+  requis(d, [["classe_id", "La classe"], ["jour", "Le jour"], ["heure_debut", "L'heure de début"], ["heure_fin", "L'heure de fin"]]);
+  await conflitEdt(d);
+  return one(...insertSql("app.emploi_temps", d));
+});
+route("PUT", "/emploi/:id", async (ctx) => {
+  exige(ctx, "classes.ecrire");
+  const d = pick(ctx.body, COLS_EDT);
+  await conflitEdt({ ...d }, Number(ctx.params.id));
+  return one(...updateSql("app.emploi_temps", ctx.params.id, d));
+});
+route("DELETE", "/emploi/:id", async (ctx) => {
+  exige(ctx, "classes.ecrire");
+  await q("delete from app.emploi_temps where id=$1", [ctx.params.id]);
   return { ok: true };
 });
 

@@ -12,6 +12,11 @@ import Encaissements from "./pages/Encaissements";
 import Impayes from "./pages/Impayes";
 import Depenses from "./pages/Depenses";
 import Recu from "./pages/Recu";
+import Enseignants from "./pages/Enseignants";
+import Notes from "./pages/Notes";
+import Bulletins from "./pages/Bulletins";
+import Absences from "./pages/Absences";
+import Emploi from "./pages/Emploi";
 
 export default function App() {
   const s = useSession();
@@ -21,6 +26,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="recus/:id" element={<Recu />} />
+      {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="eleves" element={<Eleves />} />
@@ -30,6 +36,10 @@ export default function App() {
         {s.peut("finances.lire") && <Route path="paiements" element={<Encaissements />} />}
         {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
         {s.peut("depenses.lire") && <Route path="depenses" element={<Depenses />} />}
+        {s.peut("pedagogie.lire") && <Route path="notes" element={<Notes />} />}
+        {s.peut("pedagogie.lire") && <Route path="absences" element={<Absences />} />}
+        {s.peut("pedagogie.lire") && <Route path="enseignants" element={<Enseignants />} />}
+        {s.peut("pedagogie.lire") && <Route path="emploi" element={<Emploi />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

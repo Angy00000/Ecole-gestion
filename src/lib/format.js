@@ -78,3 +78,7 @@ export function enLettres(n) {
 export const telWa = (t) => { const d = String(t || "").replace(/\D/g, ""); return d.length === 9 ? "221" + d : d; };
 const MOIS_ABR = ["Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."];
 export const moisAbr = (ym) => (ym ? MOIS_ABR[+String(ym).split("-")[1] - 1] : "");
+export const JOURS = { 1: "Lundi", 2: "Mardi", 3: "Mercredi", 4: "Jeudi", 5: "Vendredi", 6: "Samedi" };
+export const TRIMESTRES = { 1: "1er trimestre", 2: "2e trimestre", 3: "3e trimestre" };
+export const note = (n, d = 2) => (n == null ? "—" : Number(n).toFixed(d).replace(".", ",").replace(/,00$/, ""));
+export const trimestreCourant = () => { const m = new Date().getMonth() + 1; return m >= 9 || m <= 0 ? 1 : m <= 3 ? 2 : 3; };

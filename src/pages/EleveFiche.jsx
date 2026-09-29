@@ -146,7 +146,7 @@ export default function EleveFiche() {
 
   if (isLoading) return <Spinner />;
   if (error) return <ErrorBox error={error} />;
-  const { eleve: e, inscriptions, paiements } = data;
+  const { eleve: e, inscriptions, paiements, absences = [] } = data;
   const courante = inscriptions.find((i) => i.annee_id === s.annee?.id);
   const a = age(e.date_naissance);
   const totalPaye = paiements.filter((p) => !p.annule && p.annee_id === s.annee?.id).reduce((t, p) => t + p.montant, 0);
@@ -161,7 +161,8 @@ export default function EleveFiche() {
   };
 
   const tabs = [["identite", "Identité et parents", null, User], ["scolarite", "Scolarité", inscriptions.length, School],
-    ...(s.peut("finances.lire") ? [["paiements", "Paiements", paiements.length, Receipt]] : [])];
+    ...(s.peut("finances.lire") ? [["paiements", "Paiements", paiements.length, Receipt]] : []),
+    ...(s.peut("pedagogie.lire") ? [["absences", "Absences", absences.filter((a) => a.annee_id === s.annee?.id).length, CalendarCheck2]] : [])];
 
   return (
     <div className="stack" style={{ marginTop: 14 }}>
@@ -277,6 +278,27 @@ export default function EleveFiche() {
               </div>
             ) : <Empty icon={Wallet} title="Aucun reçu">Les paiements encaissés apparaîtront ici.</Empty>}
           </div>
+        </div>
+      )}
+
+      {tab === "absences" && (
+        <div className="card">
+          <div className="card-head" style={{ paddingBottom: 14 }}>
+            <h3>Absences et retards</h3>
+            {courante && s.peut("pedagogie.lire") && <Link className="btn sm" to={`/bulletins/imprimer?classe=${courante.classe_id}&trimestre=1&eleve=${e.id}`}><Printer size={14} />Bulletin</Link>}
+          </div>
+          {absences.length ? (
+            <div className="table-wrap"><table className="table">
+              <thead><tr><th>Date</th><th>Type</th><th>Moment</th><th>Justifiée</th><th className="hide-m">Motif</th></tr></thead>
+              <tbody>{absences.map((a) => <tr key={a.id}>
+                <td className="num">{dateLongue(a.date_absence)}</td>
+                <td>{a.type === "retard" ? <span className="badge gold">Retard</span> : <span className="badge coral">Absence</span>}</td>
+                <td>{{ journee: "Journée", matin: "Matin", apres_midi: "Après-midi" }[a.moment]}</td>
+                <td>{a.justifiee ? <span className="badge green">Oui</span> : <span className="muted">Non</span>}</td>
+                <td className="hide-m">{a.motif || "—"}</td>
+              </tr>)}</tbody>
+            </table></div>
+          ) : <Empty icon={CalendarCheck2} title="Aucune absence">Élève assidu : aucune absence ni retard enregistré.</Empty>}
         </div>
       )}
 
