@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { LogIn } from "lucide-react";
+import { LogIn, Mail, Lock, ShieldCheck, Users, Wallet, BookOpen } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
-import { Field, Input, ErrorBox } from "../components/ui";
+import { Field, ErrorBox } from "../components/ui";
 
 export default function Login() {
   const s = useSession();
@@ -14,39 +14,42 @@ export default function Login() {
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true); setError(null);
-    try {
-      const r = await api.post("/auth/login", { email, mot_de_passe: mdp });
-      s.login(r.token);
-    } catch (err) { setError(err); }
-    setBusy(false);
+    try { const r = await api.post("/auth/login", { email, mot_de_passe: mdp }); s.login(r.token); }
+    catch (err) { setError(err); setBusy(false); }
   };
 
   return (
     <div className="login">
-      <section className="login-side">
-        <div className="ring" /><div className="ring b" />
-        <div>
-          <img src="/logo.png" alt="Logo ESJBM" />
+      <section className="login-side lattice">
+        <img className="logo" src="/logo.png" alt="Logo ESJBM" />
+        <div className="mid">
           <h1>École Saint Jean Baptiste de Malika</h1>
-          <p>Éduquer c'est rendre libre !</p>
+          <p className="motto">Éduquer c'est rendre libre !</p>
+          <div className="feats">
+            <span className="feat"><Users size={16} />Élèves et inscriptions</span>
+            <span className="feat"><Wallet size={16} />Paiements et reçus</span>
+            <span className="feat"><BookOpen size={16} />Notes et bulletins</span>
+          </div>
         </div>
-        <p className="small">Logiciel de gestion scolaire · Malika Cité Sonatel</p>
+        <p className="foot">Malika Cité Sonatel · Autorisation N° 00313/DU/08/01/2015</p>
       </section>
       <section className="login-main">
         <div className="login-card">
-          <h2>Connexion</h2>
-          <p className="muted">Entrez vos identifiants pour accéder au logiciel.</p>
+          <img className="logo-m" src="/logo.png" alt="" />
+          <h2>Bienvenue</h2>
+          <p>Connectez-vous pour accéder au logiciel de gestion de l'école.</p>
           <form onSubmit={submit}>
-            <ErrorBox error={error} />
+            {error && <ErrorBox error={error} />}
             <Field label="Adresse email">
-              <Input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+              <div className="with-icon"><Mail size={18} /><input className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus placeholder="nom@ecole.com" /></div>
             </Field>
             <Field label="Mot de passe">
-              <Input type="password" autoComplete="current-password" value={mdp} onChange={(e) => setMdp(e.target.value)} required />
+              <div className="with-icon"><Lock size={18} /><input className="input" type="password" autoComplete="current-password" value={mdp} onChange={(e) => setMdp(e.target.value)} required placeholder="••••••••" /></div>
             </Field>
-            <button className="btn primary" style={{ height: 44 }} disabled={busy}>
+            <button className="btn primary" style={{ height: 50, fontSize: 15 }} disabled={busy}>
               <LogIn size={18} />{busy ? "Connexion…" : "Se connecter"}
             </button>
+            <p className="xs muted row" style={{ justifyContent: "center", gap: 6 }}><ShieldCheck size={14} />Connexion sécurisée · session de 12 heures</p>
           </form>
         </div>
       </section>

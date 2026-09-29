@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Search, UserPlus, Download, Users, ChevronLeft, ChevronRight, Utensils } from "lucide-react";
+import { Search, UserPlus, Download, Users, ChevronLeft, ChevronRight, Utensils, ArrowDownAZ } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { initiales, age, nombre } from "../lib/format";
-import { Select, Spinner, ErrorBox, Empty } from "../components/ui";
-import PageTitle from "../components/PageTitle";
+import { Select, Spinner, ErrorBox, Empty, PageHead } from "../components/ui";
 import EleveForm from "./EleveForm";
 
 function useDebounce(v, ms = 300) {
@@ -30,6 +29,7 @@ export default function Eleves() {
   const limit = 50;
 
   useEffect(() => setPage(1), [dq, classe, sexe, inscrits, sort, s.annee?.id]);
+  useEffect(() => { if (params.get("nouveau") === "1") setForm(true); }, [params]);
 
   const classes = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }) });
   const filtres = { annee_id: s.annee?.id, q: dq, classe_id: classe, sexe, inscrits, sort, page, limit };
@@ -47,62 +47,67 @@ export default function Eleves() {
   };
 
   const d = list.data;
+  const total = classes.data?.reduce((t, c) => t + c.effectif, 0) || 0;
   const pages = d ? Math.max(1, Math.ceil(d.total / limit)) : 1;
-  const trier = (k) => setSort(k);
+  const Th = ({ k, children, className = "" }) => <th className={`sortable ${sort === k ? "sorted" : ""} ${className}`} onClick={() => setSort(k)}>{children}{sort === k && <ArrowDownAZ size={13} style={{ marginLeft: 4, verticalAlign: -2 }} />}</th>;
 
   return (
     <>
-      <PageTitle title="Élèves" subtitle={d ? `${nombre(d.total)} élève${d.total > 1 ? "s" : ""} ${inscrits === "non" ? "non réinscrits" : "inscrits"} en ${s.annee?.libelle}` : ""} />
-      <div className="panel">
+      <PageHead title="Élèves" sub={`${nombre(total)} élèves inscrits en ${s.annee?.libelle}`}>
+        <button className="btn" onClick={exporter}><Download size={17} /><span className="hide-m">Exporter en Excel</span></button>
+        {s.peut("eleves.ecrire") && <button className="btn primary" onClick={() => setForm(true)}><UserPlus size={17} />Inscrire un élève</button>}
+      </PageHead>
+
+      {inscrits === "oui" && (
+        <div className="class-tabs" role="tablist" aria-label="Filtrer par classe">
+          <button className={`class-tab ${!classe ? "on" : ""}`} onClick={() => setClasse("")}>Toutes <span className="n">{total}</span></button>
+          {classes.data?.map((c) => (
+            <button key={c.id} className={`class-tab ${classe == c.id ? "on" : ""}`} onClick={() => setClasse(String(c.id))}>{c.nom} <span className="n">{c.effectif}</span></button>
+          ))}
+        </div>
+      )}
+
+      <div className="card">
         <div className="toolbar">
-          <div className="search">
-            <Search size={16} />
-            <input className="input" placeholder="Nom, matricule ou téléphone…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher un élève" />
+          <div className="with-icon">
+            <Search size={18} />
+            <input className="input" placeholder="Nom, matricule ou téléphone d'un parent…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher" />
           </div>
-          <Select value={classe} onChange={(e) => setClasse(e.target.value)} aria-label="Classe">
-            <option value="">Toutes les classes</option>
-            {classes.data?.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
-          </Select>
           <Select value={sexe} onChange={(e) => setSexe(e.target.value)} aria-label="Sexe">
             <option value="">Filles et garçons</option><option value="F">Filles</option><option value="M">Garçons</option>
           </Select>
+          <span className="spacer" />
           <div className="seg">
             <button className={inscrits === "oui" ? "on" : ""} onClick={() => setInscrits("oui")}>Inscrits</button>
-            <button className={inscrits === "non" ? "on" : ""} onClick={() => setInscrits("non")} title="Élèves des années précédentes pas encore réinscrits">À réinscrire</button>
+            <button className={inscrits === "non" ? "on" : ""} onClick={() => { setInscrits("non"); setClasse(""); }}>À réinscrire</button>
           </div>
-          <span className="spacer" />
-          <button className="btn" onClick={exporter} title="Exporter la liste (Excel)"><Download size={16} /><span className="hide-m">Exporter</span></button>
-          {s.peut("eleves.ecrire") && <button className="btn primary" onClick={() => setForm(true)}><UserPlus size={16} />Inscrire un élève</button>}
         </div>
 
-        {list.isLoading ? <Spinner /> : list.error ? <div className="panel-body"><ErrorBox error={list.error} /></div> : !d.rows.length ? (
-          <Empty icon={Users} title={dq || classe || sexe ? "Aucun élève ne correspond" : inscrits === "non" ? "Tout le monde est réinscrit" : "Aucun élève inscrit"}
-            action={!dq && inscrits === "oui" && s.peut("eleves.ecrire") ? <button className="btn primary" onClick={() => setForm(true)}><UserPlus size={16} />Inscrire le premier élève</button> : null}>
-            {dq || classe || sexe ? "Modifiez la recherche ou les filtres." : ""}
+        {list.isLoading ? <Spinner /> : list.error ? <div style={{ padding: 18 }}><ErrorBox error={list.error} /></div> : !d.rows.length ? (
+          <Empty icon={Users} title={dq || classe || sexe ? "Aucun élève ne correspond" : inscrits === "non" ? "Tous les élèves sont réinscrits" : "Aucun élève inscrit"}
+            action={!dq && !classe && inscrits === "oui" && s.peut("eleves.ecrire") ? <button className="btn primary" onClick={() => setForm(true)}><UserPlus size={16} />Inscrire le premier élève</button> : null}>
+            {dq || classe || sexe ? "Essayez une autre recherche ou retirez un filtre." : inscrits === "non" ? "Ici apparaissent les élèves des années passées qui ne sont pas encore réinscrits." : ""}
           </Empty>
         ) : (
-          <div className="table-wrap" style={{ opacity: list.isFetching ? 0.6 : 1 }}>
+          <div className="table-wrap" style={{ opacity: list.isFetching ? 0.65 : 1, transition: "opacity .15s" }}>
             <table className="table">
               <thead><tr>
-                <th className="sortable" onClick={() => trier("nom")}>Élève {sort === "nom" && "↓"}</th>
-                <th className="sortable" onClick={() => trier("matricule")}>Matricule {sort === "matricule" && "↓"}</th>
-                <th className="sortable" onClick={() => trier("classe")}>Classe {sort === "classe" && "↓"}</th>
-                <th className="hide-m">Âge</th>
-                <th className="hide-m">Téléphone parent</th>
-                <th className="hide-m">Cantine</th>
+                <Th k="nom">Élève</Th><Th k="matricule">Matricule</Th><Th k="classe">Classe</Th>
+                <th className="hide-m">Âge</th><th className="hide-m">Téléphone parent</th><th className="hide-m">Cantine</th><th />
               </tr></thead>
               <tbody>
                 {d.rows.map((r) => (
                   <tr key={r.id} className="click" onClick={() => nav(`/eleves/${r.id}`)}>
-                    <td><div className="cell-person">
+                    <td><div className="person">
                       <span className={`avatar ${r.sexe || ""}`}>{initiales(r.prenom, r.nom)}</span>
-                      <div><strong>{r.nom} {r.prenom}</strong><span>{r.sexe === "F" ? "Fille" : r.sexe === "M" ? "Garçon" : ""}{r.type_inscription === "reinscription" ? " · réinscrit(e)" : ""}</span></div>
+                      <div><strong>{r.nom} {r.prenom}</strong><span>{r.sexe === "F" ? "Fille" : r.sexe === "M" ? "Garçon" : ""}{r.type_inscription === "reinscription" ? " · réinscrit(e)" : r.type_inscription === "nouvelle" ? " · nouveau" : ""}</span></div>
                     </div></td>
-                    <td className="num">{r.matricule}</td>
-                    <td>{r.classe ? <span className="classe-tag">{r.classe}</span> : <span className="muted">—</span>}</td>
-                    <td className="hide-m num">{age(r.date_naissance) != null ? `${age(r.date_naissance)} ans` : "—"}</td>
+                    <td className="num muted">{r.matricule}</td>
+                    <td>{r.classe ? <span className={`chip ${r.cycle || ""}`}>{r.classe}</span> : <span className="muted">—</span>}</td>
+                    <td className="hide-m num">{age(r.date_naissance) != null ? `${age(r.date_naissance)} ans` : <span className="muted">—</span>}</td>
                     <td className="hide-m num">{r.telephone || <span className="muted">—</span>}</td>
-                    <td className="hide-m">{r.cantine ? <span className="badge teal"><Utensils size={12} />Oui</span> : <span className="muted small">Non</span>}</td>
+                    <td className="hide-m">{r.cantine ? <span className="badge coral"><Utensils size={12} />Cantine</span> : <span className="muted small">—</span>}</td>
+                    <td className="r"><ChevronRight size={18} className="go" /></td>
                   </tr>
                 ))}
               </tbody>
@@ -112,7 +117,7 @@ export default function Eleves() {
 
         {d && d.total > limit && (
           <div className="pager">
-            <span>{(page - 1) * limit + 1}–{Math.min(page * limit, d.total)} sur {d.total}</span>
+            <span>{(page - 1) * limit + 1}–{Math.min(page * limit, d.total)} sur {d.total} élèves</span>
             <span className="spacer" />
             <button className="btn sm icon" disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label="Page précédente"><ChevronLeft size={16} /></button>
             <span>Page {page} / {pages}</span>

@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils } from "lucide-react";
+import { ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateLongue, age, initiales } from "../lib/format";
 import { Spinner, ErrorBox, Empty, Modal, Field, Select, Input, Confirm, useToast } from "../components/ui";
-import PageTitle from "../components/PageTitle";
 import EleveForm from "./EleveForm";
 
 const TYPES = { inscription: "Inscription", uniforme: "Uniforme", mensualite: "Mensualité", cantine: "Cantine", fournitures: "Fournitures", cours_vacances: "Cours de vacances", autre: "Autre" };
@@ -14,7 +13,21 @@ const MODES = { especes: "Espèces", wave: "Wave", orange_money: "Orange Money",
 const STATUTS = { active: "Inscrit", abandon: "Abandon", transfert: "Transféré" };
 
 const Info = ({ label, children }) => <><dt>{label}</dt><dd>{children || <span className="muted">—</span>}</dd></>;
-const Tel = ({ n }) => n ? <a href={`tel:${n.replace(/\s/g, "")}`} className="row" style={{ display: "inline-flex", gap: 6 }}><Phone size={14} />{n}</a> : null;
+const Tel = ({ n }) => n ? <a href={`tel:${n.replace(/\s/g, "")}`} className="tel"><Phone size={14} />{n}</a> : null;
+function Parent({ rel, prenom, nom, profession, tel, tone }) {
+  const name = [prenom, nom].filter(Boolean).join(" ");
+  return (
+    <div className="parent">
+      <span className={`avatar ${tone}`}>{name ? initiales(prenom, nom) : "?"}</span>
+      <div style={{ minWidth: 0 }}>
+        <span className="rel">{rel}</span>
+        <strong>{name || <span className="muted">Non renseigné</span>}</strong>
+        {profession && <div className="small muted">{profession}</div>}
+        <Tel n={tel} />
+      </div>
+    </div>
+  );
+}
 
 function InscriptionModal({ eleve, inscription, onClose }) {
   const s = useSession();
@@ -95,106 +108,120 @@ export default function EleveFiche() {
     } catch (err) { toast(err.message, "error"); setDel(false); }
   };
 
-  return (
-    <div className="stack">
-      <PageTitle title={`${e.prenom} ${e.nom}`} subtitle={`Matricule ${e.matricule}`} />
-      <div><Link to="/eleves" className="row small" style={{ display: "inline-flex" }}><ArrowLeft size={16} />Retour à la liste</Link></div>
+  const tabs = [["identite", "Identité et parents", null, User], ["scolarite", "Scolarité", inscriptions.length, School],
+    ...(s.peut("finances.lire") ? [["paiements", "Paiements", paiements.length, Receipt]] : [])];
 
-      <div className="panel">
-        <div className="profile-head">
+  return (
+    <div className="stack" style={{ marginTop: 14 }}>
+      <div><Link to="/eleves" className="crumb"><ArrowLeft size={16} />Retour aux élèves</Link></div>
+
+      <div className="card profile">
+        <div className={`cover lattice ${e.sexe || ""}`} />
+        <div className="profile-main">
           <span className={`avatar lg ${e.sexe || ""}`}>{initiales(e.prenom, e.nom)}</span>
           <div className="id">
             <h2>{e.prenom} {e.nom}</h2>
             <div className="meta">
-              <span className="num">{e.matricule}</span>
-              {courante ? <span className="classe-tag">{courante.classe}</span> : <span className="badge gold">Non inscrit(e) en {s.annee?.libelle}</span>}
-              {courante?.cantine && <span className="badge teal"><Utensils size={12} />Cantine</span>}
-              {courante && courante.statut !== "active" && <span className="badge danger">{STATUTS[courante.statut]}</span>}
-              {e.statut === "sorti" && <span className="badge danger">Sorti(e)</span>}
-              <span>{e.sexe === "F" ? "Fille" : "Garçon"}{a != null ? `, ${a} ans` : ""}</span>
+              <span className="badge">{e.matricule}</span>
+              {courante ? <span className={`chip ${courante.cycle || ""}`}>{courante.classe}</span> : <span className="badge gold">Non inscrit(e) en {s.annee?.libelle}</span>}
+              {courante?.cantine && <span className="badge coral"><Utensils size={12} />Cantine</span>}
+              {courante && courante.statut !== "active" && <span className="badge coral">{STATUTS[courante.statut]}</span>}
+              {e.statut === "sorti" && <span className="badge coral">Sorti(e)</span>}
             </div>
           </div>
-          <div className="row" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <button className="btn" onClick={() => window.print()}><Printer size={16} /><span className="hide-m">Imprimer</span></button>
-            {s.peut("eleves.ecrire") && !courante && <button className="btn primary" onClick={() => setInsc("new")}><RefreshCcw size={16} />Réinscrire</button>}
-            {s.peut("eleves.ecrire") && <button className="btn" onClick={() => setEdit(true)}><Pencil size={16} />Modifier</button>}
-            {s.peut("eleves.supprimer") && <button className="btn danger icon" onClick={() => setDel(true)} aria-label="Supprimer"><Trash2 size={16} /></button>}
+          <div className="actions">
+            <button className="btn" onClick={() => window.print()}><Printer size={17} /><span className="hide-m">Imprimer</span></button>
+            {s.peut("eleves.ecrire") && !courante && <button className="btn primary" onClick={() => setInsc("new")}><RefreshCcw size={17} />Réinscrire</button>}
+            {s.peut("eleves.ecrire") && <button className="btn" onClick={() => setEdit(true)}><Pencil size={17} />Modifier</button>}
+            {s.peut("eleves.supprimer") && <button className="btn danger icon" onClick={() => setDel(true)} aria-label="Supprimer l'élève"><Trash2 size={17} /></button>}
           </div>
         </div>
-        <div className="tabs" role="tablist">
-          {[["identite", "Identité et parents"], ["scolarite", `Scolarité (${inscriptions.length})`], ...(s.peut("finances.lire") ? [["paiements", `Paiements (${paiements.length})`]] : [])].map(([k, l]) =>
-            <button key={k} role="tab" className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}
+        <div className="mini-stats">
+          <div className="mini-stat"><span className="ic teal" style={{ display: "grid", placeItems: "center" }}><School size={18} /></span><div><div className="l">Classe</div><div className="v">{courante?.classe || "—"}</div></div></div>
+          <div className="mini-stat"><span className={`ic ${e.sexe === "F" ? "rose" : "azure"}`} style={{ display: "grid", placeItems: "center" }}><Cake size={18} /></span><div><div className="l">Âge</div><div className="v">{a != null ? `${a} ans` : "—"}</div></div></div>
+          <div className="mini-stat"><span className="ic gold" style={{ display: "grid", placeItems: "center" }}><CalendarCheck2 size={18} /></span><div><div className="l">Inscrit depuis</div><div className="v">{inscriptions.length ? inscriptions[inscriptions.length - 1].annee : "—"}</div></div></div>
+          <div className="mini-stat"><span className="ic green" style={{ display: "grid", placeItems: "center" }}><Wallet size={18} /></span><div><div className="l">Total payé</div><div className="v">{s.peut("finances.lire") ? fcfa(totalPaye) : "—"}</div></div></div>
         </div>
+      </div>
 
-        {tab === "identite" && (
-          <div className="panel-body stack">
-            <dl className="dl">
-              <Info label="Date de naissance">{e.date_naissance && `${dateLongue(e.date_naissance)}${a != null ? ` (${a} ans)` : ""}`}</Info>
-              <Info label="Lieu de naissance">{e.lieu_naissance}</Info>
-              <Info label="Adresse">{e.adresse}</Info>
-              <Info label="Observations">{e.observations}</Info>
-            </dl>
-            <div className="cards-2">
-              <div className="box"><h4>Père</h4><dl className="dl" style={{ gridTemplateColumns: "110px 1fr" }}>
-                <Info label="Nom">{[e.pere_prenom, e.pere_nom].filter(Boolean).join(" ")}</Info>
-                <Info label="Profession">{e.pere_profession}</Info>
-                <Info label="Téléphone"><Tel n={e.pere_telephone} /></Info>
-              </dl></div>
-              <div className="box"><h4>Mère</h4><dl className="dl" style={{ gridTemplateColumns: "110px 1fr" }}>
-                <Info label="Nom">{[e.mere_prenom, e.mere_nom].filter(Boolean).join(" ")}</Info>
-                <Info label="Profession">{e.mere_profession}</Info>
-                <Info label="Téléphone"><Tel n={e.mere_telephone} /></Info>
-              </dl></div>
-              {(e.tuteur_nom || e.tuteur_telephone) && <div className="box"><h4>Tuteur</h4><dl className="dl" style={{ gridTemplateColumns: "110px 1fr" }}>
-                <Info label="Nom">{e.tuteur_nom}</Info><Info label="Téléphone"><Tel n={e.tuteur_telephone} /></Info>
-              </dl></div>}
+      <div className="tabs" role="tablist">
+        {tabs.map(([k, l, n, I]) => <button key={k} role="tab" className={tab === k ? "on" : ""} onClick={() => setTab(k)}><I size={16} />{l}{n != null && <span className="count">{n}</span>}</button>)}
+      </div>
+
+      {tab === "identite" && (
+        <div className="info-grid">
+          <div className="card">
+            <div className="card-head"><h3>Informations personnelles</h3></div>
+            <div className="card-body">
+              <dl className="kv">
+                <Info label="Nom complet">{e.prenom} {e.nom}</Info>
+                <Info label="Sexe">{e.sexe === "F" ? "Féminin" : e.sexe === "M" ? "Masculin" : null}</Info>
+                <Info label="Date de naissance">{e.date_naissance && `${dateLongue(e.date_naissance)}${a != null ? ` (${a} ans)` : ""}`}</Info>
+                <Info label="Lieu de naissance">{e.lieu_naissance}</Info>
+                <Info label="Adresse">{e.adresse}</Info>
+                <Info label="Observations">{e.observations}</Info>
+              </dl>
             </div>
           </div>
-        )}
+          <div className="card">
+            <div className="card-head"><h3>Parents et tuteur</h3></div>
+            <div className="card-body" style={{ display: "grid", gap: 12 }}>
+              <Parent rel="Père" prenom={e.pere_prenom} nom={e.pere_nom} profession={e.pere_profession} tel={e.pere_telephone} tone="M" />
+              <Parent rel="Mère" prenom={e.mere_prenom} nom={e.mere_nom} profession={e.mere_profession} tel={e.mere_telephone} tone="F" />
+              {(e.tuteur_nom || e.tuteur_telephone) && <Parent rel="Tuteur" prenom={e.tuteur_nom} tel={e.tuteur_telephone} tone="" />}
+            </div>
+          </div>
+        </div>
+      )}
 
-        {tab === "scolarite" && (
+      {tab === "scolarite" && (
+        <div className="card">
           <div className="table-wrap">
-            <table className="table">
-              <thead><tr><th>Année</th><th>Classe</th><th>Type</th><th>Date</th><th>Cantine</th><th className="hide-m">Mensualité</th><th>Situation</th><th /></tr></thead>
+            <table className="table" style={{ marginTop: -1 }}>
+              <thead><tr><th>Année</th><th>Classe</th><th>Type</th><th className="hide-m">Date</th><th>Cantine</th><th className="hide-m r">Mensualité</th><th>Situation</th><th /></tr></thead>
               <tbody>
                 {inscriptions.map((i) => (
                   <tr key={i.id}>
                     <td><strong>{i.annee}</strong>{i.annee_active && <span className="badge gold" style={{ marginLeft: 8 }}>En cours</span>}</td>
-                    <td><span className="classe-tag">{i.classe}</span></td>
+                    <td><span className={`chip ${i.cycle || ""}`}>{i.classe}</span></td>
                     <td>{i.type === "nouvelle" ? "Nouvelle" : "Réinscription"}</td>
-                    <td className="num">{date(i.date_inscription)}</td>
-                    <td>{i.cantine ? "Oui" : "Non"}</td>
-                    <td className="hide-m num">{fcfa(i.mensualite_speciale ?? (i.cantine ? i.mensualite_cantine : i.mensualite))}</td>
-                    <td><span className={`badge ${i.statut === "active" ? "ok" : "danger"}`}>{STATUTS[i.statut]}</span></td>
+                    <td className="hide-m num">{date(i.date_inscription)}</td>
+                    <td>{i.cantine ? <span className="badge coral">Oui</span> : <span className="muted">Non</span>}</td>
+                    <td className="hide-m num r"><strong>{fcfa(i.mensualite_speciale ?? (i.cantine ? i.mensualite_cantine : i.mensualite))}</strong></td>
+                    <td><span className={`badge ${i.statut === "active" ? "green" : "coral"}`}>{STATUTS[i.statut]}</span></td>
                     <td className="r">{s.peut("eleves.ecrire") && <button className="btn sm ghost" onClick={() => setInsc(i)}><Pencil size={14} />Modifier</button>}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
+        </div>
+      )}
 
-        {tab === "paiements" && (paiements.length ? (
-          <div className="table-wrap">
-            <table className="table">
-              <thead><tr><th>Reçu</th><th>Date</th><th>Motif</th><th className="hide-m">Mode</th><th className="hide-m">Encaissé par</th><th className="r">Montant</th></tr></thead>
-              <tbody>
-                {paiements.map((p) => (
-                  <tr key={p.id} style={p.annule ? { opacity: 0.5, textDecoration: "line-through" } : undefined}>
-                    <td className="num"><strong>{p.numero}</strong></td>
-                    <td className="num">{date(p.date_paiement)}</td>
-                    <td>{TYPES[p.type]}{p.note ? <span className="muted small"> — {p.note}</span> : ""}</td>
-                    <td className="hide-m">{MODES[p.mode]}</td>
-                    <td className="hide-m">{p.encaisse_par_nom || "—"}</td>
-                    <td className="r amount">{fcfa(p.montant)}</td>
-                  </tr>
-                ))}
-                <tr><td colSpan={5} className="r"><strong>Total payé</strong></td><td className="r amount">{fcfa(totalPaye)}</td></tr>
-              </tbody>
-            </table>
-          </div>
-        ) : <Empty title="Aucun paiement">L'encaissement des paiements arrive dans la prochaine étape.</Empty>)}
-      </div>
+      {tab === "paiements" && (
+        <div className="card">
+          {paiements.length ? (
+            <div className="table-wrap">
+              <table className="table" style={{ marginTop: -1 }}>
+                <thead><tr><th>Reçu</th><th>Date</th><th>Motif</th><th className="hide-m">Mode</th><th className="hide-m">Encaissé par</th><th className="r">Montant</th></tr></thead>
+                <tbody>
+                  {paiements.map((p) => (
+                    <tr key={p.id} style={p.annule ? { opacity: 0.5, textDecoration: "line-through" } : undefined}>
+                      <td><span className="badge teal">{p.numero}</span></td>
+                      <td className="num">{date(p.date_paiement)}</td>
+                      <td><strong>{TYPES[p.type]}</strong>{p.note ? <div className="xs muted">{p.note}</div> : ""}</td>
+                      <td className="hide-m">{MODES[p.mode]}</td>
+                      <td className="hide-m">{p.encaisse_par_nom || "—"}</td>
+                      <td className="r amount">{fcfa(p.montant)}</td>
+                    </tr>
+                  ))}
+                  <tr><td colSpan={5} className="r" style={{ background: "var(--surface-2)" }}><strong>Total payé</strong></td><td className="r amount" style={{ background: "var(--surface-2)", color: "var(--green)" }}>{fcfa(totalPaye)}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          ) : <Empty icon={Wallet} title="Aucun paiement enregistré">L'encaissement des paiements arrive avec le module Finances.</Empty>}
+        </div>
+      )}
 
       {edit && <EleveForm eleve={e} onClose={() => setEdit(false)} onSaved={() => setEdit(false)} />}
       {insc && <InscriptionModal eleve={e} inscription={insc === "new" ? null : insc} onClose={() => setInsc(null)} />}

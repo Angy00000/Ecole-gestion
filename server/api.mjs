@@ -250,7 +250,7 @@ route("GET", "/dashboard", async (ctx) => {
     [`select c.id, c.nom, c.cycle, c.capacite, count(i.id) as effectif
       from app.classes c left join app.inscriptions i on i.classe_id=c.id and i.statut='active'
       where c.annee_id=$1 group by c.id order by c.ordre`, [annee]],
-    [`select e.id, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, i.date_inscription, i.type
+    [`select e.id, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle, i.date_inscription, i.type
       from app.inscriptions i join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id
       where i.annee_id=$1 order by i.created_at desc limit 6`, [annee]],
     [`select coalesce(sum(p.montant) filter (where p.date_paiement=current_date),0) as jour,
@@ -301,7 +301,7 @@ route("GET", "/eleves", async (ctx) => {
     [`select e.id, e.matricule, e.nom, e.prenom, e.sexe, e.date_naissance, e.statut,
         coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
         i.id as inscription_id, i.cantine, i.type as type_inscription, i.statut as statut_inscription,
-        c.id as classe_id, c.nom as classe
+        c.id as classe_id, c.nom as classe, c.cycle
       ${base} order by ${SORTS[sort] || SORTS.nom} limit ${limit} offset ${(page - 1) * limit}`, p],
     [`select count(*) as total ${base}`, p],
   ]);
@@ -313,7 +313,7 @@ route("GET", "/eleves/:id", async (ctx) => {
   const id = ctx.params.id;
   const [[eleve], inscriptions, paiements] = await tx([
     ["select * from app.eleves where id=$1", [id]],
-    [`select i.*, a.libelle as annee, a.active as annee_active, c.nom as classe,
+    [`select i.*, a.libelle as annee, a.active as annee_active, c.nom as classe, c.cycle,
         c.frais_inscription, c.uniforme, c.mensualite, c.mensualite_jan_fev, c.mensualite_cantine, c.mensualite_cantine_jan_fev, c.frais_cantine
       from app.inscriptions i join app.annees a on a.id=i.annee_id join app.classes c on c.id=i.classe_id
       where i.eleve_id=$1 order by a.debut desc`, [id]],

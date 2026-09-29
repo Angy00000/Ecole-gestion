@@ -27,7 +27,7 @@ export function ToastProvider({ children }) {
 export const useToast = () => useContext(ToastCtx);
 
 // ── Modale ──
-export function Modal({ title, onClose, children, footer, wide }) {
+export function Modal({ title, onClose, children, footer, wide, pad = true, icon }) {
   useEffect(() => {
     const k = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
@@ -37,10 +37,11 @@ export function Modal({ title, onClose, children, footer, wide }) {
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`modal ${wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
+          {icon}
           <h2>{title}</h2>
           <button className="btn ghost icon sm" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
         </div>
-        <div className="modal-body">{children}</div>
+        <div className={`modal-body ${pad ? "pad" : ""}`}>{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
       </div>
     </div>
@@ -85,7 +86,7 @@ export const Spinner = () => <div className="loading"><div className="spinner" /
 export function Empty({ icon: Icon = Inbox, title, children, action }) {
   return (
     <div className="empty">
-      <Icon size={40} strokeWidth={1.5} />
+      <div className="em-ic"><Icon size={32} strokeWidth={1.6} /></div>
       {title && <h3>{title}</h3>}
       {children && <div>{children}</div>}
       {action}
@@ -102,4 +103,18 @@ export function useForm(initial) {
     setValues((s) => ({ ...s, [k]: v }));
   };
   return [values, set, setValues];
+}
+
+export function PageHead({ title, sub, children, back }) {
+  useEffect(() => { document.title = `${title} — ESJBM`; }, [title]);
+  return (
+    <div className="page-head">
+      <div className="t">
+        {back}
+        <h1>{title}</h1>
+        {sub && <p>{sub}</p>}
+      </div>
+      {children && <div className="actions">{children}</div>}
+    </div>
+  );
 }

@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, CheckCircle2 } from "lucide-react";
+import { Plus, Pencil, CheckCircle2, Building2, CalendarRange, UsersRound, History } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { date, dateHeure, ROLES, initiales } from "../lib/format";
-import { Modal, Field, Input, Select, Spinner, ErrorBox, useToast } from "../components/ui";
-import PageTitle from "../components/PageTitle";
+import { Modal, Field, Input, Select, Spinner, ErrorBox, useToast, PageHead } from "../components/ui";
 
 // ── Établissement ──
 function Etablissement() {
@@ -25,9 +24,9 @@ function Etablissement() {
   };
   const F = ({ k, label, span }) => <Field label={label} className={span ? "span2" : ""}><Input value={v[k] || ""} onChange={set(k)} disabled={!peut} /></Field>;
   return (
-    <div className="panel">
-      <div className="section">
-        <div className="section-title"><h3>Identité de l'école</h3><p>Ces informations apparaissent sur les reçus et documents imprimés.</p></div>
+    <div className="card">
+      <div className="card-body">
+        <div style={{ marginBottom: 18 }}><h3>Identité de l'école</h3><p className="small muted" style={{ marginTop: 4 }}>Ces informations apparaissent sur les reçus et documents imprimés.</p></div>
         <ErrorBox error={error} />
         <div className="grid g2" style={{ marginTop: error ? 14 : 0 }}>
           {F({ k: "nom", label: "Nom de l'établissement", span: true })}
@@ -41,7 +40,7 @@ function Etablissement() {
           {F({ k: "bp", label: "Boîte postale" })}
         </div>
       </div>
-      {peut && <div className="section" style={{ display: "flex", justifyContent: "flex-end" }}>
+      {peut && <div className="modal-foot" style={{ borderRadius: "0 0 18px 18px" }}>
         <button className="btn primary" onClick={save} disabled={busy}>Enregistrer</button>
       </div>}
     </div>
@@ -74,8 +73,8 @@ function Annees() {
 
   if (isLoading) return <Spinner />;
   return (
-    <div className="panel">
-      <div className="panel-head">
+    <div className="card">
+      <div className="card-head" style={{ paddingBottom: 16 }}>
         <h3>Années scolaires</h3>
         {peut && <button className="btn primary" onClick={() => { setError(null); setForm({ libelle: "", debut: "", fin: "", copier_de: data.find((a) => a.active)?.id || "" }); }}><Plus size={16} />Préparer une nouvelle année</button>}
       </div>
@@ -150,8 +149,8 @@ function Utilisateurs() {
   if (isLoading) return <Spinner />;
   if (loadErr) return <ErrorBox error={loadErr} />;
   return (
-    <div className="panel">
-      <div className="panel-head">
+    <div className="card">
+      <div className="card-head" style={{ paddingBottom: 16 }}>
         <h3>Comptes utilisateurs</h3>
         <button className="btn primary" onClick={() => { setError(null); setForm({ nom: "", prenom: "", email: "", role: "secretaire", mot_de_passe: "", actif: true }); }}><Plus size={16} />Créer un compte</button>
       </div>
@@ -161,17 +160,17 @@ function Utilisateurs() {
           <tbody>
             {data.map((u) => (
               <tr key={u.id}>
-                <td><div className="cell-person"><span className="avatar">{initiales(u.prenom, u.nom)}</span><div><strong>{u.prenom} {u.nom}</strong><span>{u.email}</span></div></div></td>
+                <td><div className="person"><span className="avatar round">{initiales(u.prenom, u.nom)}</span><div><strong>{u.prenom} {u.nom}</strong><span>{u.email}</span></div></div></td>
                 <td>{ROLES[u.role]}</td>
                 <td className="hide-m">{u.dernier_login ? dateHeure(u.dernier_login) : <span className="muted">Jamais</span>}</td>
-                <td>{u.actif ? <span className="badge ok">Actif</span> : <span className="badge danger">Désactivé</span>}</td>
+                <td>{u.actif ? <span className="badge green">Actif</span> : <span className="badge coral">Désactivé</span>}</td>
                 <td className="r"><button className="btn sm ghost" onClick={() => { setError(null); setForm({ ...u, mot_de_passe: "" }); }}><Pencil size={14} />Modifier</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <div className="section small muted">
+      <div className="card-body small muted" style={{ borderTop: "1px solid var(--line)" }}>
         <strong style={{ color: "var(--ink)" }}>Ce que chaque rôle peut faire.</strong> Administrateur : tout. Direction : tout sauf gérer les comptes.
         Secrétariat : inscrire et modifier les élèves, consulter les paiements. Comptable : consulter élèves et finances. Enseignant : consulter les élèves.
       </div>
@@ -211,8 +210,8 @@ function Journal() {
   if (isLoading) return <Spinner />;
   if (error) return <ErrorBox error={error} />;
   return (
-    <div className="panel">
-      <div className="panel-head"><h3>Journal des actions</h3><span className="small muted">200 dernières actions</span></div>
+    <div className="card">
+      <div className="card-head" style={{ paddingBottom: 16 }}><h3>Journal des actions</h3><span className="small muted">200 dernières actions</span></div>
       <div className="table-wrap">
         <table className="table">
           <thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th className="hide-m">Détail</th></tr></thead>
@@ -235,24 +234,28 @@ function Journal() {
 export default function Parametres() {
   const s = useSession();
   const tabs = [
-    ["etablissement", "Établissement", true],
-    ["annees", "Années scolaires", true],
-    ["utilisateurs", "Utilisateurs", s.peut("utilisateurs")],
-    ["journal", "Journal", s.peut("journal.lire")],
+    ["etablissement", "Établissement", true, Building2],
+    ["annees", "Années scolaires", true, CalendarRange],
+    ["utilisateurs", "Utilisateurs", s.peut("utilisateurs"), UsersRound],
+    ["journal", "Journal des actions", s.peut("journal.lire"), History],
   ].filter((t) => t[2]);
   return (
-    <div className="stack">
-      <PageTitle title="Paramètres" subtitle="École, années scolaires, comptes et historique" />
-      <div className="tabs" style={{ padding: 0 }}>
-        {tabs.map(([k, l]) => <NavLink key={k} to={`/parametres/${k}`} className={({ isActive }) => isActive ? "on" : ""} style={{ padding: "12px 14px", fontWeight: 600, color: "inherit", textDecoration: "none" }}>{l}</NavLink>)}
+    <>
+      <PageHead title="Paramètres" sub="L'école, les années scolaires, les comptes et l'historique." />
+      <div className="settings">
+        <nav className="card settings-nav">
+          {tabs.map(([k, l, , I]) => <NavLink key={k} to={`/parametres/${k}`}><I size={18} />{l}</NavLink>)}
+        </nav>
+        <div>
+          <Routes>
+            <Route index element={<Navigate to="etablissement" replace />} />
+            <Route path="etablissement" element={<Etablissement />} />
+            <Route path="annees" element={<Annees />} />
+            {s.peut("utilisateurs") && <Route path="utilisateurs" element={<Utilisateurs />} />}
+            {s.peut("journal.lire") && <Route path="journal" element={<Journal />} />}
+          </Routes>
+        </div>
       </div>
-      <Routes>
-        <Route index element={<Navigate to="etablissement" replace />} />
-        <Route path="etablissement" element={<Etablissement />} />
-        <Route path="annees" element={<Annees />} />
-        {s.peut("utilisateurs") && <Route path="utilisateurs" element={<Utilisateurs />} />}
-        {s.peut("journal.lire") && <Route path="journal" element={<Journal />} />}
-      </Routes>
-    </div>
+    </>
   );
 }

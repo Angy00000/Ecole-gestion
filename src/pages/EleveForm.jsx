@@ -4,6 +4,13 @@ import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, today } from "../lib/format";
 import { Modal, Field, Input, Select, Textarea, ErrorBox, useToast } from "../components/ui";
+import { User, Users, GraduationCap, NotebookPen, UserPlus, Pencil } from "lucide-react";
+const Sec = ({ icon: I, tone, title, sub, children }) => (
+  <section className="form-section">
+    <div className="head"><span className={`ic ${tone}`}><I size={18} /></span><div><h3>{title}</h3>{sub && <p>{sub}</p>}</div></div>
+    {children}
+  </section>
+);
 
 const VIDE = {
   nom: "", prenom: "", sexe: "", date_naissance: "", lieu_naissance: "", adresse: "",
@@ -56,22 +63,22 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
   const mensuel = classe ? (ins.cantine ? classe.mensualite_cantine : classe.mensualite) : 0;
 
   return (
-    <Modal wide title={edition ? `Modifier ${eleve.prenom} ${eleve.nom}` : "Inscrire un nouvel élève"} onClose={onClose} footer={<>
+    <Modal wide pad={false} icon={<span className="ic teal" style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center" }}>{edition ? <Pencil size={19} /> : <UserPlus size={19} />}</span>}
+      title={edition ? `Modifier ${eleve.prenom} ${eleve.nom}` : "Inscrire un nouvel élève"} onClose={onClose} footer={<>
       <button className="btn" onClick={onClose}>Annuler</button>
       <button className="btn primary" onClick={save} disabled={busy}>{busy ? "Enregistrement…" : edition ? "Enregistrer les modifications" : "Inscrire l'élève"}</button>
     </>}>
-      <div className="stack">
+      <div>
         <ErrorBox error={error} />
 
-        <section>
-          <div className="section-title"><h3>Identité de l'élève</h3></div>
+        <Sec icon={User} tone="teal" title="Identité de l'élève">
           <div className="grid g3">
             <Field label="Prénom(s)" required><Input value={v.prenom} onChange={set("prenom")} autoFocus /></Field>
             <Field label="Nom" required><Input value={v.nom} onChange={set("nom")} style={{ textTransform: "uppercase" }} /></Field>
             <Field label="Sexe" required>
-              <div className="seg" role="radiogroup">
-                <button type="button" className={v.sexe === "F" ? "on" : ""} onClick={() => setV({ ...v, sexe: "F" })}>Fille</button>
-                <button type="button" className={v.sexe === "M" ? "on" : ""} onClick={() => setV({ ...v, sexe: "M" })}>Garçon</button>
+              <div className="seg full" role="radiogroup">
+                <button type="button" className={v.sexe === "F" ? "on F" : ""} onClick={() => setV({ ...v, sexe: "F" })}>Fille</button>
+                <button type="button" className={v.sexe === "M" ? "on M" : ""} onClick={() => setV({ ...v, sexe: "M" })}>Garçon</button>
               </div>
             </Field>
             <Field label="Date de naissance"><Input type="date" value={v.date_naissance} onChange={set("date_naissance")} /></Field>
@@ -81,10 +88,9 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
             </Field>
             <Field label="Adresse" className="span2"><Input value={v.adresse || ""} onChange={set("adresse")} placeholder="Quartier, rue, villa…" /></Field>
           </div>
-        </section>
+        </Sec>
 
-        <section>
-          <div className="section-title"><h3>Parents et tuteur</h3><p>Au moins un numéro joignable est recommandé.</p></div>
+        <Sec icon={Users} tone="rose" title="Parents et tuteur" sub="Au moins un numéro joignable est recommandé.">
           <div className="grid g4">
             <Field label="Prénom du père"><Input value={v.pere_prenom || ""} onChange={set("pere_prenom")} /></Field>
             <Field label="Nom du père"><Input value={v.pere_nom || ""} onChange={set("pere_nom")} /></Field>
@@ -97,11 +103,10 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
             <Field label="Tuteur (si différent)" className="span2"><Input value={v.tuteur_nom || ""} onChange={set("tuteur_nom")} /></Field>
             <Field label="Téléphone du tuteur" className="span2"><Input type="tel" value={v.tuteur_telephone || ""} onChange={set("tuteur_telephone")} /></Field>
           </div>
-        </section>
+        </Sec>
 
         {!edition && (
-          <section>
-            <div className="section-title"><h3>Inscription {s.annee?.libelle}</h3></div>
+          <Sec icon={GraduationCap} tone="gold" title={`Inscription ${s.annee?.libelle}`}>
             <div className="grid g2" style={{ alignItems: "start" }}>
               <div className="grid" style={{ gap: 14 }}>
                 <Field label="Classe" required>
@@ -119,23 +124,25 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
                   </Field>
                   <Field label="Date d'inscription"><Input type="date" value={ins.date_inscription} onChange={(e) => setIns({ ...ins, date_inscription: e.target.value })} /></Field>
                 </div>
-                <label className="check"><input type="checkbox" checked={ins.cantine} onChange={(e) => setIns({ ...ins, cantine: e.target.checked })} />Inscrit(e) à la cantine</label>
+                <label className="switch-card"><input type="checkbox" checked={ins.cantine} onChange={(e) => setIns({ ...ins, cantine: e.target.checked })} /><div><strong>Cantine</strong><div className="xs muted">L'élève déjeune à l'école</div></div></label>
               </div>
-              <div className="recap">
-                <strong>Frais à régler à l'inscription</strong>
+              <div className="recap lattice">
+                <h4>Frais à régler à l'inscription</h4>
                 {classe ? <>
                   <div className="recap-row" style={{ marginTop: 10 }}><span>Droit d'inscription</span><span>{fcfa(classe.frais_inscription)}</span></div>
                   {classe.uniforme > 0 && <div className="recap-row"><span>Uniforme et tenue de sport</span><span>{fcfa(classe.uniforme)}</span></div>}
                   {ins.cantine && <div className="recap-row"><span>Inscription cantine</span><span>{fcfa(classe.frais_cantine)}</span></div>}
                   <div className="recap-row total"><span>Total</span><span>{fcfa(fraisInscription)}</span></div>
-                  <p className="small muted" style={{ margin: "10px 0 0" }}>Mensualité ensuite : {fcfa(mensuel)} par mois.</p>
-                </> : <p className="small muted" style={{ margin: "8px 0 0" }}>Choisissez une classe pour voir les tarifs.</p>}
+                  <p className="note">Puis {fcfa(mensuel)} par mois{classe ? `, ${fcfa(ins.cantine ? classe.mensualite_cantine_jan_fev : classe.mensualite_jan_fev)} en janvier et février` : ""}.</p>
+                </> : <p className="note">Choisissez une classe pour afficher les frais.</p>}
               </div>
             </div>
-          </section>
+          </Sec>
         )}
 
-        <Field label="Observations"><Textarea value={v.observations || ""} onChange={set("observations")} placeholder="Santé, allergies, informations utiles…" /></Field>
+        <Sec icon={NotebookPen} tone="azure" title="Observations">
+          <Textarea value={v.observations || ""} onChange={set("observations")} placeholder="Santé, allergies, personne autorisée à récupérer l'enfant…" />
+        </Sec>
       </div>
     </Modal>
   );

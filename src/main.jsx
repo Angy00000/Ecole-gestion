@@ -5,6 +5,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { SessionProvider } from "./lib/session";
 import { ToastProvider } from "./components/ui";
+import "@fontsource/figtree/400.css";
+import "@fontsource/figtree/500.css";
+import "@fontsource/figtree/600.css";
+import "@fontsource/figtree/700.css";
+import "@fontsource/sora/600.css";
+import "@fontsource/sora/700.css";
+import "@fontsource/sora/800.css";
 import "./styles.css";
 
 document.documentElement.dataset.theme = localStorage.getItem("eg2_theme") || "light";
