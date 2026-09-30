@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, School, Wallet, Receipt, AlertTriangle, BookOpen, CalendarCheck,
-  GraduationCap, CalendarClock, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange,
+  GraduationCap, CalendarClock, HandCoins, FileBarChart, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange,
 } from "lucide-react";
 import { useSession } from "../lib/session";
 import { ROLES, initiales } from "../lib/format";
@@ -17,7 +17,9 @@ const NAV = [
   { group: "Finances" },
   { to: "/paiements", label: "Encaissements", icon: Wallet, droit: "finances.lire" },
   { to: "/impayes", label: "Impayés", icon: AlertTriangle, droit: "finances.lire" },
+  { to: "/recettes", label: "Recettes diverses", icon: HandCoins, droit: "depenses.lire" },
   { to: "/depenses", label: "Dépenses", icon: Receipt, droit: "depenses.lire" },
+  { to: "/rapports", label: "Rapports", icon: FileBarChart, droit: "finances.lire" },
   { group: "Pédagogie" },
   { to: "/notes", label: "Notes et bulletins", icon: BookOpen, droit: "pedagogie.lire" },
   { to: "/absences", label: "Absences", icon: CalendarCheck, droit: "pedagogie.lire" },

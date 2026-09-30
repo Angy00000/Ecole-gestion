@@ -35,8 +35,10 @@ export const CYCLES = { garderie: "Garderie", prescolaire: "Préscolaire", eleme
 export const TYPES = {
   inscription: "Droit d'inscription", uniforme: "Uniforme et tenue de sport", cantine: "Inscription cantine",
   mensualite: "Mensualité", fournitures: "Fournitures", cours_vacances: "Cours de vacances", transport: "Transport", autre: "Autre",
+  cours_soir: "Cours du soir", cotisation: "Cotisation des fêtes", cantine_jour: "Cantine journalière",
 };
-export const TYPES_COURTS = { inscription: "Inscription", uniforme: "Uniforme", cantine: "Cantine", mensualite: "Mensualité", fournitures: "Fournitures", cours_vacances: "Cours de vacances", transport: "Transport", autre: "Autre" };
+export const TYPES_COURTS = { inscription: "Inscription", uniforme: "Uniforme", cantine: "Cantine", mensualite: "Mensualité", fournitures: "Fournitures", cours_vacances: "Cours de vacances", transport: "Transport", autre: "Autre", cours_soir: "Cours du soir", cotisation: "Cotisation fêtes", cantine_jour: "Cantine du jour" };
+export const CATEGORIES_RECETTES = { dons: "Dons", subventions: "Subventions", location: "Location de locaux", evenements: "Fêtes et événements", ventes: "Ventes", cotisations: "Cotisations (APE…)", autre: "Autre" };
 export const MODES = { especes: "Espèces", wave: "Wave", orange_money: "Orange Money", cheque: "Chèque", virement: "Virement" };
 export const MODE_COULEUR = { especes: "var(--green)", wave: "#1da1f2", orange_money: "#f47b20", cheque: "var(--azure)", virement: "var(--teal)" };
 export const CATEGORIES = {
@@ -46,7 +48,7 @@ export const CATEGORIES = {
 const MOIS_L = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 export const moisLong = (ym) => { if (!ym) return ""; const [y, m] = String(ym).split("-"); return `${MOIS_L[+m - 1]} ${y}`; };
 export const moisNom = (ym) => { if (!ym) return ""; const m = String(ym).split("-")[1]; const n = MOIS_L[+m - 1]; return n[0].toUpperCase() + n.slice(1); };
-export const libelleLigne = (l) => (l.type === "mensualite" ? `Mensualité ${moisLong(l.mois)}` : TYPES[l.type] || l.type);
+export const libelleLigne = (l) => (l.type === "mensualite" ? `Mensualité ${moisLong(l.mois)}` : l.type === "cours_soir" && l.mois ? `Cours du soir ${moisLong(l.mois)}` : TYPES[l.type] || l.type);
 
 // Montant en lettres (français, usage au Sénégal : soixante-dix, quatre-vingt-dix).
 const U = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"];

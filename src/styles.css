@@ -789,3 +789,15 @@ tr.appel-retard td { background: var(--gold-50); }
 .slot strong { font-size: 12.5px; color: color-mix(in srgb, var(--c) 75%, var(--ink)); line-height: 1.2; }
 .slot span { font-size: 11px; color: var(--ink-2); }
 @media print { .edt-card { overflow: visible; } .edt { min-width: 0; } }
+.line-opt { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.select.sm, .input.sm { height: 32px; font-size: 13px; padding: 0 28px 0 8px; width: auto; border-radius: 8px; }
+.input.sm { width: 58px; padding: 0 6px; }
+.rep-bars { display: flex; align-items: flex-end; gap: 10px; height: 220px; padding-top: 10px; overflow-x: auto; }
+.rep-col { flex: 1; min-width: 34px; height: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.rep-col span { font-size: 11px; color: var(--muted); font-weight: 700; }
+.rep-pair { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 4px; }
+.rep-in, .rep-out { width: 42%; max-width: 26px; border-radius: 6px 6px 2px 2px; min-height: 2px; }
+.rep-in { background: var(--teal); display: flex; flex-direction: column; overflow: hidden; }
+.rep-in i { display: block; background: var(--gold); }
+.rep-out { background: var(--coral); opacity: 0.85; }
+@media print { .rapport .card { break-inside: avoid; } .rapport .toolbar { display: none; } }

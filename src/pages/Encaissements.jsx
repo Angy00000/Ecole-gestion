@@ -4,7 +4,7 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Plus, Search, Wallet, ChevronRight, Printer, ArrowDownLeft, ArrowUpRight, Receipt, Scale } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
-import { fcfa, date, initiales, MODES, MODE_COULEUR, TYPES_COURTS, CATEGORIES, today, dateLongue, libelleLigne, nombre } from "../lib/format";
+import { fcfa, date, initiales, MODES, MODE_COULEUR, TYPES, TYPES_COURTS, CATEGORIES, CATEGORIES_RECETTES, today, dateLongue, libelleLigne, nombre } from "../lib/format";
 import { Spinner, ErrorBox, Empty, PageHead, Select } from "../components/ui";
 import Encaissement from "../components/Encaissement";
 
@@ -13,13 +13,16 @@ const debutMois = () => today().slice(0, 8) + "01";
 function Recus() {
   const s = useSession();
   const nav = useNavigate();
+  const [sp, setSp] = useSearchParams();
+  const type = sp.get("type") || "";
+  const setType = (t) => { const p = Object.fromEntries(sp); if (t) p.type = t; else delete p.type; setSp(p); };
   const [du, setDu] = useState(debutMois());
   const [au, setAu] = useState(today());
   const [mode, setMode] = useState("");
   const [q, setQ] = useState("");
   const [dq, setDq] = useState("");
   useEffect(() => { const t = setTimeout(() => setDq(q), 300); return () => clearTimeout(t); }, [q]);
-  const f = { annee_id: s.annee?.id, du, au, mode, q: dq, annules: "oui" };
+  const f = { annee_id: s.annee?.id, du, au, mode, q: dq, annules: "oui", type };
   const { data, isLoading, error, isFetching } = useQuery({ queryKey: ["recus", f], queryFn: () => api.get("/recus", f), placeholderData: keepPreviousData });
   const maxMode = Math.max(1, ...(data?.modes || []).map((m) => m.montant));
 
@@ -29,14 +32,14 @@ function Recus() {
         <div className="dash">
           <div className="card c8">
             <div className="stat-strip">
-              <div><div className="l">Total encaissé</div><div className="v" style={{ color: "var(--green)" }}>{fcfa(data.total)}</div></div>
-              <div><div className="l">Reçus</div><div className="v">{data.nombre}</div></div>
+              <div><div className="l">{type ? `Total ${TYPES_COURTS[type].toLowerCase()}` : "Total encaissé"}</div><div className="v" style={{ color: "var(--green)" }}>{fcfa(data.total)}</div></div>
+              <div><div className="l">{type ? "Élèves ayant payé" : "Reçus"}</div><div className="v">{type ? data.eleves : data.nombre}</div></div>
               <div><div className="l">Montant moyen</div><div className="v">{fcfa(data.nombre ? data.total / data.nombre : 0)}</div></div>
               <div><div className="l">Période</div><div className="v" style={{ fontSize: 15 }}>{date(du)}<br />au {date(au)}</div></div>
             </div>
             <div className="card-body" style={{ borderTop: "1px solid var(--line)" }}>
               <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-                {data.types.map((t) => <span key={t.type} className="badge teal" style={{ height: 30, padding: "0 12px" }}>{TYPES_COURTS[t.type]} · {fcfa(t.montant)}</span>)}
+                {data.types.map((t) => <button key={t.type} className={`badge ${type === t.type ? "gold" : "teal"}`} style={{ height: 30, padding: "0 12px", border: 0, cursor: "pointer" }} onClick={() => setType(type === t.type ? "" : t.type)}>{TYPES_COURTS[t.type]} · {fcfa(t.montant)}</button>)}
               </div>
             </div>
           </div>
@@ -63,6 +66,7 @@ function Recus() {
             <span className="muted">au</span>
             <input className="input" type="date" value={au} onChange={(e) => setAu(e.target.value)} aria-label="Au" />
           </div>
+          <Select value={type} onChange={(e) => setType(e.target.value)} aria-label="Type de paiement"><option value="">Tous les paiements</option>{Object.entries(TYPES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
           <Select value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Mode"><option value="">Tous les modes</option>{Object.entries(MODES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
         </div>
         {isLoading ? <Spinner /> : error ? <div style={{ padding: 18 }}><ErrorBox error={error} /></div> : !data.rows.length ? (
@@ -70,7 +74,7 @@ function Recus() {
         ) : (
           <div className="table-wrap" style={{ opacity: isFetching ? 0.65 : 1 }}>
             <table className="table">
-              <thead><tr><th>Reçu</th><th>Élève</th><th className="hide-m">Détail</th><th className="hide-m">Mode</th><th>Date</th><th className="r">Montant</th><th /></tr></thead>
+              <thead><tr><th>Reçu</th><th>Élève</th><th className="hide-m">Détail</th><th className="hide-m">Mode</th><th>Date</th>{type && <th className="r">{TYPES_COURTS[type]}</th>}<th className="r">Montant reçu</th><th /></tr></thead>
               <tbody>
                 {data.rows.map((r) => (
                   <tr key={r.id} className="click" onClick={() => nav(`/recus/${r.id}`)} style={r.annule ? { opacity: 0.5 } : undefined}>
@@ -79,7 +83,8 @@ function Recus() {
                     <td className="hide-m lines-mini">{(r.lignes || []).map(libelleLigne).join(", ")}</td>
                     <td className="hide-m"><span className="row" style={{ gap: 6 }}><i className="dot" style={{ background: MODE_COULEUR[r.mode] }} />{MODES[r.mode]}</span></td>
                     <td className="num">{date(r.date_paiement)}</td>
-                    <td className="r amount" style={r.annule ? { textDecoration: "line-through" } : { color: "var(--green)" }}>{fcfa(r.montant)}</td>
+                    {type && <td className="r amount">{fcfa(r.montant_type)}</td>}
+                    <td className="r amount" style={r.annule ? { textDecoration: "line-through" } : { color: type ? "var(--muted)" : "var(--green)" }}>{fcfa(r.montant)}</td>
                     <td className="r"><ChevronRight size={18} className="go" /></td>
                   </tr>
                 ))}
@@ -142,6 +147,14 @@ function Caisse() {
           </table></div>
         ) : <Empty icon={Wallet} title="Aucun encaissement ce jour" />}
       </div>
+
+      {data.recettes?.length > 0 && <div className="card">
+        <div className="card-head" style={{ paddingBottom: 14 }}><h3>Recettes diverses</h3><span className="badge green">{data.recettes.length}</span></div>
+        <div className="table-wrap"><table className="table">
+          <thead><tr><th>Libellé</th><th className="hide-m">Catégorie</th><th className="hide-m">Payeur</th><th className="hide-m">Mode</th><th className="r">Montant</th></tr></thead>
+          <tbody>{data.recettes.map((x) => <tr key={x.id}><td><strong>{x.libelle}</strong></td><td className="hide-m">{CATEGORIES_RECETTES[x.categorie]}</td><td className="hide-m">{x.payeur || "—"}</td><td className="hide-m">{MODES[x.mode]}</td><td className="r amount" style={{ color: "var(--green)" }}>+{fcfa(x.montant)}</td></tr>)}</tbody>
+        </table></div>
+      </div>}
 
       <div className="card">
         <div className="card-head" style={{ paddingBottom: 14 }}><h3>Dépenses</h3><span className="badge coral">{data.depenses.length}</span></div>

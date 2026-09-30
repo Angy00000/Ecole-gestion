@@ -5,7 +5,7 @@ import { Plus, Pencil, CheckCircle2, Building2, CalendarRange, UsersRound, Histo
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { date, dateHeure, ROLES, initiales } from "../lib/format";
-import { Modal, Field, Input, Select, Spinner, ErrorBox, useToast, PageHead } from "../components/ui";
+import { Modal, Field, Input, Select, Money, Spinner, ErrorBox, useToast, PageHead } from "../components/ui";
 
 // ── Établissement ──
 function Etablissement() {
@@ -60,7 +60,7 @@ function Annees() {
   const save = async () => {
     setError(null);
     try {
-      if (form.id) await api.put(`/annees/${form.id}`, form);
+      if (form.id) { const { id, active, created_at, effectif, ...d } = form; await api.put(`/annees/${form.id}`, d); }
       else await api.post("/annees", form);
       toast(form.id ? "Année modifiée" : `Année ${form.libelle} créée`);
       qc.invalidateQueries({ queryKey: ["annees"] }); s.refresh(); setForm(null);
@@ -110,6 +110,17 @@ function Annees() {
               <Field label="Rentrée des élèves" required><Input type="date" value={form.debut} onChange={(e) => setForm({ ...form, debut: e.target.value })} /></Field>
               <Field label="Fin des cours" required><Input type="date" value={form.fin} onChange={(e) => setForm({ ...form, fin: e.target.value })} /></Field>
             </div>
+            {form.id && <>
+              <h4 style={{ fontSize: 14, marginTop: 6 }}>Autres tarifs de l'année</h4>
+              <div className="grid g2">
+                <Field label="Cours du soir (par mois)"><Money value={form.frais_cours_soir} onChange={(x) => setForm({ ...form, frais_cours_soir: x ?? 0 })} /></Field>
+                <Field label="Cantine (par jour)"><Money value={form.frais_cantine_jour} onChange={(x) => setForm({ ...form, frais_cantine_jour: x ?? 0 })} /></Field>
+                <Field label="Cours de vacances"><Money value={form.frais_cours_vacances} onChange={(x) => setForm({ ...form, frais_cours_vacances: x ?? 0 })} /></Field>
+                <Field label="Cotisation des fêtes"><Money value={form.frais_cotisation} onChange={(x) => setForm({ ...form, frais_cotisation: x ?? 0 })} /></Field>
+                <Field label="Fournitures (kit)"><Money value={form.frais_fournitures} onChange={(x) => setForm({ ...form, frais_fournitures: x ?? 0 })} /></Field>
+              </div>
+              <p className="xs muted">Ces montants se remplissent automatiquement lors d'un encaissement et restent modifiables.</p>
+            </>}
             {!form.id && (
               <Field label="Reprendre les classes et tarifs de" hint="Vous pourrez ajuster les tarifs ensuite.">
                 <Select value={form.copier_de} onChange={(e) => setForm({ ...form, copier_de: e.target.value })}>

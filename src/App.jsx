@@ -17,6 +17,8 @@ import Notes from "./pages/Notes";
 import Bulletins from "./pages/Bulletins";
 import Absences from "./pages/Absences";
 import Emploi from "./pages/Emploi";
+import Recettes from "./pages/Recettes";
+import Rapports from "./pages/Rapports";
 
 export default function App() {
   const s = useSession();
@@ -36,6 +38,8 @@ export default function App() {
         {s.peut("finances.lire") && <Route path="paiements" element={<Encaissements />} />}
         {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
         {s.peut("depenses.lire") && <Route path="depenses" element={<Depenses />} />}
+        {s.peut("depenses.lire") && <Route path="recettes" element={<Recettes />} />}
+        {s.peut("finances.lire") && <Route path="rapports" element={<Rapports />} />}
         {s.peut("pedagogie.lire") && <Route path="notes" element={<Notes />} />}
         {s.peut("pedagogie.lire") && <Route path="absences" element={<Absences />} />}
         {s.peut("pedagogie.lire") && <Route path="enseignants" element={<Enseignants />} />}

@@ -193,7 +193,7 @@ route("POST", "/annees", async (ctx) => {
 
 route("PUT", "/annees/:id", async (ctx) => {
   exige(ctx, "annees.ecrire");
-  return one(...updateSql("app.annees", ctx.params.id, pick(ctx.body, ["libelle", "debut", "fin"])));
+  return one(...updateSql("app.annees", ctx.params.id, pick(ctx.body, ["libelle", "debut", "fin", "frais_cours_soir", "frais_cantine_jour", "frais_cotisation", "frais_fournitures", "frais_cours_vacances"])));
 });
 
 route("POST", "/annees/:id/activer", async (ctx) => {
@@ -424,7 +424,8 @@ route("PUT", "/inscriptions/:id", async (ctx) => {
 
 // ═══ FINANCES ══════════════════════════════════════════════════════════════
 const MODES = ["especes", "wave", "orange_money", "cheque", "virement"];
-const TYPES_LIGNE = ["inscription", "uniforme", "cantine", "mensualite", "fournitures", "cours_vacances", "transport", "autre"];
+const TYPES_LIGNE = ["inscription", "uniforme", "cantine", "mensualite", "fournitures", "cours_vacances", "transport", "autre", "cours_soir", "cotisation", "cantine_jour"];
+const TYPES_MOIS = ["mensualite", "cours_soir"];
 
 // Reste à payer par inscription, mois échus jusqu'à $2 (date). Paramètres : $1 année.
 const SQL_IMPAYES = `
@@ -510,13 +511,17 @@ route("GET", "/recus", async (ctx) => {
   if (au) { p.push(au); where.push(`r.date_paiement <= $${p.length}`); }
   if (mode) { p.push(mode); where.push(`r.mode = $${p.length}`); }
   if (annules !== "oui") where.push("not r.annule");
+  const type = TYPES_LIGNE.includes(ctx.query.type) ? ctx.query.type : null;
+  if (type) { p.push(type); where.push(`exists (select 1 from app.paiements px where px.recu_id=r.id and px.type=$${p.length})`); }
   if (rech) { p.push(`%${rech.toLowerCase()}%`); where.push(`(lower(e.nom||' '||e.prenom) like $${p.length} or lower(e.prenom||' '||e.nom) like $${p.length} or lower(r.numero) like $${p.length} or lower(e.matricule) like $${p.length})`); }
   const base = `from app.recus r join app.inscriptions i on i.id=r.inscription_id join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id where ${where.join(" and ")}`;
   const [rows, [tot], modes, types] = await tx([
-    [`select r.id, r.numero, r.date_paiement, r.mode, r.montant, r.annule, r.created_at, e.id as eleve_id, e.nom, e.prenom, e.sexe, e.matricule, c.nom as classe, c.cycle,
+    [`select r.id, r.numero, r.date_paiement, r.mode, r.montant, r.annule, r.created_at, e.id as eleve_id,
+        ${type ? `(select sum(px.montant) from app.paiements px where px.recu_id=r.id and px.type='${type}') as montant_type,` : ""} e.nom, e.prenom, e.sexe, e.matricule, c.nom as classe, c.cycle,
         (select json_agg(json_build_object('type', p.type, 'mois', to_char(p.mois,'YYYY-MM'), 'montant', p.montant) order by p.mois nulls first) from app.paiements p where p.recu_id=r.id) as lignes
       ${base} order by r.date_paiement desc, r.id desc limit 300`, p],
-    [`select coalesce(sum(r.montant) filter (where not r.annule),0) as total, count(*) filter (where not r.annule) as nombre ${base}`, p],
+    [`select coalesce(sum(${type ? `(select sum(px.montant) from app.paiements px where px.recu_id=r.id and px.type='${type}')` : "r.montant"}) filter (where not r.annule),0) as total,
+        count(*) filter (where not r.annule) as nombre, count(distinct e.id) filter (where not r.annule) as eleves ${base}`, p],
     [`select r.mode, sum(r.montant) as montant, count(*) as nombre ${base} and not r.annule group by r.mode order by 2 desc`, p],
     [`select pa.type, sum(pa.montant) as montant from app.paiements pa join app.recus r on r.id=pa.recu_id join app.inscriptions i on i.id=r.inscription_id join app.eleves e on e.id=i.eleve_id where ${where.join(" and ")} and not r.annule group by pa.type order by 2 desc`, p],
   ]);
@@ -532,7 +537,7 @@ route("POST", "/recus", async (ctx) => {
   if (!lignes.length) fail(400, "Ajoutez au moins une ligne avec un montant.");
   for (const l of lignes) {
     if (!TYPES_LIGNE.includes(l.type)) fail(400, "Type de paiement invalide.");
-    if (l.type === "mensualite" && !/^\d{4}-\d{2}$/.test(l.mois || "")) fail(400, "Précisez le mois de chaque mensualité.");
+    if (TYPES_MOIS.includes(l.type) && !/^\d{4}-\d{2}$/.test(l.mois || "")) fail(400, "Précisez le mois pour chaque mensualité ou cours du soir.");
     if (!Number.isInteger(Number(l.montant))) fail(400, "Montant invalide.");
   }
   const ins = await one("select i.id, a.libelle from app.inscriptions i join app.annees a on a.id=i.annee_id where i.id=$1", [b.inscription_id]);
@@ -540,7 +545,7 @@ route("POST", "/recus", async (ctx) => {
   const prefixe = "R" + ins.libelle.replace(/^\d{2}(\d{2})-\d{2}(\d{2})$/, "$1$2");
   const total = lignes.reduce((t, l) => t + Number(l.montant), 0);
   const params = [b.inscription_id, b.date_paiement || null, b.mode || "especes", total, b.reference || null, b.note || null, ctx.user.id, prefixe];
-  const values = lignes.map((l, k) => { params.push(l.type, l.type === "mensualite" ? `${l.mois}-01` : null, Number(l.montant)); const n = params.length; return `($${n - 2}, $${n - 1}::date, $${n}::int)`; });
+  const values = lignes.map((l, k) => { params.push(l.type, TYPES_MOIS.includes(l.type) ? `${l.mois}-01` : null, Number(l.montant)); const n = params.length; return `($${n - 2}, $${n - 1}::date, $${n}::int)`; });
   const r = await one(
     `with r as (
        insert into app.recus (numero, inscription_id, date_paiement, mode, montant, reference, note, encaisse_par)
@@ -582,21 +587,23 @@ route("GET", "/impayes", async (ctx) => {
 route("GET", "/caisse", async (ctx) => {
   exige(ctx, "finances.lire");
   const jour = /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.date || "") ? ctx.query.date : new Date().toISOString().slice(0, 10);
-  const [recus, depenses] = await tx([
+  const [recus, depenses, recettes] = await tx([
     [`select r.id, r.numero, r.mode, r.montant, r.annule, r.created_at, e.nom, e.prenom, e.matricule, c.nom as classe,
         u.prenom || ' ' || u.nom as encaisse_par_nom,
         (select string_agg(distinct p.type, ',') from app.paiements p where p.recu_id=r.id) as types
       from app.recus r join app.inscriptions i on i.id=r.inscription_id join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id
       left join app.utilisateurs u on u.id=r.encaisse_par where r.date_paiement=$1 order by r.created_at`, [jour]],
     [`select d.*, u.prenom || ' ' || u.nom as saisi_par_nom from app.depenses d left join app.utilisateurs u on u.id=d.saisi_par where d.date_depense=$1 order by d.created_at`, [jour]],
+    [`select x.*, u.prenom || ' ' || u.nom as saisi_par_nom from app.recettes x left join app.utilisateurs u on u.id=x.saisi_par where x.date_recette=$1 order by x.created_at`, [jour]],
   ]);
   const modes = {};
   for (const m of MODES) modes[m] = { entrees: 0, sorties: 0 };
   recus.filter((r) => !r.annule).forEach((r) => (modes[r.mode].entrees += r.montant));
   depenses.forEach((d) => (modes[d.mode].sorties += d.montant));
-  const entrees = recus.filter((r) => !r.annule).reduce((t, r) => t + r.montant, 0);
+  recettes.forEach((x) => (modes[x.mode].entrees += x.montant));
+  const entrees = recus.filter((r) => !r.annule).reduce((t, r) => t + r.montant, 0) + recettes.reduce((t, x) => t + x.montant, 0);
   const sorties = depenses.reduce((t, d) => t + d.montant, 0);
-  return { date: jour, recus, depenses, modes, entrees, sorties, solde: entrees - sorties };
+  return { date: jour, recus, depenses, recettes, modes, entrees, sorties, solde: entrees - sorties };
 });
 
 // ── Dépenses ──
@@ -640,6 +647,80 @@ route("DELETE", "/depenses/:id", async (ctx) => {
   return { ok: true };
 });
 
+
+
+// ── Recettes diverses (hors élèves) ──
+const COLS_REC = ["date_recette", "categorie", "libelle", "montant", "mode", "payeur", "reference", "note"];
+route("GET", "/recettes", async (ctx) => {
+  exige(ctx, "depenses.lire");
+  const { du, au, categorie } = ctx.query;
+  const where = ["1=1"]; const p = [];
+  if (du) { p.push(du); where.push(`x.date_recette >= $${p.length}`); }
+  if (au) { p.push(au); where.push(`x.date_recette <= $${p.length}`); }
+  if (categorie) { p.push(categorie); where.push(`x.categorie = $${p.length}`); }
+  const w = where.join(" and ");
+  const [rows, cats, [tot]] = await tx([
+    [`select x.*, u.prenom || ' ' || u.nom as saisi_par_nom from app.recettes x left join app.utilisateurs u on u.id=x.saisi_par where ${w} order by x.date_recette desc, x.id desc limit 500`, p],
+    [`select categorie, sum(montant) as montant, count(*) as nombre from app.recettes x where ${w} group by 1 order by 2 desc`, p],
+    [`select coalesce(sum(montant),0) as total, count(*) as nombre from app.recettes x where ${w}`, p],
+  ]);
+  return { rows, categories: cats, total: tot.total, nombre: tot.nombre };
+});
+route("POST", "/recettes", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const d = pick(ctx.body, COLS_REC);
+  requis(d, [["libelle", "Le libellé"], ["montant", "Le montant"]]);
+  if (!(Number(d.montant) > 0)) fail(400, "Le montant doit être positif.");
+  d.saisi_par = ctx.user.id;
+  d.annee_id = await anneeCourante(ctx.body.annee_id);
+  const r = await one(...insertSql("app.recettes", d));
+  await journal(ctx, "creation", "recette", r.id, { libelle: r.libelle, montant: r.montant });
+  return r;
+});
+route("PUT", "/recettes/:id", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const r = await one(...updateSql("app.recettes", ctx.params.id, pick(ctx.body, COLS_REC)));
+  await journal(ctx, "modification", "recette", r.id, { libelle: r.libelle, montant: r.montant });
+  return r;
+});
+route("DELETE", "/recettes/:id", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const r = await one("delete from app.recettes where id=$1 returning id, libelle, montant", [ctx.params.id]);
+  await journal(ctx, "suppression", "recette", Number(ctx.params.id), r);
+  return { ok: true };
+});
+
+// ── Rapport financier sur une période ──
+route("GET", "/rapport", async (ctx) => {
+  exige(ctx, "finances.lire");
+  const annee = await anneeCourante(ctx.query.annee_id);
+  const a = await one("select * from app.annees where id=$1", [annee]);
+  const du = ctx.query.du || `${a.debut.slice(0, 4)}-07-01`, au = ctx.query.au || new Date().toISOString().slice(0, 10);
+  const voitDepenses = peut(ctx.user.role, "depenses.lire");
+  const [parType, parMode, parMois, recettes, depenses, parClasse, [nb]] = await tx([
+    [`select p.type, sum(p.montant) as montant, count(distinct r.id) as recus from app.paiements p join app.recus r on r.id=p.recu_id
+      where not r.annule and r.date_paiement between $1 and $2 group by 1 order by 2 desc`, [du, au]],
+    [`select r.mode, sum(r.montant) as montant, count(*) as nombre from app.recus r where not r.annule and r.date_paiement between $1 and $2 group by 1 order by 2 desc`, [du, au]],
+    [`select to_char(d,'YYYY-MM') as mois,
+        coalesce((select sum(montant) from app.recus r where not r.annule and date_trunc('month', r.date_paiement)=d and r.date_paiement between $1 and $2),0) as eleves,
+        coalesce((select sum(montant) from app.recettes x where date_trunc('month', x.date_recette)=d and x.date_recette between $1 and $2),0) as autres,
+        coalesce((select sum(montant) from app.depenses y where date_trunc('month', y.date_depense)=d and y.date_depense between $1 and $2),0) as depenses
+      from generate_series(date_trunc('month', $1::date), date_trunc('month', $2::date), interval '1 month') d order by d`, [du, au]],
+    [`select categorie, sum(montant) as montant, count(*) as nombre from app.recettes where date_recette between $1 and $2 group by 1 order by 2 desc`, [du, au]],
+    [`select categorie, sum(montant) as montant, count(*) as nombre from app.depenses where date_depense between $1 and $2 group by 1 order by 2 desc`, [du, au]],
+    [`select c.nom as classe, c.ordre, sum(r.montant) as montant from app.recus r join app.inscriptions i on i.id=r.inscription_id join app.classes c on c.id=i.classe_id
+      where not r.annule and r.date_paiement between $1 and $2 group by c.nom, c.ordre order by c.ordre`, [du, au]],
+    [`select count(*) as recus, count(distinct inscription_id) as eleves from app.recus where not annule and date_paiement between $1 and $2`, [du, au]],
+  ]);
+  const imp = await one(`select coalesce(sum(reste),0) as total, count(*) filter (where reste > 0) as eleves from (${SQL_IMPAYES}) x`, [annee, au]);
+  const totEleves = parMode.reduce((t, m) => t + m.montant, 0);
+  const totAutres = recettes.reduce((t, m) => t + m.montant, 0);
+  const totDep = voitDepenses ? depenses.reduce((t, m) => t + m.montant, 0) : null;
+  return { du, au, annee: a.libelle, par_type: parType, par_mode: parMode, par_mois: parMois.map((m) => voitDepenses ? m : { ...m, depenses: null }),
+    recettes, depenses: voitDepenses ? depenses : [], par_classe: parClasse, nb,
+    totaux: { eleves: totEleves, autres: totAutres, entrees: totEleves + totAutres, depenses: totDep, solde: totDep == null ? null : totEleves + totAutres - totDep },
+    impayes: imp };
+});
 
 // ═══ PÉDAGOGIE ═════════════════════════════════════════════════════════════
 const COLS_ENS = ["nom", "prenom", "sexe", "telephone", "email", "adresse", "specialite", "diplome", "date_embauche", "salaire", "statut", "observations"];
