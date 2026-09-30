@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, CheckCircle2, Building2, CalendarRange, UsersRound, History } from "lucide-react";
+import { Plus, Pencil, CheckCircle2, Building2, CalendarRange, UsersRound, History, Tags, Trash2 } from "lucide-react";
+import { TYPES } from "../lib/format";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { date, dateHeure, ROLES, initiales } from "../lib/format";
@@ -242,11 +243,59 @@ function Journal() {
   );
 }
 
+
+// ── Types de paiement ──
+function TypesPaiement() {
+  const s = useSession();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["types-paiement"], queryFn: () => api.get("/types-paiement") });
+  const [n, setN] = useState({ libelle: "", montant: null });
+  const peut = s.peut("etablissement.ecrire");
+  const refresh = () => { qc.invalidateQueries({ queryKey: ["types-paiement"] }); s.refresh(); };
+  const ajouter = async () => { try { await api.post("/types-paiement", n); setN({ libelle: "", montant: null }); toast("Type de paiement ajouté"); refresh(); } catch (e) { toast(e.message, "error"); } };
+  const maj = async (t, d) => { try { await api.put(`/types-paiement/${t.id}`, d); refresh(); } catch (e) { toast(e.message, "error"); } };
+  const suppr = async (t) => { try { await api.del(`/types-paiement/${t.id}`); toast(`${t.libelle} supprimé`); refresh(); } catch (e) { toast(e.message, "error"); } };
+  if (isLoading) return <Spinner />;
+  return (
+    <div className="stack">
+      <div className="card">
+        <div className="card-head" style={{ paddingBottom: 16 }}><h3>Types de paiement ajoutés par l'école</h3></div>
+        <p className="small muted" style={{ padding: "0 22px 14px" }}>Ils apparaissent comme boutons dans la fenêtre d'encaissement, avec leur montant par défaut (modifiable à chaque fois). Exemples : tenue de fête, photo de classe, sortie pédagogique.</p>
+        <div className="table-wrap"><table className="table">
+          <thead><tr><th>Nom</th><th style={{ width: 170 }}>Montant par défaut</th><th style={{ width: 110 }}>Actif</th><th /></tr></thead>
+          <tbody>
+            {data.map((t) => (
+              <tr key={t.id}>
+                <td><Input defaultValue={t.libelle} disabled={!peut} onBlur={(e) => e.target.value !== t.libelle && maj(t, { libelle: e.target.value })} /></td>
+                <td><Money value={t.montant} disabled={!peut} onChange={(x) => maj(t, { montant: x ?? 0 })} /></td>
+                <td><label className="check small"><input type="checkbox" checked={t.actif} disabled={!peut} onChange={(e) => maj(t, { actif: e.target.checked })} />Oui</label></td>
+                <td className="r">{peut && <button className="btn sm ghost icon" onClick={() => suppr(t)} aria-label={`Supprimer ${t.libelle}`}><Trash2 size={15} /></button>}</td>
+              </tr>
+            ))}
+            {peut && <tr style={{ background: "var(--surface-2)" }}>
+              <td><Input value={n.libelle} onChange={(e) => setN({ ...n, libelle: e.target.value })} placeholder="Nouveau type de paiement…" onKeyDown={(e) => e.key === "Enter" && n.libelle && ajouter()} /></td>
+              <td><Money value={n.montant} onChange={(x) => setN({ ...n, montant: x })} placeholder="0" /></td>
+              <td colSpan={2}><button className="btn primary sm" onClick={ajouter} disabled={!n.libelle}><Plus size={15} />Ajouter</button></td>
+            </tr>}
+            {!data.length && !peut && <tr><td colSpan={4} className="muted">Aucun type ajouté.</td></tr>}
+          </tbody>
+        </table></div>
+      </div>
+      <div className="card">
+        <div className="card-head" style={{ paddingBottom: 14 }}><h3>Types intégrés au logiciel</h3></div>
+        <div className="card-body row" style={{ flexWrap: "wrap", gap: 8, paddingTop: 0 }}>{Object.values(TYPES).map((t) => <span key={t} className="badge teal" style={{ height: 30, padding: "0 12px" }}>{t}</span>)}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function Parametres() {
   const s = useSession();
   const tabs = [
     ["etablissement", "Établissement", true, Building2],
     ["annees", "Années scolaires", true, CalendarRange],
+    ["types-paiement", "Types de paiement", true, Tags],
     ["utilisateurs", "Utilisateurs", s.peut("utilisateurs"), UsersRound],
     ["journal", "Journal des actions", s.peut("journal.lire"), History],
   ].filter((t) => t[2]);
@@ -262,6 +311,7 @@ export default function Parametres() {
             <Route index element={<Navigate to="etablissement" replace />} />
             <Route path="etablissement" element={<Etablissement />} />
             <Route path="annees" element={<Annees />} />
+            <Route path="types-paiement" element={<TypesPaiement />} />
             {s.peut("utilisateurs") && <Route path="utilisateurs" element={<Utilisateurs />} />}
             {s.peut("journal.lire") && <Route path="journal" element={<Journal />} />}
           </Routes>

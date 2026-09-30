@@ -4,9 +4,10 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Search, UserPlus, Download, Users, ChevronLeft, ChevronRight, Utensils, ArrowDownAZ } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
-import { initiales, age, nombre } from "../lib/format";
+import { initiales, age, nombre, fcfa } from "../lib/format";
 import { Select, Spinner, ErrorBox, Empty, PageHead } from "../components/ui";
 import EleveForm from "./EleveForm";
+import { BadgeFormule, formule, FORMULES } from "../components/TarifScolarite";
 
 function useDebounce(v, ms = 300) {
   const [d, setD] = useState(v);
@@ -37,8 +38,8 @@ export default function Eleves() {
 
   const exporter = async () => {
     const all = await api.get("/eleves", { ...filtres, page: 1, limit: 500 });
-    const rows = [["Matricule", "Nom", "Prénom", "Sexe", "Date de naissance", "Classe", "Cantine", "Téléphone parent"],
-      ...all.rows.map((r) => [r.matricule, r.nom, r.prenom, r.sexe, r.date_naissance || "", r.classe || "", r.cantine ? "Oui" : "Non", r.telephone || ""])];
+    const rows = [["Matricule", "Nom", "Prénom", "Sexe", "Date de naissance", "Classe", "Cantine", "Tarif", "Téléphone parent", "Frais d'inscription restants"],
+      ...all.rows.map((r) => [r.matricule, r.nom, r.prenom, r.sexe, r.date_naissance || "", r.classe || "", r.cantine ? "Oui" : "Non", FORMULES[formule(r)] + (r.mensualite_speciale && !r.gratuit ? ` ${r.mensualite_speciale}` : ""), r.telephone || "", r.frais_reste ?? ""])];
     const csv = "\ufeff" + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\r\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -93,20 +94,21 @@ export default function Eleves() {
             <table className="table">
               <thead><tr>
                 <Th k="nom">Élève</Th><Th k="matricule">Matricule</Th><Th k="classe">Classe</Th>
-                <th className="hide-m">Âge</th><th className="hide-m">Téléphone parent</th><th className="hide-m">Cantine</th><th />
+                <th className="hide-m">Âge</th><th className="hide-m">Téléphone parent</th><th className="hide-m">Cantine</th>{s.peut("finances.lire") && <th className="hide-m">Inscription</th>}<th />
               </tr></thead>
               <tbody>
                 {d.rows.map((r) => (
                   <tr key={r.id} className="click" onClick={() => nav(`/eleves/${r.id}`)}>
                     <td><div className="person">
                       <span className={`avatar ${r.sexe || ""}`}>{initiales(r.prenom, r.nom)}</span>
-                      <div><strong>{r.nom} {r.prenom}</strong><span>{r.sexe === "F" ? "Fille" : r.sexe === "M" ? "Garçon" : ""}{r.type_inscription === "reinscription" ? " · réinscrit(e)" : r.type_inscription === "nouvelle" ? " · nouveau" : ""}</span></div>
+                      <div><strong>{r.nom} {r.prenom}<BadgeFormule v={r} style={{ marginLeft: 6, height: 20 }} /></strong><span>{r.sexe === "F" ? "Fille" : r.sexe === "M" ? "Garçon" : ""}{r.type_inscription === "reinscription" ? " · réinscrit(e)" : r.type_inscription === "nouvelle" ? " · nouveau" : ""}</span></div>
                     </div></td>
                     <td className="num muted">{r.matricule}</td>
                     <td>{r.classe ? <span className={`chip ${r.cycle || ""}`}>{r.classe}</span> : <span className="muted">—</span>}</td>
                     <td className="hide-m num">{age(r.date_naissance) != null ? `${age(r.date_naissance)} ans` : <span className="muted">—</span>}</td>
                     <td className="hide-m num">{r.telephone || <span className="muted">—</span>}</td>
                     <td className="hide-m">{r.cantine ? <span className="badge coral"><Utensils size={12} />Cantine</span> : <span className="muted small">—</span>}</td>
+                    {s.peut("finances.lire") && <td className="hide-m">{r.frais_reste == null ? "—" : r.frais_reste <= 0 ? <span className="badge green">Réglée</span> : <span className="badge gold">Reste {fcfa(r.frais_reste)}</span>}</td>}
                     <td className="r"><ChevronRight size={18} className="go" /></td>
                   </tr>
                 ))}

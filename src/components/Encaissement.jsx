@@ -37,13 +37,14 @@ function ChoixEleve({ onPick }) {
   );
 }
 
-export default function Encaissement({ inscriptionId: initIns, eleve: initEleve, onClose, onSaved }) {
+export default function Encaissement({ inscriptionId: initIns, eleve: initEleve, preset, onClose, onSaved }) {
   const s = useSession();
   const toast = useToast();
   const tarif = { cours_soir: s.annee?.frais_cours_soir, cantine_jour: s.annee?.frais_cantine_jour, cotisation: s.annee?.frais_cotisation, fournitures: s.annee?.frais_fournitures, cours_vacances: s.annee?.frais_cours_vacances };
   const moisDispo = moisAnnee(s.annee);
   const moisCourant = new Date().toISOString().slice(0, 7);
-  const ajouterExtra = (t) => setExtras((x) => [...x, { type: t, montant: tarif[t] || null, ...(t === "cours_soir" ? { mois: moisDispo.includes(moisCourant) ? moisCourant : moisDispo[0] } : {}), ...(t === "cantine_jour" ? { jours: 1 } : {}) }]);
+  const ajouterPerso = (tp) => setExtras((x) => [...x, { type: "autre", libelle: tp.libelle, montant: tp.montant || null, fixe: true }]);
+  const ajouterExtra = (t) => setExtras((x) => [...x, { type: t, ...(t === "autre" ? { libelle: "" } : {}), montant: tarif[t] || null, ...(t === "cours_soir" ? { mois: moisDispo.includes(moisCourant) ? moisCourant : moisDispo[0] } : {}), ...(t === "cantine_jour" ? { jours: 1 } : {}) }]);
   const majExtra = (k, patch) => setExtras((x) => x.map((e, i) => (`x:${i}` === k ? { ...e, ...patch } : e)));
   const qc = useQueryClient();
   const [eleve, setEleve] = useState(initEleve || null);
@@ -67,6 +68,14 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
   useEffect(() => {
     if (!sit.data) return;
     const s0 = {};
+    if (preset) {
+      // Uniforme / cantine : on propose d'abord les frais restants ; sinon une ligne du service choisi.
+      const f = frais.find((l) => l.type === preset && l.du > l.paye);
+      if (f) s0[key(f)] = f.du - f.paye;
+      else if (preset !== "uniforme") ajouterExtra(preset === "cantine" ? "cantine_jour" : preset);
+      setSel(s0);
+      return;
+    }
     frais.forEach((l) => { if (l.du > l.paye) s0[key(l)] = l.du - l.paye; });
     const m = mois.find((l) => l.du > l.paye);
     if (m && !Object.keys(s0).length) s0[key(m)] = m.du - m.paye;
@@ -92,7 +101,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
     try {
       const r = await api.post("/recus", {
         inscription_id: insId, mode, date_paiement: date, reference,
-        lignes: lignes.map(({ type, mois, montant, jours }) => ({ type, mois, montant })),
+        lignes: lignes.map(({ type, mois, montant, libelle }) => ({ type, mois, montant, libelle })),
         note: [note, ...lignes.filter((l) => l.type === "cantine_jour").map((l) => `Cantine : ${l.jours} jour(s)`)].filter(Boolean).join(" · "),
       });
       toast(`Reçu ${r.numero} enregistré — ${fcfa(r.montant)}`);
@@ -109,7 +118,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
       footer={insId && <>
         <span className="muted small" style={{ marginRight: "auto" }}>{lignes.length} ligne{lignes.length > 1 ? "s" : ""}</span>
         <button className="btn" onClick={onClose}>Annuler</button>
-        <button className="btn primary" onClick={save} disabled={busy || total <= 0}><Check size={17} />{busy ? "Enregistrement…" : `Encaisser ${fcfa(total)}`}</button>
+        <button className="btn primary" onClick={save} disabled={busy || total <= 0 || lignes.some((l) => l.type === "autre" && !String(l.libelle || "").trim())}><Check size={17} />{busy ? "Enregistrement…" : `Encaisser ${fcfa(total)}`}</button>
       </>}>
       {!insId ? <ChoixEleve onPick={(r) => { setEleve(r); setInsId(r.inscription_id); }} /> : sit.isLoading ? <Spinner /> : sit.error ? <ErrorBox error={sit.error} /> : (
         <div className="enc">
@@ -154,6 +163,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
             <h4 className="enc-h">Autres paiements</h4>
             <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
               {EXTRAS.map((t) => <button key={t} type="button" className="btn sm" onClick={() => ajouterExtra(t)}><Plus size={14} />{TYPES[t]}</button>)}
+              {s.typesPaiement.map((tp) => <button key={tp.id} type="button" className="btn sm" onClick={() => ajouterPerso(tp)}><Plus size={14} />{tp.libelle}</button>)}
             </div>
           </div>
 
@@ -167,6 +177,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
                       <select className="select sm" value={l.mois} onChange={(e) => majExtra(l.k, { mois: e.target.value })} aria-label="Mois">{moisDispo.map((m) => <option key={m} value={m}>{moisLong(m)}</option>)}</select></span>
                     : l.type === "cantine_jour" ? <span className="line-opt">Cantine
                       <input className="input sm" type="number" min="1" value={l.jours} onChange={(e) => { const j = Math.max(1, Number(e.target.value) || 1); majExtra(l.k, { jours: j, montant: j * (tarif.cantine_jour || 0) }); }} aria-label="Nombre de jours" /> jour{l.jours > 1 ? "s" : ""}</span>
+                    : l.type === "autre" && !l.fixe ? <input className="input sm" style={{ width: "100%" }} value={l.libelle} placeholder="Motif du paiement…" onChange={(e) => majExtra(l.k, { libelle: e.target.value })} aria-label="Motif" autoFocus />
                     : libelleLigne(l)}</span>
                   <Money value={l.montant} onChange={(v) => l.k.startsWith("x:")
                     ? setExtras(extras.map((e, i) => (`x:${i}` === l.k ? { ...e, montant: v } : e)))

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, School, Wallet, Receipt, AlertTriangle, BookOpen, CalendarCheck,
-  GraduationCap, CalendarClock, HandCoins, FileBarChart, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange,
+  GraduationCap, CalendarClock, HandCoins, FileBarChart, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange,
 } from "lucide-react";
 import { useSession } from "../lib/session";
 import { ROLES, initiales } from "../lib/format";
@@ -20,6 +20,12 @@ const NAV = [
   { to: "/recettes", label: "Recettes diverses", icon: HandCoins, droit: "depenses.lire" },
   { to: "/depenses", label: "Dépenses", icon: Receipt, droit: "depenses.lire" },
   { to: "/rapports", label: "Rapports", icon: FileBarChart, droit: "finances.lire" },
+  { group: "Services" },
+  { to: "/services/cantine", label: "Cantine", icon: Utensils, droit: "finances.lire" },
+  { to: "/services/uniforme", label: "Uniformes", icon: Shirt, droit: "finances.lire" },
+  { to: "/services/fournitures", label: "Fournitures", icon: PencilRuler, droit: "finances.lire" },
+  { to: "/services/cours_soir", label: "Cours du soir", icon: MoonStar, droit: "finances.lire" },
+  { to: "/services/cotisation", label: "Cotisation des fêtes", icon: PartyPopper, droit: "finances.lire" },
   { group: "Pédagogie" },
   { to: "/notes", label: "Notes et bulletins", icon: BookOpen, droit: "pedagogie.lire" },
   { to: "/absences", label: "Absences", icon: CalendarCheck, droit: "pedagogie.lire" },

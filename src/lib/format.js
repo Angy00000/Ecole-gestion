@@ -48,7 +48,7 @@ export const CATEGORIES = {
 const MOIS_L = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 export const moisLong = (ym) => { if (!ym) return ""; const [y, m] = String(ym).split("-"); return `${MOIS_L[+m - 1]} ${y}`; };
 export const moisNom = (ym) => { if (!ym) return ""; const m = String(ym).split("-")[1]; const n = MOIS_L[+m - 1]; return n[0].toUpperCase() + n.slice(1); };
-export const libelleLigne = (l) => (l.type === "mensualite" ? `Mensualité ${moisLong(l.mois)}` : l.type === "cours_soir" && l.mois ? `Cours du soir ${moisLong(l.mois)}` : TYPES[l.type] || l.type);
+export const libelleLigne = (l) => (l.libelle ? l.libelle : l.type === "mensualite" ? `Mensualité ${moisLong(l.mois)}` : l.type === "cours_soir" && l.mois ? `Cours du soir ${moisLong(l.mois)}` : TYPES[l.type] || l.type);
 
 // Montant en lettres (français, usage au Sénégal : soixante-dix, quatre-vingt-dix).
 const U = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"];

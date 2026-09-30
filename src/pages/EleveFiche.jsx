@@ -8,6 +8,7 @@ import { fcfa, date, dateLongue, age, initiales } from "../lib/format";
 import { Spinner, ErrorBox, Empty, Modal, Field, Select, Input, Confirm, useToast } from "../components/ui";
 import EleveForm from "./EleveForm";
 import Encaissement from "../components/Encaissement";
+import TarifScolarite, { BadgeFormule } from "../components/TarifScolarite";
 import { moisNom, moisLong, libelleLigne, TYPES_COURTS } from "../lib/format";
 
 function Situation({ inscription, peutEncaisser, onEncaisser }) {
@@ -44,18 +45,18 @@ function Situation({ inscription, peutEncaisser, onEncaisser }) {
         </>}
 
         <h4 className="enc-h">Mensualités</h4>
-        <div className="timeline">
+        {inscription.gratuit ? <p className="small muted">Mensualités offertes pour cette année : aucun suivi mensuel.</p> : <div className="timeline">
           {mois.map((l) => {
             const st = l.du === 0 ? "free" : l.paye >= l.du ? "paid" : l.paye ? "partial" : l.mois <= cur ? "late" : "upcoming";
             return (
               <div key={l.mois} className={`tl ${st}`} title={moisLong(l.mois)}>
                 <div className="mn">{moisNom(l.mois)}</div>
                 <div className="mv">{l.du ? fcfa(l.du) : "—"}</div>
-                <span className="ms">{st === "paid" ? <><Check size={12} />Payé</> : st === "partial" ? `Reste ${fcfa(l.du - l.paye)}` : st === "late" ? "En retard" : st === "free" ? "Réparti jan./fév." : "À venir"}</span>
+                <span className="ms">{st === "paid" ? <><Check size={12} />Payé</> : st === "partial" ? `Reste ${fcfa(l.du - l.paye)}` : st === "late" ? "En retard" : st === "free" ? (inscription.gratuit ? "Offert" : "Réparti jan./fév.") : "À venir"}</span>
               </div>
             );
           })}
-        </div>
+        </div>}
       </div>
     </div>
   );
@@ -87,6 +88,7 @@ function InscriptionModal({ eleve, inscription, onClose }) {
   const edition = !!inscription;
   const [v, setV] = useState({
     classe_id: inscription?.classe_id || "", cantine: inscription?.cantine || false,
+    gratuit: inscription?.gratuit || false, inscription_offerte: inscription?.inscription_offerte || false, mensualite_speciale: inscription?.mensualite_speciale || null,
     statut: inscription?.statut || "active", date_inscription: inscription?.date_inscription?.slice(0, 10) || new Date().toISOString().slice(0, 10),
   });
   const [error, setError] = useState(null);
@@ -126,6 +128,7 @@ function InscriptionModal({ eleve, inscription, onClose }) {
           </Field>
         )}
         <label className="check"><input type="checkbox" checked={v.cantine} onChange={(e) => setV({ ...v, cantine: e.target.checked })} />Inscrit(e) à la cantine</label>
+        <TarifScolarite value={v} normal={classes.data?.find((c) => c.id === Number(v.classe_id))?.[v.cantine ? "mensualite_cantine" : "mensualite"]} onChange={(x) => setV({ ...v, ...x })} />
       </div>
     </Modal>
   );
@@ -178,6 +181,7 @@ export default function EleveFiche() {
               <span className="badge">{e.matricule}</span>
               {courante ? <span className={`chip ${courante.cycle || ""}`}>{courante.classe}</span> : <span className="badge gold">Non inscrit(e) en {s.annee?.libelle}</span>}
               {courante?.cantine && <span className="badge coral"><Utensils size={12} />Cantine</span>}
+              {courante && <BadgeFormule v={courante} />}
               {courante && courante.statut !== "active" && <span className="badge coral">{STATUTS[courante.statut]}</span>}
               {e.statut === "sorti" && <span className="badge coral">Sorti(e)</span>}
             </div>
@@ -241,7 +245,7 @@ export default function EleveFiche() {
                     <td>{i.type === "nouvelle" ? "Nouvelle" : "Réinscription"}</td>
                     <td className="hide-m num">{date(i.date_inscription)}</td>
                     <td>{i.cantine ? <span className="badge coral">Oui</span> : <span className="muted">Non</span>}</td>
-                    <td className="hide-m num r"><strong>{fcfa(i.mensualite_speciale ?? (i.cantine ? i.mensualite_cantine : i.mensualite))}</strong></td>
+                    <td className="hide-m num r"><strong>{i.gratuit ? "Offerte" : fcfa(i.mensualite_speciale ?? (i.cantine ? i.mensualite_cantine : i.mensualite))}</strong>{i.mensualite_speciale && !i.gratuit ? <div className="xs muted">personnalisée</div> : null}{i.inscription_offerte ? <div className="xs muted">inscription offerte</div> : null}</td>
                     <td><span className={`badge ${i.statut === "active" ? "green" : "coral"}`}>{STATUTS[i.statut]}</span></td>
                     <td className="r">{s.peut("eleves.ecrire") && <button className="btn sm ghost" onClick={() => setInsc(i)}><Pencil size={14} />Modifier</button>}</td>
                   </tr>

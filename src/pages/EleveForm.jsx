@@ -5,6 +5,7 @@ import { useSession } from "../lib/session";
 import { fcfa, today } from "../lib/format";
 import { Modal, Field, Input, Select, Textarea, ErrorBox, useToast } from "../components/ui";
 import { User, Users, GraduationCap, NotebookPen, UserPlus, Pencil } from "lucide-react";
+import TarifScolarite from "../components/TarifScolarite";
 const Sec = ({ icon: I, tone, title, sub, children }) => (
   <section className="form-section">
     <div className="head"><span className={`ic ${tone}`}><I size={18} /></span><div><h3>{title}</h3>{sub && <p>{sub}</p>}</div></div>
@@ -26,7 +27,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
   const qc = useQueryClient();
   const edition = !!eleve;
   const [v, setV] = useState(() => ({ ...VIDE, ...(eleve || {}), date_naissance: eleve?.date_naissance?.slice(0, 10) || "" }));
-  const [ins, setIns] = useState({ classe_id: "", cantine: false, date_inscription: today(), type: "nouvelle" });
+  const [ins, setIns] = useState({ classe_id: "", cantine: false, date_inscription: today(), type: "nouvelle", gratuit: false, inscription_offerte: false, mensualite_speciale: null });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
@@ -59,8 +60,10 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
     setBusy(false);
   };
 
-  const fraisInscription = classe ? classe.frais_inscription + classe.uniforme + (ins.cantine ? classe.frais_cantine : 0) : 0;
+  const droit = classe ? (ins.inscription_offerte ? 0 : classe.frais_inscription) : 0;
+  const fraisInscription = classe ? droit + classe.uniforme + (ins.cantine ? classe.frais_cantine : 0) : 0;
   const mensuel = classe ? (ins.cantine ? classe.mensualite_cantine : classe.mensualite) : 0;
+  const mensuelReel = ins.gratuit ? 0 : ins.mensualite_speciale || mensuel;
 
   return (
     <Modal wide pad={false} icon={<span className="ic teal" style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center" }}>{edition ? <Pencil size={19} /> : <UserPlus size={19} />}</span>}
@@ -124,16 +127,17 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
                   </Field>
                   <Field label="Date d'inscription"><Input type="date" value={ins.date_inscription} onChange={(e) => setIns({ ...ins, date_inscription: e.target.value })} /></Field>
                 </div>
+                <TarifScolarite value={ins} normal={mensuel} onChange={(x) => setIns({ ...ins, ...x })} />
                 <label className="switch-card"><input type="checkbox" checked={ins.cantine} onChange={(e) => setIns({ ...ins, cantine: e.target.checked })} /><div><strong>Cantine</strong><div className="xs muted">L'élève déjeune à l'école</div></div></label>
               </div>
               <div className="recap lattice">
                 <h4>Frais à régler à l'inscription</h4>
                 {classe ? <>
-                  <div className="recap-row" style={{ marginTop: 10 }}><span>Droit d'inscription</span><span>{fcfa(classe.frais_inscription)}</span></div>
+                  <div className="recap-row" style={{ marginTop: 10 }}><span>Droit d'inscription</span><span>{ins.inscription_offerte ? "Offert" : fcfa(classe.frais_inscription)}</span></div>
                   {classe.uniforme > 0 && <div className="recap-row"><span>Uniforme et tenue de sport</span><span>{fcfa(classe.uniforme)}</span></div>}
                   {ins.cantine && <div className="recap-row"><span>Inscription cantine</span><span>{fcfa(classe.frais_cantine)}</span></div>}
                   <div className="recap-row total"><span>Total</span><span>{fcfa(fraisInscription)}</span></div>
-                  <p className="note">Puis {fcfa(mensuel)} par mois{classe ? `, ${fcfa(ins.cantine ? classe.mensualite_cantine_jan_fev : classe.mensualite_jan_fev)} en janvier et février` : ""}.</p>
+                  <p className="note">{ins.gratuit ? "Aucune mensualité à payer." : ins.mensualite_speciale ? `Puis ${fcfa(mensuelReel)} par mois (tarif personnalisé), ${fcfa(Math.round(mensuelReel * 1.5))} en janvier et février.` : `Puis ${fcfa(mensuel)} par mois, ${fcfa(ins.cantine ? classe.mensualite_cantine_jan_fev : classe.mensualite_jan_fev)} en janvier et février.`}</p>
                 </> : <p className="note">Choisissez une classe pour afficher les frais.</p>}
               </div>
             </div>

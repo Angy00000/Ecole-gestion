@@ -27,6 +27,7 @@ export function SessionProvider({ children }) {
     token,
     user: boot.data?.user,
     etablissement: boot.data?.etablissement,
+    typesPaiement: boot.data?.types_paiement || [],
     annees,
     annee,
     anneeActive: active,

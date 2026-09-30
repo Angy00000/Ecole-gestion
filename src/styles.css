@@ -802,3 +802,7 @@ tr.appel-retard td { background: var(--gold-50); }
   .toasts, .overlay, .menu-btn { display: none !important; }
   .card-head input[type="date"], .card-head .btn { display: none !important; }
 }
+.formules { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.formule { height: 38px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); font-weight: 700; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.formule:hover { border-color: var(--teal-400); }
+.formule.on { background: var(--teal-800); border-color: var(--teal-800); color: #fff; }
