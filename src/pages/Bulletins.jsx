@@ -76,6 +76,7 @@ export default function Bulletins() {
   const eleves = data.eleves.filter((e) => !seul || String(e.eleve_id) === seul);
   return (
     <div className="print-page">
+      <style>{"@page { size: A4 portrait; margin: 0; }"}</style>
       <div className="print-bar">
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{eleves.length} bulletin{eleves.length > 1 ? "s" : ""}</strong> — {data.classe.nom}, {TRIMESTRES[data.trimestre]}</span>

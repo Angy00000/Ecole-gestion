@@ -9,7 +9,7 @@ import { Spinner, ErrorBox, PageHead, Select } from "../components/ui";
 const PERIODES = {
   mois: () => [today().slice(0, 8) + "01", today()],
   trimestre: () => { const d = new Date(); const m = Math.floor(d.getMonth() / 3) * 3; return [`${d.getFullYear()}-${String(m + 1).padStart(2, "0")}-01`, today()]; },
-  annee: (a) => [`${(a?.debut || today()).slice(0, 4)}-07-01`, today()],
+  annee: () => ["", ""],
 };
 
 function Barres({ data }) {
@@ -32,18 +32,19 @@ function Barres({ data }) {
 export default function Rapports() {
   const s = useSession();
   const [periode, setPeriode] = useState("annee");
-  const [du, setDu] = useState(PERIODES.annee(s.annee)[0]);
-  const [au, setAu] = useState(today());
+  const [du, setDu] = useState("");
+  const [au, setAu] = useState("");
   const choisir = (p) => { setPeriode(p); if (p !== "libre") { const [a, b] = PERIODES[p](s.annee); setDu(a); setAu(b); } };
   const { data, isLoading, error } = useQuery({ queryKey: ["rapport", du, au, s.annee?.id], queryFn: () => api.get("/rapport", { du, au, annee_id: s.annee?.id }) });
+  const vDu = du || data?.du || "", vAu = au || data?.au || "";
 
   const exporter = () => {
-    const L = [["Rapport financier", `${date(du)} au ${date(au)}`], [], ["Paiements des élèves"], ...data.par_type.map((t) => [TYPES_COURTS[t.type], t.montant]), ["Total élèves", data.totaux.eleves], [],
+    const L = [["Rapport financier", `${date(vDu)} au ${date(vAu)}`], [], ["Paiements des élèves"], ...data.par_type.map((t) => [TYPES_COURTS[t.type], t.montant]), ["Total élèves", data.totaux.eleves], [],
       ["Recettes diverses"], ...data.recettes.map((r) => [CATEGORIES_RECETTES[r.categorie], r.montant]), ["Total recettes diverses", data.totaux.autres], [],
       ...(data.totaux.depenses != null ? [["Dépenses"], ...data.depenses.map((d) => [CATEGORIES[d.categorie], d.montant]), ["Total dépenses", data.totaux.depenses], [], ["Solde", data.totaux.solde]] : []),
       [], ["Impayés à date", data.impayes.total]];
     const csv = "\ufeff" + L.map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = `rapport-${du}-${au}.csv`; a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = `rapport-${vDu}-${vAu}.csv`; a.click();
   };
 
   return (
@@ -59,13 +60,13 @@ export default function Rapports() {
             {[["mois", "Ce mois"], ["trimestre", "Ce trimestre"], ["annee", "Année scolaire"], ["libre", "Période libre"]].map(([k, l]) => <button key={k} className={periode === k ? "on" : ""} onClick={() => choisir(k)}>{l}</button>)}
           </div>
           <div className="date-range">
-            <input className="input" type="date" value={du} onChange={(e) => { setPeriode("libre"); setDu(e.target.value); }} aria-label="Du" /><span className="muted">au</span>
-            <input className="input" type="date" value={au} onChange={(e) => { setPeriode("libre"); setAu(e.target.value); }} aria-label="Au" />
+            <input className="input" type="date" value={vDu} onChange={(e) => { setPeriode("libre"); setDu(e.target.value); if (!au) setAu(vAu); }} aria-label="Du" /><span className="muted">au</span>
+            <input className="input" type="date" value={vAu} onChange={(e) => { setPeriode("libre"); setAu(e.target.value); if (!du) setDu(vDu); }} aria-label="Au" />
           </div>
         </div>
       </div>
 
-      <p className="print-only" style={{ marginBottom: 12 }}><strong>{s.etablissement.nom}</strong> — Rapport financier du {date(du)} au {date(au)}</p>
+      <p className="print-only" style={{ marginBottom: 12 }}><strong>{s.etablissement.nom}</strong> — Rapport financier du {date(vDu)} au {date(vAu)}</p>
 
       {isLoading ? <Spinner /> : error ? <ErrorBox error={error} /> : (
         <div className="dash">

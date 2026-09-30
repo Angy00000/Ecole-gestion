@@ -74,6 +74,7 @@ export default function Recu() {
 
   return (
     <div className="print-page">
+      <style>{"@page { size: A5 portrait; margin: 0; }"}</style>
       <div className="print-bar">
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow" />

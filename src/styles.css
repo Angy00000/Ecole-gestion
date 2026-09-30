@@ -765,10 +765,7 @@ table.table { width: 100%; border-collapse: separate; border-spacing: 0; }
   .bulletin:last-child { page-break-after: auto; break-after: auto; }
 }
 
-@page { margin: 0; }
-@page a5 { size: A5 portrait; margin: 0; }
-@page a4 { size: A4 portrait; margin: 0; }
-@media print { .ticket { page: a5; } .bulletin { page: a4; } }
+@page { size: A4 portrait; margin: 12mm; }
 .seg.presence button { height: 32px; padding: 0 12px; font-size: 13px; }
 .seg.presence button.on.p { color: var(--green); }
 .seg.presence button.on.a { background: var(--coral); color: #fff; }
@@ -801,3 +798,7 @@ tr.appel-retard td { background: var(--gold-50); }
 .rep-in i { display: block; background: var(--gold); }
 .rep-out { background: var(--coral); opacity: 0.85; }
 @media print { .rapport .card { break-inside: avoid; } .rapport .toolbar { display: none; } }
+@media print {
+  .toasts, .overlay, .menu-btn { display: none !important; }
+  .card-head input[type="date"], .card-head .btn { display: none !important; }
+}

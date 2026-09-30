@@ -86,7 +86,7 @@ function Suivi({ classes }) {
   const s = useSession();
   const nav = useNavigate();
   const [classe, setClasse] = useState("");
-  const [du, setDu] = useState(s.annee?.debut?.slice(0, 10) || today());
+  const [du, setDu] = useState(`${(s.annee?.debut || today()).slice(0, 4)}-07-01`);
   const [au, setAu] = useState(today());
   const { data, isLoading, error } = useQuery({ queryKey: ["absences", classe, du, au], queryFn: () => api.get("/absences", { classe_id: classe, du, au, annee_id: s.annee?.id }) });
   const msg = (r) => `Bonjour, l'${s.etablissement.nom} vous informe que ${r.prenom} ${r.nom} (${r.classe}) compte ${r.absences} absence(s) dont ${r.non_justifiees} non justifiée(s) et ${r.retards} retard(s) depuis le ${date(du)}. Merci de prendre contact avec l'école.`;

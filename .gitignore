@@ -1,2 +1,3 @@
 node_modules
 dist
+vite.e2e.config.js

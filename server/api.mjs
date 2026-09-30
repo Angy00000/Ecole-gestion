@@ -695,7 +695,8 @@ route("GET", "/rapport", async (ctx) => {
   exige(ctx, "finances.lire");
   const annee = await anneeCourante(ctx.query.annee_id);
   const a = await one("select * from app.annees where id=$1", [annee]);
-  const du = ctx.query.du || `${a.debut.slice(0, 4)}-07-01`, au = ctx.query.au || new Date().toISOString().slice(0, 10);
+  const debutAnnee = (await one(`select least($2::date, (select min(r.date_paiement) from app.recus r join app.inscriptions i on i.id=r.inscription_id where i.annee_id=$1))::text as d`, [annee, `${a.debut.slice(0, 4)}-07-01`])).d;
+  const du = ctx.query.du || debutAnnee, au = ctx.query.au || new Date().toISOString().slice(0, 10);
   const voitDepenses = peut(ctx.user.role, "depenses.lire");
   const [parType, parMode, parMois, recettes, depenses, parClasse, [nb]] = await tx([
     [`select p.type, sum(p.montant) as montant, count(distinct r.id) as recus from app.paiements p join app.recus r on r.id=p.recu_id
@@ -716,7 +717,7 @@ route("GET", "/rapport", async (ctx) => {
   const totEleves = parMode.reduce((t, m) => t + m.montant, 0);
   const totAutres = recettes.reduce((t, m) => t + m.montant, 0);
   const totDep = voitDepenses ? depenses.reduce((t, m) => t + m.montant, 0) : null;
-  return { du, au, annee: a.libelle, par_type: parType, par_mode: parMode, par_mois: parMois.map((m) => voitDepenses ? m : { ...m, depenses: null }),
+  return { du, au, debut_annee: debutAnnee, annee: a.libelle, par_type: parType, par_mode: parMode, par_mois: parMois.map((m) => voitDepenses ? m : { ...m, depenses: null }),
     recettes, depenses: voitDepenses ? depenses : [], par_classe: parClasse, nb,
     totaux: { eleves: totEleves, autres: totAutres, entrees: totEleves + totAutres, depenses: totDep, solde: totDep == null ? null : totEleves + totAutres - totDep },
     impayes: imp };
