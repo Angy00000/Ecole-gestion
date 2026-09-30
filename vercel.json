@@ -11,6 +11,30 @@
     {
       "source": "/api/db",
       "destination": "https://br-dawn-art-b2psp579-api.compute.c-6.eu-central-1.aws.neon.tech/"
+    },
+    {
+      "source": "/((?!api/|assets/|logo|icon-|manifest|sw\\.js).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     }
   ]
 }
