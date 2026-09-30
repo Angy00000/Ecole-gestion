@@ -128,12 +128,21 @@ const route = (method, pattern, handler, { public: pub = false } = {}) => {
 };
 
 // ── Authentification ──────────────────────────────────────────────────────
+const MAX_ECHECS = 5, BLOCAGE_MIN = 15;
 route("POST", "/auth/login", async ({ body }) => {
+  const email = String(body.email || "").trim().toLowerCase();
+  const { n } = await one(`select count(*) as n from app.echecs_connexion where lower(email)=$1 and created_at > now() - interval '${BLOCAGE_MIN} minutes'`, [email]);
+  if (n >= MAX_ECHECS) fail(429, `Trop de tentatives échouées pour ce compte. Réessayez dans ${BLOCAGE_MIN} minutes.`);
   const u = await one(
     `update app.utilisateurs set dernier_login = now()
      where lower(email)=lower($1) and actif and mot_de_passe = crypt($2, mot_de_passe)
      returning ${USER_COLS}`, [body.email?.trim() || "", body.mot_de_passe || ""]);
-  if (!u) fail(401, "Email ou mot de passe incorrect.");
+  if (!u) {
+    await q("insert into app.echecs_connexion (email) values ($1)", [email]);
+    const reste = MAX_ECHECS - n - 1;
+    fail(401, reste > 0 ? `Email ou mot de passe incorrect. ${reste} essai${reste > 1 ? "s" : ""} restant${reste > 1 ? "s" : ""} avant blocage.` : `Email ou mot de passe incorrect. Compte bloqué ${BLOCAGE_MIN} minutes.`);
+  }
+  await q("delete from app.echecs_connexion where lower(email)=$1 or created_at < now() - interval '1 day'", [email]);
   await journal({ user: u }, "connexion", "utilisateur", u.id);
   return { user: u, token: await makeToken(u) };
 }, { public: true });

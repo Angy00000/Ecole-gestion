@@ -9,10 +9,6 @@
       "destination": "https://br-dawn-art-b2psp579-api2.compute.c-6.eu-central-1.aws.neon.tech/:path*"
     },
     {
-      "source": "/api/db",
-      "destination": "https://br-dawn-art-b2psp579-api.compute.c-6.eu-central-1.aws.neon.tech/"
-    },
-    {
       "source": "/((?!api/|assets/|logo|icon-|manifest|sw\\.js).*)",
       "destination": "/index.html"
     }
