@@ -806,3 +806,7 @@ tr.appel-retard td { background: var(--gold-50); }
 .formule { height: 38px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); font-weight: 700; font-size: 13px; color: var(--ink-2); cursor: pointer; }
 .formule:hover { border-color: var(--teal-400); }
 .formule.on { background: var(--teal-800); border-color: var(--teal-800); color: #fff; }
+.maj { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 300; display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 18px; border-radius: 14px; background: var(--teal-900); color: #fff; box-shadow: var(--sh-pop); max-width: calc(100vw - 32px); animation: rise 0.25s; }
+.maj svg { color: var(--gold); flex: none; }
+.maj span { font-size: 13px; }
+@media print { .maj { display: none !important; } }

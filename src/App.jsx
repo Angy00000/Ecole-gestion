@@ -20,13 +20,16 @@ import Emploi from "./pages/Emploi";
 import Recettes from "./pages/Recettes";
 import Rapports from "./pages/Rapports";
 import Service from "./pages/Service";
+import MiseAJour from "./components/MiseAJour";
 
 export default function App() {
   const s = useSession();
-  if (!s.token) return <Login />;
+  if (!s.token) return <><Login /><MiseAJour /></>;
   if (s.bootError) return <div style={{ padding: 40, maxWidth: 520 }}><ErrorBox error={s.bootError} /><button className="btn" style={{ marginTop: 16 }} onClick={s.logout}>Revenir à la connexion</button></div>;
   if (!s.ready) return <Spinner />;
   return (
+    <>
+    <MiseAJour />
     <Routes>
       <Route path="recus/:id" element={<Recu />} />
       {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}
@@ -49,5 +52,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    </>
   );
 }

@@ -1,6 +1,6 @@
 // Service worker : rend l'application installable et garde l'interface disponible en cas de coupure.
 // Les données (API) ne sont jamais mises en cache.
-const CACHE = "esjbm-v2";
+const CACHE = "esjbm-v3";
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
