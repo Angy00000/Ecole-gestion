@@ -27,7 +27,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
   const qc = useQueryClient();
   const edition = !!eleve;
   const [v, setV] = useState(() => ({ ...VIDE, ...(eleve || {}), date_naissance: eleve?.date_naissance?.slice(0, 10) || "" }));
-  const [ins, setIns] = useState({ classe_id: "", cantine: false, date_inscription: today(), type: "nouvelle", gratuit: false, inscription_offerte: false, mensualite_speciale: null });
+  const [ins, setIns] = useState({ classe_id: "", cantine: false, date_inscription: today(), type: "nouvelle", gratuit: false, inscription_offerte: false, mensualite_speciale: null, uniforme: false, tenue_sport: false });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
@@ -61,7 +61,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
   };
 
   const droit = classe ? (ins.inscription_offerte ? 0 : classe.frais_inscription) : 0;
-  const fraisInscription = classe ? droit + classe.uniforme + (ins.cantine ? classe.frais_cantine : 0) : 0;
+  const fraisInscription = classe ? droit + (ins.uniforme ? classe.uniforme : 0) + (ins.tenue_sport ? classe.tenue_sport : 0) + (ins.cantine ? classe.frais_cantine : 0) : 0;
   const mensuel = classe ? (ins.cantine ? classe.mensualite_cantine : classe.mensualite) : 0;
   const mensuelReel = ins.gratuit ? 0 : ins.mensualite_speciale || mensuel;
 
@@ -128,13 +128,18 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
                   <Field label="Date d'inscription"><Input type="date" value={ins.date_inscription} onChange={(e) => setIns({ ...ins, date_inscription: e.target.value })} /></Field>
                 </div>
                 <TarifScolarite value={ins} normal={mensuel} onChange={(x) => setIns({ ...ins, ...x })} />
-                <label className="switch-card"><input type="checkbox" checked={ins.cantine} onChange={(e) => setIns({ ...ins, cantine: e.target.checked })} /><div><strong>Cantine</strong><div className="xs muted">L'élève déjeune à l'école</div></div></label>
+                <div className="options-3">
+                  <label className="switch-card"><input type="checkbox" checked={ins.uniforme} onChange={(e) => setIns({ ...ins, uniforme: e.target.checked })} /><div><strong>Uniforme</strong><div className="xs muted">{classe ? fcfa(classe.uniforme) : "—"}</div></div></label>
+                  <label className="switch-card"><input type="checkbox" checked={ins.tenue_sport} onChange={(e) => setIns({ ...ins, tenue_sport: e.target.checked })} /><div><strong>Tenue de sport</strong><div className="xs muted">{classe ? fcfa(classe.tenue_sport) : "—"}</div></div></label>
+                  <label className="switch-card"><input type="checkbox" checked={ins.cantine} onChange={(e) => setIns({ ...ins, cantine: e.target.checked })} /><div><strong>Cantine</strong><div className="xs muted">{classe ? `${fcfa(classe.frais_cantine)} + mensualité` : "Déjeune à l'école"}</div></div></label>
+                </div>
               </div>
               <div className="recap lattice">
                 <h4>Frais à régler à l'inscription</h4>
                 {classe ? <>
                   <div className="recap-row" style={{ marginTop: 10 }}><span>Droit d'inscription</span><span>{ins.inscription_offerte ? "Offert" : fcfa(classe.frais_inscription)}</span></div>
-                  {classe.uniforme > 0 && <div className="recap-row"><span>Uniforme et tenue de sport</span><span>{fcfa(classe.uniforme)}</span></div>}
+                  {ins.uniforme && <div className="recap-row"><span>Uniforme</span><span>{fcfa(classe.uniforme)}</span></div>}
+                  {ins.tenue_sport && <div className="recap-row"><span>Tenue de sport</span><span>{fcfa(classe.tenue_sport)}</span></div>}
                   {ins.cantine && <div className="recap-row"><span>Inscription cantine</span><span>{fcfa(classe.frais_cantine)}</span></div>}
                   <div className="recap-row total"><span>Total</span><span>{fcfa(fraisInscription)}</span></div>
                   <p className="note">{ins.gratuit ? "Aucune mensualité à payer." : ins.mensualite_speciale ? `Puis ${fcfa(mensuelReel)} par mois (tarif personnalisé), ${fcfa(Math.round(mensuelReel * 1.5))} en janvier et février.` : `Puis ${fcfa(mensuel)} par mois, ${fcfa(ins.cantine ? classe.mensualite_cantine_jan_fev : classe.mensualite_jan_fev)} en janvier et février.`}</p>

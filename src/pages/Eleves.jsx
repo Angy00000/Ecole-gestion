@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Search, UserPlus, Download, Users, ChevronLeft, ChevronRight, Utensils, ArrowDownAZ } from "lucide-react";
+import { Search, UserPlus, Download, Users, ChevronLeft, ChevronRight, Utensils, ArrowDownAZ, Printer, IdCard } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { initiales, age, nombre, fcfa } from "../lib/format";
@@ -20,7 +20,8 @@ export default function Eleves() {
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState("");
-  const [classe, setClasse] = useState("");
+  const classe = params.get("classe") || "";
+  const setClasse = (c) => { const p = Object.fromEntries(params); delete p.nouveau; if (c) p.classe = c; else delete p.classe; setParams(p, { replace: true }); };
   const [sexe, setSexe] = useState("");
   const [inscrits, setInscrits] = useState("oui");
   const [sort, setSort] = useState("nom");
@@ -55,6 +56,10 @@ export default function Eleves() {
   return (
     <>
       <PageHead title="Élèves" sub={`${nombre(total)} élèves inscrits en ${s.annee?.libelle}`}>
+        {classe && inscrits === "oui" && <>
+          <button className="btn" onClick={() => nav(`/documents?type=liste&classe=${classe}`)}><Printer size={17} /><span className="hide-m">Liste de classe</span></button>
+          <button className="btn" onClick={() => nav(`/documents?type=carte&classe=${classe}`)}><IdCard size={17} /><span className="hide-m">Cartes scolaires</span></button>
+        </>}
         <button className="btn" onClick={exporter}><Download size={17} /><span className="hide-m">Exporter en Excel</span></button>
         {s.peut("eleves.ecrire") && <button className="btn primary" onClick={() => setForm(true)}><UserPlus size={17} />Inscrire un élève</button>}
       </PageHead>
@@ -128,7 +133,7 @@ export default function Eleves() {
         )}
       </div>
 
-      {form && <EleveForm onClose={() => { setForm(false); setParams({}); }} onSaved={(id) => { setForm(false); nav(`/eleves/${id}`); }} />}
+      {form && <EleveForm onClose={() => { setForm(false); const p = Object.fromEntries(params); delete p.nouveau; setParams(p); }} onSaved={(id) => { setForm(false); nav(`/eleves/${id}`); }} />}
     </>
   );
 }

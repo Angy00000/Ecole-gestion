@@ -69,10 +69,11 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
     if (!sit.data) return;
     const s0 = {};
     if (preset) {
-      // Uniforme / cantine : on propose d'abord les frais restants ; sinon une ligne du service choisi.
-      const f = frais.find((l) => l.type === preset && l.du > l.paye);
-      if (f) s0[key(f)] = f.du - f.paye;
-      else if (preset !== "uniforme") ajouterExtra(preset === "cantine" ? "cantine_jour" : preset);
+      // Uniformes : uniforme + tenue de sport ; cantine : frais restants, sinon repas au jour ; autres : une ligne du service.
+      const cibles = preset === "uniforme" ? ["uniforme", "tenue_sport"] : [preset];
+      const dus = frais.filter((l) => cibles.includes(l.type) && l.du > l.paye);
+      dus.forEach((f) => { s0[key(f)] = f.du - f.paye; });
+      if (!dus.length && preset !== "uniforme") ajouterExtra(preset === "cantine" ? "cantine_jour" : preset);
       setSel(s0);
       return;
     }

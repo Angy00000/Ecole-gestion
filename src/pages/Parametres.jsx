@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, CheckCircle2, Building2, CalendarRange, UsersRound, History, Tags, Trash2 } from "lucide-react";
+import { Plus, Pencil, CheckCircle2, Building2, CalendarRange, UsersRound, History, Tags, Trash2, DatabaseBackup, Download, FileJson } from "lucide-react";
 import { TYPES } from "../lib/format";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
@@ -31,6 +31,8 @@ function Etablissement() {
         <ErrorBox error={error} />
         <div className="grid g2" style={{ marginTop: error ? 14 : 0 }}>
           {F({ k: "nom", label: "Nom de l'établissement", span: true })}
+          {F({ k: "directeur", label: "Nom du directeur / de la directrice" })}
+          {F({ k: "ville", label: "Ville (pour « Fait à … »)" })}
           {F({ k: "slogan", label: "Devise" })}
           {F({ k: "adresse", label: "Adresse" })}
           {F({ k: "telephones", label: "Téléphones" })}
@@ -215,7 +217,7 @@ function Utilisateurs() {
 }
 
 // ── Journal ──
-const ACTIONS = { connexion: "Connexion", inscription: "Inscription", reinscription: "Réinscription", modification: "Modification", creation: "Création", suppression: "Suppression", sortie: "Archivage", activation: "Activation", changement_mot_de_passe: "Mot de passe changé" };
+const ACTIONS = { sauvegarde: "Sauvegarde", encaissement: "Encaissement", annulation: "Annulation", appel: "Appel", saisie_notes: "Saisie de notes", connexion: "Connexion", inscription: "Inscription", reinscription: "Réinscription", modification: "Modification", creation: "Création", suppression: "Suppression", sortie: "Archivage", activation: "Activation", changement_mot_de_passe: "Mot de passe changé" };
 const ENTITES = { eleve: "élève", classe: "classe", annee: "année", utilisateur: "compte", etablissement: "établissement", inscription: "inscription" };
 function Journal() {
   const { data, isLoading, error } = useQuery({ queryKey: ["journal"], queryFn: () => api.get("/journal", { limit: 200 }) });
@@ -290,6 +292,62 @@ function TypesPaiement() {
   );
 }
 
+
+// ── Sauvegarde ──
+const FEUILLES = { eleves: "Élèves", inscriptions: "Inscriptions", recus: "Reçus", paiements: "Détail paiements", depenses: "Dépenses", recettes: "Recettes diverses",
+  classes: "Classes et tarifs", matieres: "Matières", enseignants: "Enseignants", evaluations: "Évaluations", notes: "Notes", appreciations: "Appréciations",
+  absences: "Absences", emploi_temps: "Emploi du temps", annees: "Années scolaires", etablissement: "Établissement", utilisateurs: "Utilisateurs", types_paiement: "Types de paiement" };
+function Sauvegarde() {
+  const s = useSession();
+  const toast = useToast();
+  const [busy, setBusy] = useState(null);
+  const derniere = s.etablissement?.derniere_sauvegarde;
+  const jours = derniere ? Math.floor((Date.now() - new Date(derniere)) / 864e5) : null;
+  const telecharger = async (format) => {
+    setBusy(format);
+    try {
+      const d = await api.get("/sauvegarde");
+      const jour = d.date.slice(0, 10);
+      let blob, nom;
+      if (format === "json") { blob = new Blob([JSON.stringify(d, null, 1)], { type: "application/json" }); nom = `sauvegarde-esjbm-${jour}.json`; }
+      else {
+        const XLSX = await import("xlsx");
+        const wb = XLSX.utils.book_new();
+        Object.entries(d.tables).forEach(([k, rows]) => {
+          const ws = XLSX.utils.json_to_sheet(rows.map((r) => Object.fromEntries(Object.entries(r).map(([c, v]) => [c, v !== null && typeof v === "object" ? JSON.stringify(v) : v]))));
+          XLSX.utils.book_append_sheet(wb, ws, (FEUILLES[k] || k).slice(0, 31));
+        });
+        blob = new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        nom = `sauvegarde-esjbm-${jour}.xlsx`;
+      }
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom; a.click();
+      toast("Sauvegarde téléchargée : " + nom); s.refresh();
+    } catch (e) { toast(e.message, "error"); }
+    setBusy(null);
+  };
+  return (
+    <div className="card">
+      <div className="card-body stack">
+        <div className="row" style={{ gap: 14, alignItems: "flex-start" }}>
+          <span className="ic teal" style={{ width: 48, height: 48, borderRadius: 14, display: "grid", placeItems: "center", flex: "none" }}><DatabaseBackup size={24} /></span>
+          <div>
+            <h3>Sauvegarde de toutes les données</h3>
+            <p className="small muted" style={{ marginTop: 4 }}>Télécharge l'intégralité des données de l'école : élèves, inscriptions, reçus, dépenses, notes, absences, enseignants… Conservez ce fichier sur une clé USB ou dans Google Drive. À faire <strong>au moins une fois par semaine</strong>.</p>
+          </div>
+        </div>
+        <div className={`alert ${jours != null && jours < 7 ? "info" : ""}`} style={{ margin: 0 }}>
+          {derniere ? `Dernière sauvegarde : ${dateHeure(derniere)}${jours >= 7 ? ` — il y a ${jours} jours, pensez à en refaire une.` : "."}` : "Aucune sauvegarde n'a encore été faite."}
+        </div>
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <button className="btn primary" onClick={() => telecharger("xlsx")} disabled={!!busy}><Download size={17} />{busy === "xlsx" ? "Préparation…" : "Télécharger en Excel"}</button>
+          <button className="btn" onClick={() => telecharger("json")} disabled={!!busy}><FileJson size={17} />{busy === "json" ? "Préparation…" : "Format technique (JSON)"}</button>
+        </div>
+        <p className="xs muted">Le fichier Excel contient une feuille par type de données. Le format technique permet une restauration complète en cas de problème.</p>
+      </div>
+    </div>
+  );
+}
+
 export default function Parametres() {
   const s = useSession();
   const tabs = [
@@ -297,6 +355,7 @@ export default function Parametres() {
     ["annees", "Années scolaires", true, CalendarRange],
     ["types-paiement", "Types de paiement", true, Tags],
     ["utilisateurs", "Utilisateurs", s.peut("utilisateurs"), UsersRound],
+    ["sauvegarde", "Sauvegarde", s.peut("etablissement.ecrire"), DatabaseBackup],
     ["journal", "Journal des actions", s.peut("journal.lire"), History],
   ].filter((t) => t[2]);
   return (
@@ -314,6 +373,7 @@ export default function Parametres() {
             <Route path="types-paiement" element={<TypesPaiement />} />
             {s.peut("utilisateurs") && <Route path="utilisateurs" element={<Utilisateurs />} />}
             {s.peut("journal.lire") && <Route path="journal" element={<Journal />} />}
+            {s.peut("etablissement.ecrire") && <Route path="sauvegarde" element={<Sauvegarde />} />}
           </Routes>
         </div>
       </div>

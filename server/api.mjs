@@ -99,9 +99,9 @@ const journal = (ctx, action, entite, entite_id, details) =>
 // ── Validation ────────────────────────────────────────────────────────────
 const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in obj).map((k) => [k, obj[k] === "" ? null : obj[k]]));
 const COLS_ELEVE = ["nom","prenom","sexe","date_naissance","lieu_naissance","adresse","pere_nom","pere_prenom","pere_profession","pere_telephone","mere_nom","mere_prenom","mere_profession","mere_telephone","tuteur_nom","tuteur_telephone","observations","statut"];
-const COLS_CLASSE = ["nom","cycle","ordre","capacite","titulaire_id","bareme","frais_inscription","uniforme","mensualite","mensualite_jan_fev","mensualite_cantine","mensualite_cantine_jan_fev","frais_cantine"];
-const COLS_INSC = ["classe_id","cantine","statut","mensualite_speciale","gratuit","inscription_offerte","date_inscription","type"];
-const COLS_ETAB = ["nom","slogan","adresse","telephones","email","site_web","ninea","bp","autorisation","logo"];
+const COLS_CLASSE = ["nom","cycle","ordre","capacite","titulaire_id","bareme","frais_inscription","uniforme","tenue_sport","mensualite","mensualite_jan_fev","mensualite_cantine","mensualite_cantine_jan_fev","frais_cantine"];
+const COLS_INSC = ["classe_id","cantine","uniforme","tenue_sport","statut","mensualite_speciale","gratuit","inscription_offerte","date_inscription","type"];
+const COLS_ETAB = ["nom","slogan","adresse","telephones","email","site_web","ninea","bp","autorisation","logo","directeur","ville"];
 const insertSql = (table, data) => {
   const k = Object.keys(data);
   return [`insert into ${table} (${k.join(",")}) values (${k.map((_, i) => `$${i + 1}`).join(",")}) returning *`, k.map((c) => data[c])];
@@ -316,9 +316,9 @@ route("GET", "/eleves", async (ctx) => {
   const [rows, [{ total }]] = await tx([
     [`select e.id, e.matricule, e.nom, e.prenom, e.sexe, e.date_naissance, e.statut,
         coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
-        i.id as inscription_id, i.cantine, i.type as type_inscription, i.statut as statut_inscription, i.gratuit, i.mensualite_speciale, i.inscription_offerte,
-        case when i.id is null then null else (case when i.inscription_offerte then 0 else c.frais_inscription end + c.uniforme + case when i.cantine then c.frais_cantine else 0 end)
-          - coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type in ('inscription','uniforme','cantine')),0) end as frais_reste,
+        i.id as inscription_id, i.cantine, i.type as type_inscription, i.statut as statut_inscription, i.gratuit, i.mensualite_speciale, i.inscription_offerte, i.uniforme as a_uniforme, i.tenue_sport as a_tenue,
+        case when i.id is null then null else (case when i.inscription_offerte then 0 else c.frais_inscription end + case when i.uniforme then c.uniforme else 0 end + case when i.tenue_sport then c.tenue_sport else 0 end + case when i.cantine then c.frais_cantine else 0 end)
+          - coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type in ('inscription','uniforme','tenue_sport','cantine')),0) end as frais_reste,
         c.id as classe_id, c.nom as classe, c.cycle
       ${base} order by ${SORTS[sort] || SORTS.nom} limit ${limit} offset ${(page - 1) * limit}`, p],
     [`select count(*) as total ${base}`, p],
@@ -332,7 +332,7 @@ route("GET", "/eleves/:id", async (ctx) => {
   const [[eleve], inscriptions, paiements] = await tx([
     ["select * from app.eleves where id=$1", [id]],
     [`select i.*, a.libelle as annee, a.active as annee_active, c.nom as classe, c.cycle,
-        c.frais_inscription, c.uniforme, c.mensualite, c.mensualite_jan_fev, c.mensualite_cantine, c.mensualite_cantine_jan_fev, c.frais_cantine
+        c.frais_inscription, c.uniforme as prix_uniforme, c.tenue_sport as prix_tenue, c.mensualite, c.mensualite_jan_fev, c.mensualite_cantine, c.mensualite_cantine_jan_fev, c.frais_cantine
       from app.inscriptions i join app.annees a on a.id=i.annee_id join app.classes c on c.id=i.classe_id
       where i.eleve_id=$1 order by a.debut desc`, [id]],
     peut(ctx.user.role, "finances.lire")
@@ -372,10 +372,10 @@ route("POST", "/eleves", async (ctx) => {
   const k = Object.keys(e);
   const r = await one(
     `with e as (insert into app.eleves (${k.join(",")}) values (${k.map((_, i) => `$${i + 1}`).join(",")}) returning *),
-     i as (insert into app.inscriptions (eleve_id, annee_id, classe_id, type, cantine, date_inscription, mensualite_speciale, gratuit, inscription_offerte)
-           select e.id, $${k.length + 1}, $${k.length + 2}, $${k.length + 3}, $${k.length + 4}, coalesce($${k.length + 5}::date, current_date), $${k.length + 6}::int, $${k.length + 7}::boolean, $${k.length + 8}::boolean from e returning id)
+     i as (insert into app.inscriptions (eleve_id, annee_id, classe_id, type, cantine, date_inscription, mensualite_speciale, gratuit, inscription_offerte, uniforme, tenue_sport)
+           select e.id, $${k.length + 1}, $${k.length + 2}, $${k.length + 3}, $${k.length + 4}, coalesce($${k.length + 5}::date, current_date), $${k.length + 6}::int, $${k.length + 7}::boolean, $${k.length + 8}::boolean, $${k.length + 9}::boolean, $${k.length + 10}::boolean from e returning id)
      select e.id, e.matricule, e.nom, e.prenom, (select id from i) as inscription_id from e`,
-    [...k.map((c) => e[c]), annee, ins.classe_id, ins.type || "nouvelle", !!ins.cantine, ins.date_inscription || null, ins.gratuit ? null : (Number(ins.mensualite_speciale) || null), !!ins.gratuit, !!ins.inscription_offerte]);
+    [...k.map((c) => e[c]), annee, ins.classe_id, ins.type || "nouvelle", !!ins.cantine, ins.date_inscription || null, ins.gratuit ? null : (Number(ins.mensualite_speciale) || null), !!ins.gratuit, !!ins.inscription_offerte, !!ins.uniforme, !!ins.tenue_sport]);
   await journal(ctx, "inscription", "eleve", r.id, { matricule: r.matricule, nom: `${r.prenom} ${r.nom}` });
   return r;
 });
@@ -409,10 +409,10 @@ route("POST", "/eleves/:id/inscriptions", async (ctx) => {
   requis(ctx.body, [["classe_id", "La classe"]]);
   const annee = await anneeCourante(ctx.body.annee_id);
   const r = await one(
-    `insert into app.inscriptions (eleve_id, annee_id, classe_id, type, cantine, date_inscription, mensualite_speciale, gratuit, inscription_offerte)
-     values ($1,$2,$3,$4,$5,coalesce($6::date,current_date),$7::int,$8::boolean,$9::boolean) returning *`,
+    `insert into app.inscriptions (eleve_id, annee_id, classe_id, type, cantine, date_inscription, mensualite_speciale, gratuit, inscription_offerte, uniforme, tenue_sport)
+     values ($1,$2,$3,$4,$5,coalesce($6::date,current_date),$7::int,$8::boolean,$9::boolean,$10::boolean,$11::boolean) returning *`,
     [ctx.params.id, annee, ctx.body.classe_id, ctx.body.type || "reinscription", !!ctx.body.cantine, ctx.body.date_inscription || null,
-     ctx.body.gratuit ? null : (Number(ctx.body.mensualite_speciale) || null), !!ctx.body.gratuit, !!ctx.body.inscription_offerte]);
+     ctx.body.gratuit ? null : (Number(ctx.body.mensualite_speciale) || null), !!ctx.body.gratuit, !!ctx.body.inscription_offerte, !!ctx.body.uniforme, !!ctx.body.tenue_sport]);
   await q("update app.eleves set statut='actif' where id=$1", [ctx.params.id]);
   await journal(ctx, "reinscription", "eleve", Number(ctx.params.id), { annee_id: annee });
   return r;
@@ -428,14 +428,14 @@ route("PUT", "/inscriptions/:id", async (ctx) => {
 
 // ═══ FINANCES ══════════════════════════════════════════════════════════════
 const MODES = ["especes", "wave", "orange_money", "cheque", "virement"];
-const TYPES_LIGNE = ["inscription", "uniforme", "cantine", "mensualite", "fournitures", "cours_vacances", "transport", "autre", "cours_soir", "cotisation", "cantine_jour"];
+const TYPES_LIGNE = ["inscription", "uniforme", "tenue_sport", "cantine", "mensualite", "fournitures", "cours_vacances", "transport", "autre", "cours_soir", "cotisation", "cantine_jour"];
 const TYPES_MOIS = ["mensualite", "cours_soir"];
 
 // Reste à payer par inscription, mois échus jusqu'à $2 (date). Paramètres : $1 année.
 const SQL_IMPAYES = `
   with ins as (
     select i.id, i.eleve_id, i.classe_id, i.cantine,
-      case when i.inscription_offerte then 0 else c.frais_inscription end + c.uniforme + case when i.cantine then c.frais_cantine else 0 end as frais
+      case when i.inscription_offerte then 0 else c.frais_inscription end + case when i.uniforme then c.uniforme else 0 end + case when i.tenue_sport then c.tenue_sport else 0 end + case when i.cantine then c.frais_cantine else 0 end as frais
     from app.inscriptions i join app.classes c on c.id=i.classe_id
     where i.annee_id=$1 and i.statut='active'),
   m as (select d from app.mois_annee($1) d where d <= $2::date),
@@ -448,29 +448,29 @@ const SQL_IMPAYES = `
       coalesce((select montant from pay where pay.inscription_id=ins.id and pay.type='mensualite' and pay.mois=m.d),0) as paye
     from ins cross join m)
   select ins.id as inscription_id, ins.eleve_id, ins.classe_id, ins.cantine, ins.frais,
-    coalesce((select sum(montant) from pay where pay.inscription_id=ins.id and pay.type in ('inscription','uniforme','cantine')),0) as frais_payes,
+    coalesce((select sum(montant) from pay where pay.inscription_id=ins.id and pay.type in ('inscription','uniforme','tenue_sport','cantine')),0) as frais_payes,
     coalesce((select sum(du) from lignes l where l.id=ins.id),0) as mens_dues,
     coalesce((select sum(least(paye,du)) from lignes l where l.id=ins.id),0) as mens_payees,
     coalesce((select count(*) from lignes l where l.id=ins.id and l.du > l.paye),0) as mois_impayes,
     (select string_agg(to_char(l.d,'YYYY-MM'), ',' order by l.d) from lignes l where l.id=ins.id and l.du > l.paye) as liste_mois,
-    greatest(ins.frais - coalesce((select sum(montant) from pay where pay.inscription_id=ins.id and pay.type in ('inscription','uniforme','cantine')),0), 0)
+    greatest(ins.frais - coalesce((select sum(montant) from pay where pay.inscription_id=ins.id and pay.type in ('inscription','uniforme','tenue_sport','cantine')),0), 0)
       + coalesce((select sum(greatest(du - paye, 0)) from lignes l where l.id=ins.id),0) as reste
   from ins`;
 
 const situation = async (inscriptionId) => {
   const [[ins], lignes] = await tx([
-    [`select i.*, c.nom as classe, c.cycle, c.frais_inscription, c.uniforme, c.frais_cantine, a.libelle as annee
+    [`select i.*, c.nom as classe, c.cycle, c.frais_inscription, c.uniforme as prix_uniforme, c.tenue_sport as prix_tenue, c.frais_cantine, a.libelle as annee
       from app.inscriptions i join app.classes c on c.id=i.classe_id join app.annees a on a.id=i.annee_id where i.id=$1`, [inscriptionId]],
-    [`with i as (select i.*, c.frais_inscription, c.uniforme, c.frais_cantine from app.inscriptions i join app.classes c on c.id=i.classe_id where i.id=$1),
+    [`with i as (select i.*, c.frais_inscription, c.uniforme as prix_uniforme, c.tenue_sport as prix_tenue, c.frais_cantine from app.inscriptions i join app.classes c on c.id=i.classe_id where i.id=$1),
       pay as (select p.type, p.mois, sum(p.montant) as m from app.paiements p join app.recus r on r.id=p.recu_id and not r.annule where p.inscription_id=$1 group by 1,2)
       select 'frais' as groupe, x.code as type, null::text as mois, x.ordre, x.du, coalesce((select sum(m) from pay where pay.type=x.code),0) as paye
-      from i, lateral (values ('inscription', 1, case when i.inscription_offerte then 0 else i.frais_inscription end), ('uniforme', 2, i.uniforme), ('cantine', 3, case when i.cantine then i.frais_cantine else 0 end)) x(code, ordre, du)
+      from i, lateral (values ('inscription', 1, case when i.inscription_offerte then 0 else i.frais_inscription end), ('uniforme', 2, case when i.uniforme then i.prix_uniforme else 0 end), ('tenue_sport', 3, case when i.tenue_sport then i.prix_tenue else 0 end), ('cantine', 4, case when i.cantine then i.frais_cantine else 0 end)) x(code, ordre, du)
       where x.du > 0 or exists (select 1 from pay where pay.type=x.code)
       union all
       select 'mois', 'mensualite', to_char(d,'YYYY-MM'), 10, app.du_mois($1, d), coalesce((select m from pay where pay.type='mensualite' and pay.mois=d),0)
       from app.mois_annee((select annee_id from i)) d
       union all
-      select 'autre', p.type, null, 20, 0, sum(p.m) from pay p where p.type not in ('inscription','uniforme','cantine','mensualite') group by p.type
+      select 'autre', p.type, null, 20, 0, sum(p.m) from pay p where p.type not in ('inscription','uniforme','tenue_sport','cantine','mensualite') group by p.type
       order by 4, 3`, [inscriptionId]],
   ]);
   if (!ins) fail(404, "Inscription introuvable.");
@@ -656,6 +656,37 @@ route("DELETE", "/depenses/:id", async (ctx) => {
 
 
 
+
+// ── Sauvegarde complète des données ──
+route("GET", "/sauvegarde", async (ctx) => {
+  exige(ctx, "etablissement.ecrire");
+  const T = {
+    eleves: "select * from app.eleves order by nom, prenom",
+    inscriptions: `select i.*, a.libelle as annee, c.nom as classe, e.matricule, e.nom, e.prenom from app.inscriptions i join app.annees a on a.id=i.annee_id join app.classes c on c.id=i.classe_id join app.eleves e on e.id=i.eleve_id order by a.debut, c.ordre, e.nom`,
+    recus: `select r.*, e.matricule, e.nom, e.prenom, u.prenom || ' ' || u.nom as encaisse_par_nom from app.recus r join app.inscriptions i on i.id=r.inscription_id join app.eleves e on e.id=i.eleve_id left join app.utilisateurs u on u.id=r.encaisse_par order by r.id`,
+    paiements: "select p.*, r.numero from app.paiements p join app.recus r on r.id=p.recu_id order by p.id",
+    depenses: "select * from app.depenses order by date_depense, id",
+    recettes: "select * from app.recettes order by date_recette, id",
+    classes: "select c.*, a.libelle as annee from app.classes c join app.annees a on a.id=c.annee_id order by a.debut, c.ordre",
+    matieres: "select m.*, c.nom as classe from app.matieres m join app.classes c on c.id=m.classe_id order by c.id, m.ordre",
+    enseignants: "select * from app.enseignants order by nom",
+    evaluations: "select ev.*, m.nom as matiere, c.nom as classe from app.evaluations ev join app.matieres m on m.id=ev.matiere_id join app.classes c on c.id=ev.classe_id order by ev.id",
+    notes: "select n.*, e.matricule, e.nom, e.prenom from app.notes n join app.inscriptions i on i.id=n.inscription_id join app.eleves e on e.id=i.eleve_id order by n.evaluation_id",
+    appreciations: "select * from app.appreciations",
+    absences: "select a.*, e.matricule, e.nom, e.prenom from app.absences a join app.inscriptions i on i.id=a.inscription_id join app.eleves e on e.id=i.eleve_id order by a.date_absence",
+    emploi_temps: "select * from app.emploi_temps order by classe_id, jour, heure_debut",
+    annees: "select * from app.annees order by debut",
+    etablissement: "select * from app.etablissement",
+    utilisateurs: "select id, nom, prenom, email, role, actif, dernier_login, created_at from app.utilisateurs order by id",
+    types_paiement: "select * from app.types_paiement",
+  };
+  const noms = Object.keys(T);
+  const res = await tx(noms.map((n) => [T[n]]));
+  await q("update app.etablissement set derniere_sauvegarde=now() where id=1");
+  await journal(ctx, "sauvegarde", "etablissement", 1);
+  return { date: new Date().toISOString(), tables: Object.fromEntries(noms.map((n, i) => [n, res[i]])) };
+});
+
 // ── Types de paiement personnalisés ──
 route("GET", "/types-paiement", async () => q("select * from app.types_paiement order by actif desc, libelle"));
 route("POST", "/types-paiement", async (ctx) => {
@@ -677,7 +708,7 @@ route("DELETE", "/types-paiement/:id", async (ctx) => {
 
 // ── Services : cantine, uniformes, fournitures, cours du soir, cotisations ──
 const SERVICES = {
-  uniforme:    { du: "c.uniforme", types: ["uniforme"] },
+  uniforme:    { du: "case when i.uniforme then c.uniforme else 0 end + case when i.tenue_sport then c.tenue_sport else 0 end", types: ["uniforme", "tenue_sport"] },
   fournitures: { du: "a.frais_fournitures", types: ["fournitures"] },
   cotisation:  { du: "a.frais_cotisation", types: ["cotisation"] },
   cantine:     { du: "case when i.cantine then c.frais_cantine else 0 end", types: ["cantine", "cantine_jour"] },
@@ -690,7 +721,7 @@ route("GET", "/services/:type", async (ctx) => {
   const annee = await anneeCourante(ctx.query.annee_id);
   const p = [annee, sv.types]; const w = ["i.annee_id=$1", "i.statut='active'"];
   if (ctx.query.classe_id) { p.push(ctx.query.classe_id); w.push(`i.classe_id=$${p.length}`); }
-  const rows = await q(`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle, i.cantine,
+  const rows = await q(`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle, i.cantine, i.uniforme as a_uniforme, i.tenue_sport as a_tenue,
       coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
       ${sv.du} as du,
       coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type = any($2::text[])),0) as paye,

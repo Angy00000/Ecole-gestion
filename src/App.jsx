@@ -21,6 +21,7 @@ import Recettes from "./pages/Recettes";
 import Rapports from "./pages/Rapports";
 import Service from "./pages/Service";
 import MiseAJour from "./components/MiseAJour";
+import Documents from "./pages/Documents";
 
 export default function App() {
   const s = useSession();
@@ -32,6 +33,7 @@ export default function App() {
     <MiseAJour />
     <Routes>
       <Route path="recus/:id" element={<Recu />} />
+      <Route path="documents" element={<Documents />} />
       {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />

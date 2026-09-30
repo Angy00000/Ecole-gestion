@@ -87,7 +87,7 @@ function InscriptionModal({ eleve, inscription, onClose }) {
   const qc = useQueryClient();
   const edition = !!inscription;
   const [v, setV] = useState({
-    classe_id: inscription?.classe_id || "", cantine: inscription?.cantine || false,
+    classe_id: inscription?.classe_id || "", cantine: inscription?.cantine || false, uniforme: inscription?.uniforme ?? false, tenue_sport: inscription?.tenue_sport ?? false,
     gratuit: inscription?.gratuit || false, inscription_offerte: inscription?.inscription_offerte || false, mensualite_speciale: inscription?.mensualite_speciale || null,
     statut: inscription?.statut || "active", date_inscription: inscription?.date_inscription?.slice(0, 10) || new Date().toISOString().slice(0, 10),
   });
@@ -127,7 +127,11 @@ function InscriptionModal({ eleve, inscription, onClose }) {
             </Select>
           </Field>
         )}
-        <label className="check"><input type="checkbox" checked={v.cantine} onChange={(e) => setV({ ...v, cantine: e.target.checked })} />Inscrit(e) à la cantine</label>
+        <div className="options-3">
+          <label className="switch-card"><input type="checkbox" checked={v.uniforme} onChange={(e) => setV({ ...v, uniforme: e.target.checked })} /><strong>Uniforme</strong></label>
+          <label className="switch-card"><input type="checkbox" checked={v.tenue_sport} onChange={(e) => setV({ ...v, tenue_sport: e.target.checked })} /><strong>Tenue de sport</strong></label>
+          <label className="switch-card"><input type="checkbox" checked={v.cantine} onChange={(e) => setV({ ...v, cantine: e.target.checked })} /><strong>Cantine</strong></label>
+        </div>
         <TarifScolarite value={v} normal={classes.data?.find((c) => c.id === Number(v.classe_id))?.[v.cantine ? "mensualite_cantine" : "mensualite"]} onChange={(x) => setV({ ...v, ...x })} />
       </div>
     </Modal>
@@ -145,6 +149,7 @@ export default function EleveFiche() {
   const [insc, setInsc] = useState(null);
   const [del, setDel] = useState(false);
   const [enc, setEnc] = useState(false);
+  const [docs, setDocs] = useState(false);
   const { data, isLoading, error } = useQuery({ queryKey: ["eleve", id], queryFn: () => api.get(`/eleves/${id}`) });
 
   if (isLoading) return <Spinner />;
@@ -181,13 +186,24 @@ export default function EleveFiche() {
               <span className="badge">{e.matricule}</span>
               {courante ? <span className={`chip ${courante.cycle || ""}`}>{courante.classe}</span> : <span className="badge gold">Non inscrit(e) en {s.annee?.libelle}</span>}
               {courante?.cantine && <span className="badge coral"><Utensils size={12} />Cantine</span>}
+              {courante?.uniforme && <span className="badge">Uniforme</span>}
+              {courante?.tenue_sport && <span className="badge">Tenue de sport</span>}
               {courante && <BadgeFormule v={courante} />}
               {courante && courante.statut !== "active" && <span className="badge coral">{STATUTS[courante.statut]}</span>}
               {e.statut === "sorti" && <span className="badge coral">Sorti(e)</span>}
             </div>
           </div>
           <div className="actions">
-            <button className="btn" onClick={() => window.print()}><Printer size={17} /><span className="hide-m">Imprimer</span></button>
+            <div className={`doc-menu ${docs ? "open" : ""}`}>
+              <button className="btn" onClick={() => setDocs(!docs)} aria-expanded={docs}><Printer size={17} /><span className="hide-m">Documents</span></button>
+              {docs && <div className="doc-menu-close" onClick={() => setDocs(false)} />}
+              <div className="dropdown">
+                {courante && <button onClick={() => nav(`/documents?type=certificat&eleve=${e.id}`)}>Certificat de scolarité</button>}
+                <button onClick={() => nav(`/documents?type=fiche&eleve=${e.id}`)}>Fiche d'inscription</button>
+                {courante && <button onClick={() => nav(`/documents?type=carte&eleve=${e.id}`)}>Carte scolaire</button>}
+                {courante && s.peut("pedagogie.lire") && <button onClick={() => nav(`/bulletins/imprimer?classe=${courante.classe_id}&trimestre=1&eleve=${e.id}`)}>Bulletin du 1er trimestre</button>}
+              </div>
+            </div>
             {s.peut("eleves.ecrire") && !courante && <button className="btn primary" onClick={() => setInsc("new")}><RefreshCcw size={17} />Réinscrire</button>}
             {s.peut("finances.encaisser") && courante && <button className="btn primary" onClick={() => setEnc(true)}><Wallet size={17} />Encaisser</button>}
             {s.peut("eleves.ecrire") && <button className="btn" onClick={() => setEdit(true)}><Pencil size={17} />Modifier</button>}

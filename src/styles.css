@@ -373,7 +373,8 @@ table.table { width: 100%; border-collapse: separate; border-spacing: 0; }
 .pager .spacer { flex: 1; }
 
 /* ── Fiche élève ──────────────────────────────────────────────────────── */
-.profile { overflow: hidden; }
+.profile { overflow: visible; }
+.profile .cover { border-radius: var(--r-l) var(--r-l) 0 0; overflow: hidden; }
 .cover {
   height: 132px; background: radial-gradient(120% 180% at 0% 0%, var(--teal) 0%, var(--teal-800) 60%, var(--teal-900) 100%);
 }
@@ -810,3 +811,57 @@ tr.appel-retard td { background: var(--gold-50); }
 .maj svg { color: var(--gold); flex: none; }
 .maj span { font-size: 13px; }
 @media print { .maj { display: none !important; } }
+
+/* ═══ Documents officiels ════════════════════════════════════════════════ */
+.doc { position: relative; width: 210mm; min-height: 297mm; background: #fff; color: #10262c; padding: 14mm 16mm 12mm; box-shadow: var(--sh-2); border-radius: 6px; font-size: 13px; display: flex; flex-direction: column; overflow: hidden; }
+.doc::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: linear-gradient(90deg, #00853f 33%, #fdef42 33% 66%, #e31b23 66%); }
+.doc::before { content: ""; position: absolute; left: 50%; top: 55%; width: 58%; aspect-ratio: 1; transform: translate(-50%, -50%); background: url(/logo.png) center/contain no-repeat; opacity: 0.05; pointer-events: none; }
+.doc > * { position: relative; }
+.doc.cartes::before { display: none; }
+.d-head { display: flex; justify-content: space-between; gap: 20px; padding-bottom: 12px; border-bottom: 2px solid #123f4a; }
+.d-title { text-align: center; font-size: 26px; color: #123f4a; margin: 34px 0 6px; letter-spacing: 0.01em; }
+.d-num { text-align: center; font-size: 12px; color: #7a5500; font-weight: 700; margin-bottom: 28px; }
+.d-text { font-size: 15px; line-height: 1.9; }
+.d-text p { margin: 0 0 14px; }
+.d-box { margin: 18px 0 22px; padding: 16px 20px; border-left: 4px solid #f2c14e; background: #f7fafa; border-radius: 6px; }
+.d-box p { margin: 0; }
+.d-sign { margin-top: 48px; margin-left: auto; text-align: center; min-width: 260px; }
+.d-sign p { margin: 0 0 6px; }
+.d-sign-t { font-weight: 800; }
+.d-sign-box { height: 90px; display: grid; place-items: end center; font-weight: 700; padding-bottom: 6px; }
+.d-sec { border: 1px solid #dce5e7; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; }
+.d-sec h3 { font-size: 12px; color: #123f4a; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.d-row { display: flex; gap: 12px; padding: 4px 0; border-bottom: 1px dotted #dce5e7; }
+.d-row:last-child { border-bottom: 0; }
+.d-row span { width: 190px; color: #7c9197; font-size: 12px; flex: none; }
+.d-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.d-photo-row { display: flex; gap: 12px; align-items: stretch; }
+.d-photo-row .d-sec { flex: 1; }
+.d-photo { width: 35mm; height: 45mm; border: 1px dashed #cfdcdf; border-radius: 8px; display: grid; place-items: center; color: #a7b7bb; font-size: 12px; flex: none; margin-bottom: 12px; }
+.d-list td, .d-list th { font-size: 11.5px; padding: 6px 8px; }
+.d-list td { text-align: left; }
+.cartes { display: grid; grid-template-columns: repeat(2, 85.6mm); grid-auto-rows: 54mm; gap: 8mm 10mm; justify-content: center; align-content: start; padding-top: 14mm; }
+.carte { width: 85.6mm; height: 54mm; border-radius: 3.5mm; overflow: hidden; border: 1px solid #cfdcdf; display: flex; flex-direction: column; background: #fff; }
+.c-top { display: flex; gap: 6px; align-items: center; padding: 2.5mm 3mm; background: #123f4a; color: #fff; }
+.c-top img { width: 9mm; height: 9mm; background: #fff; border-radius: 2mm; padding: 0.4mm; }
+.c-top strong { display: block; font-size: 8px; line-height: 1.2; }
+.c-top span { font-size: 7.5px; color: #f2c14e; font-weight: 700; }
+.c-body { flex: 1; display: flex; gap: 3mm; padding: 2.5mm 3mm; }
+.c-photo { width: 20mm; height: 25mm; border-radius: 2mm; display: grid; place-items: center; font-family: var(--f-display); font-weight: 800; font-size: 16px; background: #eef6f7; color: #1f7a8c; flex: none; border: 1px dashed #cfdcdf; }
+.c-photo.F { background: #fdebf1; color: #d9577f; } .c-photo.M { background: #e7f1fb; color: #3b82c4; }
+.c-info { display: flex; flex-direction: column; gap: 1px; font-size: 7.5px; min-width: 0; }
+.c-info strong { font-size: 9.5px; margin-bottom: 1mm; line-height: 1.15; }
+.c-info b { font-weight: 800; }
+.c-foot { display: flex; justify-content: space-between; padding: 1.2mm 3mm; font-size: 6.5px; background: #f2c14e; color: #123f4a; font-weight: 800; }
+@media print { .doc { box-shadow: none; border-radius: 0; height: 297mm; min-height: 0; page-break-after: always; break-after: page; } .doc:last-child { page-break-after: auto; break-after: auto; } }
+.doc-menu { position: relative; }
+.doc-menu .dropdown { display: none; left: 0; right: auto; z-index: 60; }
+.doc-menu-close { position: fixed; inset: 0; z-index: 55; }
+.doc-menu.open .dropdown { display: block; }
+.options-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.options-3 .switch-card { padding: 10px 12px; gap: 10px; }
+@media (max-width: 560px) { .options-3 { grid-template-columns: 1fr; } }
+.dropdown { position: absolute; top: calc(100% + 6px); min-width: 230px; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-pop); }
+.dropdown button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 10px 12px; border: 0; background: none; border-radius: 10px; cursor: pointer; text-align: left; font-weight: 600; color: var(--ink); }
+.dropdown button:hover { background: var(--teal-50); color: var(--teal); }
+.doc-menu.open > .btn { position: relative; z-index: 61; }

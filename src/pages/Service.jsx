@@ -10,7 +10,7 @@ import Encaissement from "../components/Encaissement";
 
 const CONF = {
   cantine: { titre: "Cantine", icon: Utensils, tone: "coral", sub: "Demi-pensionnaires et repas payés au jour", attendu: "Inscriptions cantine attendues" },
-  uniforme: { titre: "Uniformes et tenues de sport", icon: Shirt, tone: "teal", sub: "Qui a payé son uniforme et sa tenue de sport", attendu: "Total attendu" },
+  uniforme: { titre: "Uniformes et tenues de sport", icon: Shirt, tone: "teal", sub: "Uniformes et tenues de sport commandés à l'inscription", attendu: "Total attendu" },
   fournitures: { titre: "Fournitures", icon: PencilRuler, tone: "gold", sub: "Paiements des fournitures scolaires", attendu: "Total attendu" },
   cours_soir: { titre: "Cours du soir", icon: MoonStar, tone: "azure", sub: "Élèves inscrits aux cours du soir et mois payés", attendu: null },
   cotisation: { titre: "Cotisation des fêtes", icon: PartyPopper, tone: "rose", sub: "Cotisations pour les fêtes de l'école", attendu: "Total attendu" },
@@ -81,7 +81,7 @@ export default function Service() {
         ) : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Élève</th><th>Classe</th>{type === "cantine" && <th className="hide-m">Demi-pension</th>}{c.attendu && <th className="r hide-m">Attendu</th>}<th className="r">Payé</th>{type === "cours_soir" && <th className="hide-m">Mois payés</th>}<th>État</th><th className="hide-m">Dernier paiement</th><th /></tr></thead>
+              <thead><tr><th>Élève</th><th>Classe</th>{type === "uniforme" && <th className="hide-m">Commandé</th>}{type === "cantine" && <th className="hide-m">Demi-pension</th>}{c.attendu && <th className="r hide-m">Attendu</th>}<th className="r">Payé</th>{type === "cours_soir" && <th className="hide-m">Mois payés</th>}<th>État</th><th className="hide-m">Dernier paiement</th><th /></tr></thead>
               <tbody>
                 {rows.map((r) => {
                   const st = statut(r);
@@ -89,6 +89,7 @@ export default function Service() {
                     <tr key={r.inscription_id}>
                       <td className="click" style={{ cursor: "pointer" }} onClick={() => nav(`/eleves/${r.eleve_id}`)}><div className="person"><span className={`avatar ${r.sexe || ""}`}>{initiales(r.prenom, r.nom)}</span><div><strong>{r.nom} {r.prenom}</strong><span>{r.matricule}</span></div></div></td>
                       <td><span className={`chip ${r.cycle}`}>{r.classe}</span></td>
+                      {type === "uniforme" && <td className="hide-m">{[r.a_uniforme && "Uniforme", r.a_tenue && "Tenue"].filter(Boolean).join(" + ") || <span className="muted">Rien commandé</span>}</td>}
                       {type === "cantine" && <td className="hide-m">{r.cantine ? <span className="badge coral"><Utensils size={12} />Oui</span> : <span className="muted">Au jour</span>}</td>}
                       {c.attendu && <td className="r num hide-m">{r.du ? fcfa(r.du) : "—"}</td>}
                       <td className="r amount" style={{ color: r.paye ? "var(--green)" : "var(--muted)" }}>{fcfa(r.paye)}{type === "cantine" && r.paye_jour > 0 && <div className="xs muted">dont {fcfa(r.paye_jour)} au jour</div>}</td>

@@ -14,7 +14,7 @@ const Sec = ({ icon: I, tone, title, sub, children }) => (
 );
 const COL = { garderie: "var(--gold-ink)", prescolaire: "var(--coral)", elementaire: "var(--teal)" };
 
-const VIDE = { nom: "", cycle: "elementaire", ordre: 0, capacite: null, titulaire_id: null, bareme: 10, frais_inscription: 0, uniforme: 0, mensualite: 0, mensualite_jan_fev: 0, mensualite_cantine: 0, mensualite_cantine_jan_fev: 0, frais_cantine: 0 };
+const VIDE = { nom: "", cycle: "elementaire", ordre: 0, capacite: null, titulaire_id: null, bareme: 10, frais_inscription: 0, uniforme: 0, tenue_sport: 0, mensualite: 0, mensualite_jan_fev: 0, mensualite_cantine: 0, mensualite_cantine_jan_fev: 0, frais_cantine: 0 };
 
 function ClasseForm({ classe, onClose }) {
   const s = useSession();
@@ -66,7 +66,8 @@ function ClasseForm({ classe, onClose }) {
         <Sec icon={Receipt} tone="gold" title="Frais d'inscription">
           <div className="grid g3">
             <Field label="Droit d'inscription"><Money {...m("frais_inscription")} /></Field>
-            <Field label="Uniforme et tenue de sport"><Money {...m("uniforme")} /></Field>
+            <Field label="Uniforme"><Money {...m("uniforme")} /></Field>
+            <Field label="Tenue de sport"><Money {...m("tenue_sport")} /></Field>
             <Field label="Inscription cantine"><Money {...m("frais_cantine")} /></Field>
           </div>
         </Sec>
@@ -142,6 +143,7 @@ export default function Classes() {
                 <dl className="tarifs">
                   <dt>Inscription</dt><dd>{fcfa(c.frais_inscription)}</dd>
                   {c.uniforme > 0 && <><dt>Uniforme</dt><dd>{fcfa(c.uniforme)}</dd></>}
+                  {c.tenue_sport > 0 && <><dt>Tenue de sport</dt><dd>{fcfa(c.tenue_sport)}</dd></>}
                   <dt>Mensualité</dt><dd>{fcfa(c.mensualite)}</dd>
                   <dt>Avec cantine</dt><dd style={{ color: COL[c.cycle] }}>{fcfa(c.mensualite_cantine)}</dd>
                 </dl>
@@ -158,7 +160,7 @@ export default function Classes() {
           <div className="table-wrap">
             <table className="table" style={{ marginTop: -1 }}>
               <thead><tr>
-                <th>Classe</th><th>Effectif</th><th className="r">Inscription</th><th className="r hide-m">Uniforme</th>
+                <th>Classe</th><th>Effectif</th><th className="r">Inscription</th><th className="r hide-m">Uniforme</th><th className="r hide-m">Tenue sport</th>
                 <th className="r">Mensualité</th><th className="r hide-m">Janv./févr.</th><th className="r">Avec cantine</th><th className="r hide-m">Janv./févr.</th>{peut && <th />}
               </tr></thead>
               <tbody>
@@ -168,6 +170,7 @@ export default function Classes() {
                     <td className="num">{c.effectif}{c.capacite ? <span className="muted"> / {c.capacite}</span> : ""}</td>
                     <td className="r num">{fcfa(c.frais_inscription)}</td>
                     <td className="r num hide-m">{c.uniforme ? fcfa(c.uniforme) : "—"}</td>
+                    <td className="r num hide-m">{c.tenue_sport ? fcfa(c.tenue_sport) : "—"}</td>
                     <td className="r num"><strong>{fcfa(c.mensualite)}</strong></td>
                     <td className="r num hide-m">{fcfa(c.mensualite_jan_fev)}</td>
                     <td className="r num"><strong>{fcfa(c.mensualite_cantine)}</strong></td>

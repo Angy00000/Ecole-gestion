@@ -47,8 +47,11 @@ export default function Dashboard() {
   const prog = progression(s.annee);
   const capa = data.classes.reduce((t, c) => t + (c.capacite || 0), 0);
 
+  const derniere = s.etablissement?.derniere_sauvegarde;
+  const rappel = s.peut("etablissement.ecrire") && (!derniere || Date.now() - new Date(derniere) > 7 * 864e5);
   return (
     <div className="dash" style={{ marginTop: 14 }}>
+      {rappel && <div className="alert c12" style={{ margin: 0, alignItems: "center" }}><span style={{ flex: 1 }}>{derniere ? "Votre dernière sauvegarde date de plus d'une semaine." : "Aucune sauvegarde des données n'a encore été faite."}</span><Link className="btn sm" to="/parametres/sauvegarde">Faire la sauvegarde</Link></div>}
       <section className="hero lattice c12">
         <div className="grow">
           <span className="date"><CalendarDays size={15} />{JOURS[now.getDay()]} {now.getDate()} {MOIS[now.getMonth()]} {now.getFullYear()}</span>
