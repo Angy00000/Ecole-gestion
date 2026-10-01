@@ -580,6 +580,36 @@ route("POST", "/recus", async (ctx) => {
 });
 
 
+
+// ── Factures mensuelles (avis de paiement) ──
+route("GET", "/factures", async (ctx) => {
+  exige(ctx, "finances.lire");
+  const annee = await anneeCourante(ctx.query.annee_id);
+  if (!/^\d{4}-\d{2}$/.test(ctx.query.mois || "")) fail(400, "Choisissez le mois de la facture.");
+  const m1 = `${ctx.query.mois}-01`;
+  const p = [annee, m1]; const w = ["1=1"];
+  if (ctx.query.classe_id) { p.push(ctx.query.classe_id); w.push(`x.classe_id=$${p.length}`); }
+  if (ctx.query.eleve_id) { p.push(ctx.query.eleve_id); w.push(`x.eleve_id=$${p.length}`); }
+  const rows = await q(`select x.*, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle, c.ordre,
+      coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
+      coalesce(nullif(trim(coalesce(e.mere_prenom,'')||' '||coalesce(e.mere_nom,'')),''), nullif(trim(coalesce(e.pere_prenom,'')||' '||coalesce(e.pere_nom,'')),''), e.tuteur_nom) as parent,
+      app.du_mois(x.inscription_id, $2::date) as du_mois,
+      coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule
+        where pa.inscription_id=x.inscription_id and pa.type='mensualite' and pa.mois=$2::date),0) as paye_mois,
+      exists (select 1 from app.mois_annee($1) d where d = $2::date) as mois_dans_annee
+    from (${SQL_IMPAYES}) x join app.eleves e on e.id=x.eleve_id join app.classes c on c.id=x.classe_id
+    where ${w.join(" and ")} order by c.ordre, e.nom, e.prenom`, p);
+  const out = rows.map((r) => {
+    const resteMois = Math.max(r.du_mois - r.paye_mois, 0);
+    const fraisReste = Math.max(r.frais - r.frais_payes, 0);
+    const arrieres = Math.max(r.reste - resteMois - fraisReste, 0);
+    const moisRetard = (r.liste_mois || "").split(",").filter((m) => m && m < ctx.query.mois);
+    return { ...r, reste_mois: resteMois, frais_reste: fraisReste, arrieres, mois_retard: moisRetard, total: r.reste,
+      numero: `F${ctx.query.mois.replace("-", "").slice(2)}-${r.matricule}` };
+  });
+  return { mois: ctx.query.mois, rows: out, total: out.reduce((t, r) => t + r.total, 0), a_payer: out.filter((r) => r.total > 0).length };
+});
+
 // ── Modification d'un reçu (corrections) ──
 const peutModifierRecu = (ctx, r) => peut(ctx.user.role, "finances.annuler")
   || (peut(ctx.user.role, "finances.encaisser") && r.encaisse_par === ctx.user.id && String(r.created_at).slice(0, 10) === new Date().toISOString().slice(0, 10));

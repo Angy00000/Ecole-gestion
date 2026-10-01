@@ -202,6 +202,7 @@ export default function EleveFiche() {
                 {courante && <button onClick={() => nav(`/documents?type=certificat&eleve=${e.id}`)}>Certificat de scolarité</button>}
                 <button onClick={() => nav(`/documents?type=fiche&eleve=${e.id}`)}>Fiche d'inscription</button>
                 {courante && <button onClick={() => nav(`/documents?type=carte&eleve=${e.id}`)}>Carte scolaire</button>}
+                {courante && s.peut("finances.lire") && <button onClick={() => nav(`/factures/imprimer?mois=${new Date().toISOString().slice(0, 7)}&eleve=${e.id}`)}>Facture du mois</button>}
                 {courante && s.peut("pedagogie.lire") && <button onClick={() => nav(`/bulletins/imprimer?classe=${courante.classe_id}&trimestre=1&eleve=${e.id}`)}>Bulletin du 1er trimestre</button>}
               </div>
             </div>

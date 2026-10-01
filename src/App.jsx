@@ -22,6 +22,7 @@ import Rapports from "./pages/Rapports";
 import Service from "./pages/Service";
 import MiseAJour from "./components/MiseAJour";
 import Documents from "./pages/Documents";
+import Factures, { FacturesImpression } from "./pages/Factures";
 
 export default function App() {
   const s = useSession();
@@ -34,6 +35,7 @@ export default function App() {
     <Routes>
       <Route path="recus/:id" element={<Recu />} />
       <Route path="documents" element={<Documents />} />
+      {s.peut("finances.lire") && <Route path="factures/imprimer" element={<FacturesImpression />} />}
       {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
@@ -43,6 +45,7 @@ export default function App() {
         <Route path="parametres/*" element={<Parametres />} />
         {s.peut("finances.lire") && <Route path="paiements" element={<Encaissements />} />}
         {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
+        {s.peut("finances.lire") && <Route path="factures" element={<Factures />} />}
         {s.peut("depenses.lire") && <Route path="depenses" element={<Depenses />} />}
         {s.peut("depenses.lire") && <Route path="recettes" element={<Recettes />} />}
         {s.peut("finances.lire") && <Route path="rapports" element={<Rapports />} />}
