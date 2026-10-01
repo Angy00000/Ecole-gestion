@@ -25,7 +25,6 @@ const NAV = [
   { to: "/services/cantine", label: "Cantine", icon: Utensils, droit: "finances.lire" },
   { to: "/services/uniforme", label: "Uniformes et tenues", icon: Shirt, droit: "finances.lire" },
   { to: "/services/fournitures", label: "Fournitures", icon: PencilRuler, droit: "finances.lire" },
-  { to: "/services/cours_soir", label: "Cours du soir", icon: MoonStar, droit: "finances.lire" },
   { to: "/services/cotisation", label: "Cotisation des fêtes", icon: PartyPopper, droit: "finances.lire" },
   { group: "Pédagogie" },
   { to: "/notes", label: "Notes et bulletins", icon: BookOpen, droit: "pedagogie.lire" },

@@ -263,7 +263,7 @@ export default function EleveFiche() {
                     <td>{i.type === "nouvelle" ? "Nouvelle" : "Réinscription"}</td>
                     <td className="hide-m num">{date(i.date_inscription)}</td>
                     <td>{i.cantine ? <span className="badge coral">Oui</span> : <span className="muted">Non</span>}</td>
-                    <td className="hide-m num r"><strong>{i.gratuit ? "Offerte" : fcfa(i.mensualite_speciale ?? (i.cantine ? i.mensualite_cantine : i.mensualite))}</strong>{i.mensualite_speciale && !i.gratuit ? <div className="xs muted">personnalisée</div> : null}{i.inscription_offerte ? <div className="xs muted">inscription offerte</div> : i.reduction_inscription > 0 ? <div className="xs muted">réduction inscription −{fcfa(i.reduction_inscription)}</div> : null}</td>
+                    <td className="hide-m num r"><strong>{i.gratuit ? "Offerte" : fcfa((i.mensualite_speciale ?? (i.cantine ? i.mensualite_cantine : i.mensualite)) + (i.cours_soir || 0))}</strong>{!i.gratuit && i.cours_soir ? <div className="xs muted">dont cours du soir {fcfa(i.cours_soir)}</div> : null}{i.mensualite_speciale && !i.gratuit ? <div className="xs muted">personnalisée</div> : null}{i.inscription_offerte ? <div className="xs muted">inscription offerte</div> : i.reduction_inscription > 0 ? <div className="xs muted">réduction inscription −{fcfa(i.reduction_inscription)}</div> : null}</td>
                     <td><span className={`badge ${i.statut === "active" ? "green" : "coral"}`}>{STATUTS[i.statut]}</span></td>
                     <td className="r">{s.peut("eleves.ecrire") && <button className="btn sm ghost" onClick={() => setInsc(i)}><Pencil size={14} />Modifier</button>}</td>
                   </tr>

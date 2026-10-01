@@ -116,7 +116,6 @@ function Annees() {
             {form.id && <>
               <h4 style={{ fontSize: 14, marginTop: 6 }}>Autres tarifs de l'année</h4>
               <div className="grid g2">
-                <Field label="Cours du soir (par mois)"><Money value={form.frais_cours_soir} onChange={(x) => setForm({ ...form, frais_cours_soir: x ?? 0 })} /></Field>
                 <Field label="Cantine (par jour)"><Money value={form.frais_cantine_jour} onChange={(x) => setForm({ ...form, frais_cantine_jour: x ?? 0 })} /></Field>
                 <Field label="Cours de vacances"><Money value={form.frais_cours_vacances} onChange={(x) => setForm({ ...form, frais_cours_vacances: x ?? 0 })} /></Field>
                 <Field label="Cotisation des fêtes"><Money value={form.frais_cotisation} onChange={(x) => setForm({ ...form, frais_cotisation: x ?? 0 })} /></Field>
@@ -246,6 +245,42 @@ function Journal() {
 }
 
 
+
+// Montants par défaut des paiements intégrés (par année scolaire)
+const TARIFS_ANNEE = [
+  ["frais_cours_soir", "Cours du soir", "par mois et par élève"],
+  ["frais_cantine_jour", "Cantine journalière", "par repas"],
+  ["frais_cours_vacances", "Cours de vacances", "par élève"],
+  ["frais_cotisation", "Cotisation des fêtes", "par élève"],
+  ["frais_fournitures", "Fournitures (kit)", "par élève"],
+];
+
+
+function TarifsIntegres() {
+  const s = useSession();
+  const toast = useToast();
+  const a = s.annee;
+  const [v, setV] = useState({ frais_cantine_jour: a?.frais_cantine_jour, frais_cours_vacances: a?.frais_cours_vacances, frais_cotisation: a?.frais_cotisation, frais_fournitures: a?.frais_fournitures });
+  const peut = s.peut("annees.ecrire");
+  const save = async () => { try { await api.put(`/annees/${a.id}`, v); toast("Tarifs enregistrés"); s.refresh(); } catch (e) { toast(e.message, "error"); } };
+  const F = (k, label, hint) => <Field label={label} hint={hint}><Money value={v[k]} disabled={!peut} onChange={(x) => setV({ ...v, [k]: x ?? 0 })} /></Field>;
+  return (
+    <div className="card">
+      <div className="card-head" style={{ paddingBottom: 4 }}><h3>Montants des autres paiements — {a?.libelle}</h3></div>
+      <div className="card-body">
+        <div className="grid g4">
+          {F("frais_cantine_jour", "Cantine (par jour)")}
+          {F("frais_fournitures", "Fournitures (kit)")}
+          {F("frais_cotisation", "Cotisation des fêtes")}
+          {F("frais_cours_vacances", "Cours de vacances")}
+        </div>
+        <p className="xs muted" style={{ marginTop: 10 }}>Ces montants se remplissent automatiquement à l'encaissement (toujours modifiables au moment d'encaisser).</p>
+      </div>
+      {peut && <div className="modal-foot" style={{ borderRadius: "0 0 18px 18px" }}><button className="btn primary" onClick={save}>Enregistrer les montants</button></div>}
+    </div>
+  );
+}
+
 // ── Types de paiement ──
 function TypesPaiement() {
   const s = useSession();
@@ -284,8 +319,10 @@ function TypesPaiement() {
           </tbody>
         </table></div>
       </div>
+      <TarifsIntegres />
       <div className="card">
         <div className="card-head" style={{ paddingBottom: 14 }}><h3>Types intégrés au logiciel</h3></div>
+        <p className="small muted" style={{ padding: "0 22px 10px" }}>Droit d'inscription, uniforme, tenue de sport, cantine et mensualités se règlent par classe dans « Classes et tarifs ».</p>
         <div className="card-body row" style={{ flexWrap: "wrap", gap: 8, paddingTop: 0 }}>{Object.values(TYPES).map((t) => <span key={t} className="badge teal" style={{ height: 30, padding: "0 12px" }}>{t}</span>)}</div>
       </div>
     </div>

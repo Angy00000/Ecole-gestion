@@ -8,7 +8,7 @@ import { Modal, Field, Input, Money, ErrorBox, Spinner, useToast } from "./ui";
 const moisAnnee = (a) => { const out = []; if (!a) return out; const d = new Date(a.debut); d.setDate(1); const f = new Date(a.fin); while (d <= f) { out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); d.setMonth(d.getMonth() + 1); } return out; };
 
 const MODE_IC = { especes: Banknote, wave: Smartphone, orange_money: Smartphone, cheque: FileText, virement: Landmark };
-const EXTRAS = ["cours_soir", "cantine_jour", "fournitures", "cotisation", "cours_vacances", "transport", "autre"];
+const EXTRAS = ["cantine_jour", "fournitures", "cotisation", "cours_vacances", "transport", "autre"];
 
 function ChoixEleve({ onPick }) {
   const s = useSession();

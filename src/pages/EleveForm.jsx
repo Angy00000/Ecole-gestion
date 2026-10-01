@@ -63,6 +63,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
 
   const droit = classe ? (ins.inscription_offerte ? 0 : Math.max(classe.frais_inscription - (ins.reduction_inscription || 0), 0)) : 0;
   const fraisInscription = classe ? droit + (ins.uniforme ? classe.uniforme : 0) + (ins.tenue_sport ? classe.tenue_sport : 0) + (ins.cantine ? classe.frais_cantine : 0) : 0;
+  const cs = classe?.cours_soir || 0;
   const mensuel = classe ? (ins.cantine ? classe.mensualite_cantine : classe.mensualite) : 0;
   const mensuelReel = ins.gratuit ? 0 : ins.mensualite_speciale || mensuel;
 
@@ -145,7 +146,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
                   {ins.tenue_sport && <div className="recap-row"><span>Tenue de sport</span><span>{fcfa(classe.tenue_sport)}</span></div>}
                   {ins.cantine && <div className="recap-row"><span>Inscription cantine</span><span>{fcfa(classe.frais_cantine)}</span></div>}
                   <div className="recap-row total"><span>Total</span><span>{fcfa(fraisInscription)}</span></div>
-                  <p className="note">{ins.gratuit ? "Aucune mensualité à payer." : ins.mensualite_speciale ? `Puis ${fcfa(mensuelReel)} par mois (tarif personnalisé), ${fcfa(Math.round(mensuelReel * 1.5))} en janvier et février.` : `Puis ${fcfa(mensuel)} par mois, ${fcfa(ins.cantine ? classe.mensualite_cantine_jan_fev : classe.mensualite_jan_fev)} en janvier et février.`}</p>
+                  <p className="note">{ins.gratuit ? "Aucune mensualité à payer." : ins.mensualite_speciale ? `Puis ${fcfa(mensuelReel + cs)} par mois (tarif personnalisé${cs ? ", cours du soir inclus" : ""}), ${fcfa(Math.round(mensuelReel * 1.5) + cs)} en janvier et février.` : `Puis ${fcfa(mensuel + cs)} par mois${cs ? ` (dont ${fcfa(cs)} de cours du soir)` : ""}, ${fcfa((ins.cantine ? classe.mensualite_cantine_jan_fev : classe.mensualite_jan_fev) + cs)} en janvier et février.`}</p>
                 </> : <p className="note">Choisissez une classe pour afficher les frais.</p>}
               </div>
             </div>

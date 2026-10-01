@@ -14,7 +14,7 @@ const Sec = ({ icon: I, tone, title, sub, children }) => (
 );
 const COL = { garderie: "var(--gold-ink)", prescolaire: "var(--coral)", elementaire: "var(--teal)" };
 
-const VIDE = { nom: "", cycle: "elementaire", ordre: 0, capacite: null, titulaire_id: null, bareme: 10, frais_inscription: 0, uniforme: 0, tenue_sport: 0, mensualite: 0, mensualite_jan_fev: 0, mensualite_cantine: 0, mensualite_cantine_jan_fev: 0, frais_cantine: 0 };
+const VIDE = { nom: "", cycle: "elementaire", ordre: 0, capacite: null, titulaire_id: null, bareme: 10, frais_inscription: 0, uniforme: 0, tenue_sport: 0, cours_soir: 0, mensualite: 0, mensualite_jan_fev: 0, mensualite_cantine: 0, mensualite_cantine_jan_fev: 0, frais_cantine: 0 };
 
 function ClasseForm({ classe, onClose }) {
   const s = useSession();
@@ -77,6 +77,7 @@ function ClasseForm({ classe, onClose }) {
             <Field label="Sans cantine, janv./févr."><Money {...m("mensualite_jan_fev")} /></Field>
             <Field label="Avec cantine"><Money {...m("mensualite_cantine")} /></Field>
             <Field label="Avec cantine, janv./févr."><Money {...m("mensualite_cantine_jan_fev")} /></Field>
+            <Field label="Cours du soir (par mois)" hint="Ajouté automatiquement à chaque mensualité, d'octobre à mai. 0 si pas de cours du soir." className="span2"><Money {...m("cours_soir")} /></Field>
           </div>
         </Sec>
       </div>
@@ -146,6 +147,7 @@ export default function Classes() {
                   {c.tenue_sport > 0 && <><dt>Tenue de sport</dt><dd>{fcfa(c.tenue_sport)}</dd></>}
                   <dt>Mensualité</dt><dd>{fcfa(c.mensualite)}</dd>
                   <dt>Avec cantine</dt><dd style={{ color: COL[c.cycle] }}>{fcfa(c.mensualite_cantine)}</dd>
+                  {c.cours_soir > 0 && <><dt>+ cours du soir</dt><dd>{fcfa(c.cours_soir)} / mois</dd></>}
                 </dl>
                 <div className="row" style={{ justifyContent: "space-between", fontSize: 13 }}>
                   <span className="row muted" style={{ gap: 6 }}><UserRound size={15} />{c.titulaire || "Pas de titulaire"}</span>
@@ -161,7 +163,7 @@ export default function Classes() {
             <table className="table" style={{ marginTop: -1 }}>
               <thead><tr>
                 <th>Classe</th><th>Effectif</th><th className="r">Inscription</th><th className="r hide-m">Uniforme</th><th className="r hide-m">Tenue sport</th>
-                <th className="r">Mensualité</th><th className="r hide-m">Janv./févr.</th><th className="r">Avec cantine</th><th className="r hide-m">Janv./févr.</th>{peut && <th />}
+                <th className="r">Mensualité</th><th className="r hide-m">Janv./févr.</th><th className="r">Avec cantine</th><th className="r hide-m">Janv./févr.</th><th className="r hide-m">Cours du soir</th>{peut && <th />}
               </tr></thead>
               <tbody>
                 {data.map((c) => (
@@ -175,6 +177,7 @@ export default function Classes() {
                     <td className="r num hide-m">{fcfa(c.mensualite_jan_fev)}</td>
                     <td className="r num"><strong>{fcfa(c.mensualite_cantine)}</strong></td>
                     <td className="r num hide-m">{fcfa(c.mensualite_cantine_jan_fev)}</td>
+                    <td className="r num hide-m">{c.cours_soir ? `+ ${fcfa(c.cours_soir)}` : "—"}</td>
                     {peut && <td className="r" style={{ whiteSpace: "nowrap" }}>
                       <button className="btn sm ghost icon" onClick={() => setEdit(c)} aria-label={`Modifier ${c.nom}`}><Pencil size={15} /></button>
                       <button className="btn sm ghost icon" onClick={() => setDel(c)} aria-label={`Supprimer ${c.nom}`}><Trash2 size={15} /></button>
