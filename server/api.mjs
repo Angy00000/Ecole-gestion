@@ -514,7 +514,7 @@ route("GET", "/recus/:id", async (ctx) => {
   const sit = await situation(r.inscription_id);
   const historique = await q(`select m.id, m.motif, m.avant, m.apres, m.created_at, u.prenom || ' ' || u.nom as par
     from app.recus_modifications m left join app.utilisateurs u on u.id=m.modifie_par where m.recu_id=$1 order by m.created_at desc`, [ctx.params.id]);
-  return { recu: r, situation: { reste_annee: sit.reste_annee, reste_echu: sit.reste_echu }, historique, modifiable: !r.annule && peutModifierRecu(ctx, r) };
+  return { recu: r, situation: { reste_annee: sit.reste_annee, reste_echu: sit.reste_echu }, historique, modifiable: !r.annule && peutModifierRecu(ctx, r), supprimable: peutSupprimerRecu(ctx, r) };
 });
 
 route("GET", "/recus", async (ctx) => {
@@ -608,6 +608,24 @@ route("GET", "/factures", async (ctx) => {
       numero: `F${ctx.query.mois.replace("-", "").slice(2)}-${r.matricule}` };
   });
   return { mois: ctx.query.mois, rows: out, total: out.reduce((t, r) => t + r.total, 0), a_payer: out.filter((r) => r.total > 0).length };
+});
+
+
+// ── Suppression d'un reçu (erreur à l'encaissement, le jour même uniquement) ──
+const memeJour = (r) => String(r.created_at).slice(0, 10) === new Date().toISOString().slice(0, 10);
+const peutSupprimerRecu = (ctx, r) => memeJour(r) && (peut(ctx.user.role, "finances.annuler") || (peut(ctx.user.role, "finances.encaisser") && r.encaisse_par === ctx.user.id));
+route("DELETE", "/recus/:id", async (ctx) => {
+  exige(ctx, "finances.encaisser");
+  const r = await recuComplet(ctx.params.id);
+  if (!peutSupprimerRecu(ctx, r)) fail(403, memeJour(r)
+    ? "Seuls la direction et la personne qui a encaissé peuvent supprimer ce reçu."
+    : "Un reçu ne peut être supprimé que le jour même. Utilisez « Modifier » ou « Annuler ».");
+  await q("delete from app.recus where id=$1", [ctx.params.id]);
+  await journal(ctx, "suppression", "recu", Number(ctx.params.id), {
+    numero: r.numero, montant: r.montant, eleve: `${r.prenom} ${r.nom}`, mode: r.mode,
+    detail: r.lignes.map((l) => `${l.type}${l.mois ? " " + l.mois : ""} ${l.montant}`).join(", "),
+  });
+  return { ok: true, eleve_id: r.eleve_id };
 });
 
 // ── Modification d'un reçu (corrections) ──

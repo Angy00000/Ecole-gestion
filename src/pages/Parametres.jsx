@@ -218,7 +218,7 @@ function Utilisateurs() {
 
 // ── Journal ──
 const ACTIONS = { sauvegarde: "Sauvegarde", encaissement: "Encaissement", annulation: "Annulation", appel: "Appel", saisie_notes: "Saisie de notes", connexion: "Connexion", inscription: "Inscription", reinscription: "Réinscription", modification: "Modification", creation: "Création", suppression: "Suppression", sortie: "Archivage", activation: "Activation", changement_mot_de_passe: "Mot de passe changé" };
-const ENTITES = { eleve: "élève", classe: "classe", annee: "année", utilisateur: "compte", etablissement: "établissement", inscription: "inscription" };
+const ENTITES = { recu: "reçu", depense: "dépense", recette: "recette", evaluation: "évaluation", enseignant: "enseignant", eleve: "élève", classe: "classe", annee: "année", utilisateur: "compte", etablissement: "établissement", inscription: "inscription" };
 function Journal() {
   const { data, isLoading, error } = useQuery({ queryKey: ["journal"], queryFn: () => api.get("/journal", { limit: 200 }) });
   if (isLoading) return <Spinner />;

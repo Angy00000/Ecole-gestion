@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Printer, Ban, MessageCircle, Pencil, History } from "lucide-react";
+import { ArrowLeft, Printer, Ban, MessageCircle, Pencil, History, Trash2 } from "lucide-react";
 import Encaissement from "../components/Encaissement";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateHeure, enLettres, libelleLigne, MODES, telWa } from "../lib/format";
-import { Spinner, ErrorBox, Modal, Field, Input, useToast } from "../components/ui";
+import { Spinner, ErrorBox, Modal, Field, Input, Confirm, useToast } from "../components/ui";
 
 function Ticket({ r, etab, reste, copie, rectifie }) {
   return (
@@ -62,6 +62,7 @@ export default function Recu() {
   const [motif, setMotif] = useState("");
   const [deux, setDeux] = useState(false);
   const [edit, setEdit] = useState(false);
+  const [suppr, setSuppr] = useState(false);
   const { data, isLoading, error } = useQuery({ queryKey: ["recu", id], queryFn: () => api.get(`/recus/${id}`) });
 
   if (isLoading) return <Spinner />;
@@ -84,6 +85,7 @@ export default function Recu() {
         <label className="check small"><input type="checkbox" checked={deux} onChange={(e) => setDeux(e.target.checked)} />Imprimer aussi la souche</label>
         {r.telephone && !r.annule && <a className="btn wa" href={`https://wa.me/${telWa(r.telephone)}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer"><MessageCircle size={17} />Envoyer au parent</a>}
         {data.modifiable && <button className="btn" onClick={() => setEdit(true)}><Pencil size={17} />Modifier</button>}
+        {data.supprimable && <button className="btn danger" onClick={() => setSuppr(true)}><Trash2 size={17} />Supprimer</button>}
         {s.peut("finances.annuler") && !r.annule && <button className="btn danger" onClick={() => setAnnul(true)}><Ban size={17} />Annuler</button>}
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
@@ -111,6 +113,16 @@ export default function Recu() {
           </ul>
         </div>
       )}
+      {suppr && <Confirm danger title={`Supprimer le reçu ${r.numero} ?`} confirmLabel="Supprimer définitivement"
+        message={`Le reçu de ${fcfa(r.montant)} pour ${r.prenom} ${r.nom} sera effacé et les mois ou frais redeviendront « à payer ». Utilisez cette option uniquement pour une erreur faite aujourd'hui à l'encaissement. La suppression reste tracée dans le journal.`}
+        onConfirm={async () => {
+          try {
+            const x = await api.del(`/recus/${id}`);
+            toast(`Reçu ${r.numero} supprimé`);
+            ["recus", "situation", "eleve", "dashboard", "impayes", "caisse", "service", "rapport", "factures"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+            nav(`/eleves/${x.eleve_id}`, { replace: true });
+          } catch (e) { toast(e.message, "error"); setSuppr(false); }
+        }} onClose={() => setSuppr(false)} />}
       {edit && <Encaissement recu={r} inscriptionId={r.inscription_id} eleve={r} onClose={() => setEdit(false)} onSaved={() => setEdit(false)} />}
       {annul && (
         <Modal title={`Annuler le reçu ${r.numero}`} onClose={() => setAnnul(false)} footer={<>
