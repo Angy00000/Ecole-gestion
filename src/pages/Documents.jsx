@@ -3,10 +3,73 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Printer } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
-import { date, dateLongue, initiales, fcfa } from "../lib/format";
+import { date, dateLongue, initiales, fcfa, moisLong, moisAbr } from "../lib/format";
 import { Spinner, ErrorBox } from "../components/ui";
 
-const TITRES = { certificat: "Certificat de scolarité", fiche: "Fiche d'inscription", carte: "Cartes scolaires", liste: "Liste de classe" };
+const TITRES = { certificat: "Certificat de scolarité", fiche: "Fiche d'inscription", carte: "Cartes scolaires", liste: "Liste de classe", listes: "Listes de toutes les classes", impayes: "État des impayés par classe", service: "État par classe" };
+const SERVICES = { cantine: "Cantine", uniforme: "Uniformes et tenues de sport", fournitures: "Fournitures", cours_soir: "Cours du soir", cotisation: "Cotisation des fêtes" };
+const parClasse = (rows, classes) => {
+  const ordre = Object.fromEntries((classes || []).map((c) => [c.nom, c.ordre]));
+  const g = {};
+  rows.forEach((r) => { (g[r.classe] ||= []).push(r); });
+  return Object.entries(g).sort((a, b) => (ordre[a[0]] ?? 99) - (ordre[b[0]] ?? 99));
+};
+
+function EtatImpayes({ data, classes, etab, annee, mois }) {
+  const groupes = parClasse(data.rows, classes);
+  return (
+    <article className="doc a4 etat">
+      <EnTete etab={etab} />
+      <h1 className="d-title" style={{ marginTop: 18 }}>État des impayés</h1>
+      <p className="d-num" style={{ marginBottom: 14 }}>Mensualités et frais échus jusqu'à {moisLong(mois)} inclus · Année {annee} · {data.rows.length} élèves · Total {fcfa(data.total)}</p>
+      {groupes.map(([cl, rows]) => (
+        <section key={cl} className="etat-classe">
+          <h3>{cl} <span>{rows.length} élève{rows.length > 1 ? "s" : ""} · {fcfa(rows.reduce((t, r) => t + r.reste, 0))}</span></h3>
+          <table className="b-table d-list">
+            <thead><tr><th>N°</th><th>Matricule</th><th>Nom et prénom</th><th>Parent</th><th>Téléphone</th><th>Retards</th><th>Reste</th></tr></thead>
+            <tbody>{rows.map((r, i) => (
+              <tr key={r.inscription_id}><td>{i + 1}</td><td>{r.matricule}</td><td><strong>{r.nom}</strong> {r.prenom}</td><td>{r.parent || ""}</td><td>{r.telephone || ""}</td>
+                <td>{[r.frais > r.frais_payes ? "Inscr." : null, ...(r.liste_mois || "").split(",").filter(Boolean).map(moisAbr)].filter(Boolean).join(", ")}</td>
+                <td style={{ textAlign: "right", fontWeight: 700 }}>{fcfa(r.reste)}</td></tr>))}</tbody>
+          </table>
+        </section>
+      ))}
+      <div className="etat-total"><span>Total général des impayés</span><strong>{fcfa(data.total)}</strong></div>
+      <div className="d-sign" style={{ marginTop: 24 }}><p>Fait à {etab.ville || "Malika"}, le {aujourdhui()}</p><p className="d-sign-t">La Direction</p></div>
+    </article>
+  );
+}
+
+function EtatService({ data, classes, etab, annee, svc, filtre }) {
+  const statut = (r) => r.du == null ? (r.paye > 0 ? "Payé" : "—") : r.du === 0 ? (r.paye > 0 ? "Payé" : "—") : r.paye >= r.du ? "Payé" : r.paye > 0 ? "Partiel" : "Non payé";
+  let rows = data.rows;
+  if (filtre === "non_payes") rows = rows.filter((r) => ["Non payé", "Partiel"].includes(statut(r)));
+  if (filtre === "payes") rows = rows.filter((r) => statut(r) === "Payé");
+  if (filtre === "payeurs") rows = rows.filter((r) => r.paye > 0);
+  if (filtre === "cantine") rows = rows.filter((r) => r.cantine || r.paye > 0);
+  const groupes = parClasse(rows, classes);
+  const reste = (r) => (r.du ? Math.max(r.du - r.paye, 0) : 0);
+  return (
+    <article className="doc a4 etat">
+      <EnTete etab={etab} />
+      <h1 className="d-title" style={{ marginTop: 18 }}>{SERVICES[svc]}</h1>
+      <p className="d-num" style={{ marginBottom: 14 }}>{filtre === "non_payes" ? "Élèves qui n'ont pas payé" : filtre === "payes" ? "Élèves qui ont payé" : "Tous les élèves"} · Année {annee} · {rows.length} élèves</p>
+      {groupes.map(([cl, rs]) => (
+        <section key={cl} className="etat-classe">
+          <h3>{cl} <span>{rs.length} élève{rs.length > 1 ? "s" : ""}{rs.some((r) => r.du) ? ` · reste ${fcfa(rs.reduce((t, r) => t + reste(r), 0))}` : ""}</span></h3>
+          <table className="b-table d-list">
+            <thead><tr><th>N°</th><th>Matricule</th><th>Nom et prénom</th><th>Téléphone</th><th>Attendu</th><th>Payé</th><th>Reste</th><th>État</th></tr></thead>
+            <tbody>{rs.map((r, i) => (
+              <tr key={r.inscription_id}><td>{i + 1}</td><td>{r.matricule}</td><td><strong>{r.nom}</strong> {r.prenom}</td><td>{r.telephone || ""}</td>
+                <td>{r.du ? fcfa(r.du) : "—"}</td><td>{fcfa(r.paye)}</td><td style={{ fontWeight: 700 }}>{r.du ? fcfa(reste(r)) : "—"}</td><td>{statut(r)}</td></tr>))}</tbody>
+          </table>
+        </section>
+      ))}
+      <div className="etat-total"><span>Total encaissé{rows.some((r) => r.du) ? " / reste à encaisser" : ""}</span><strong>{fcfa(rows.reduce((t, r) => t + r.paye, 0))}{rows.some((r) => r.du) ? ` / ${fcfa(rows.reduce((t, r) => t + reste(r), 0))}` : ""}</strong></div>
+      <div className="d-sign" style={{ marginTop: 24 }}><p>Fait à {etab.ville || "Malika"}, le {aujourdhui()}</p><p className="d-sign-t">La Direction</p></div>
+    </article>
+  );
+}
 const ne = (e) => (e.sexe === "F" ? "née" : "né");
 const aujourdhui = () => dateLongue(new Date().toISOString().slice(0, 10));
 
@@ -113,9 +176,12 @@ export default function Documents() {
   const [p] = useSearchParams();
   const type = p.get("type"), eleveId = p.get("eleve"), classeId = p.get("classe");
   const el = useQuery({ queryKey: ["eleve", eleveId], queryFn: () => api.get(`/eleves/${eleveId}`), enabled: !!eleveId });
-  const cl = useQuery({ queryKey: ["eleves", "doc", classeId, s.annee?.id], queryFn: () => api.get("/eleves", { classe_id: classeId, annee_id: s.annee?.id, limit: 500 }), enabled: !!classeId && !eleveId });
-  const classes = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }), enabled: !!classeId });
-  const data = eleveId ? el : cl;
+  const groupe = ["listes", "impayes", "service"].includes(type);
+  const cl = useQuery({ queryKey: ["eleves", "doc", classeId, s.annee?.id, type], queryFn: () => api.get("/eleves", { classe_id: classeId, annee_id: s.annee?.id, limit: 500, sort: "classe" }), enabled: !eleveId && (type === "listes" || (!!classeId && !groupe)) });
+  const imp = useQuery({ queryKey: ["impayes", "doc", p.get("mois"), classeId, s.annee?.id], queryFn: () => api.get("/impayes", { mois: p.get("mois"), classe_id: classeId, annee_id: s.annee?.id }), enabled: type === "impayes" });
+  const svc = useQuery({ queryKey: ["service", "doc", p.get("svc"), classeId, s.annee?.id], queryFn: () => api.get(`/services/${p.get("svc")}`, { classe_id: classeId, annee_id: s.annee?.id }), enabled: type === "service" });
+  const classes = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }) });
+  const data = eleveId ? el : type === "impayes" ? imp : type === "service" ? svc : cl;
   if (data.isLoading) return <Spinner />;
   if (data.error) return <div style={{ padding: 32 }}><ErrorBox error={data.error} /></div>;
   const etab = s.etablissement;
@@ -128,6 +194,12 @@ export default function Documents() {
     if (type === "certificat") contenu = <Certificat e={e} ins={ins} etab={etab} />;
     else if (type === "fiche") contenu = <Fiche e={e} ins={ins} etab={etab} />;
     else contenu = <article className="doc a4 cartes"><Carte e={{ ...e, telephone: tel }} classe={ins.classe} annee={ins.annee} etab={etab} /></article>;
+  } else if (type === "impayes") {
+    contenu = <EtatImpayes data={data.data} classes={classes.data} etab={etab} annee={s.annee?.libelle} mois={p.get("mois")} />;
+  } else if (type === "service") {
+    contenu = <EtatService data={data.data} classes={classes.data} etab={etab} annee={s.annee?.libelle} svc={p.get("svc")} filtre={p.get("filtre")} />;
+  } else if (type === "listes") {
+    contenu = parClasse(data.data.rows.filter((r) => r.classe), classes.data).map(([nom, rows]) => <Liste key={nom} rows={rows} classe={classes.data?.find((c) => c.nom === nom) || { nom }} annee={s.annee?.libelle} etab={etab} />);
   } else {
     const rows = data.data.rows;
     const classe = classes.data?.find((c) => String(c.id) === classeId);
@@ -142,7 +214,7 @@ export default function Documents() {
       <style>{`@page { size: ${format} portrait; margin: 0; }`}</style>
       <div className="print-bar">
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
-        <span className="grow"><strong>{TITRES[type]}</strong></span>
+        <span className="grow"><strong>{type === "service" ? `${SERVICES[p.get("svc")]} — état par classe` : TITRES[type]}</strong></span>
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       <div className="tickets">{contenu}</div>

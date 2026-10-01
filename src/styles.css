@@ -868,3 +868,11 @@ tr.appel-retard td { background: var(--gold-50); }
 .historique { max-width: 148mm; width: 100%; margin: 24px auto 0; }
 .historique .card-head svg { color: var(--teal); }
 @media print { .historique { display: none !important; } }
+.doc.etat { height: auto !important; min-height: 297mm; }
+.etat-classe { margin-bottom: 14px; break-inside: auto; }
+.etat-classe h3 { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; color: #123f4a; padding: 6px 0; border-bottom: 2px solid #f2c14e; margin-bottom: 4px; }
+.etat-classe h3 span { font-size: 11.5px; color: #4a6168; font-weight: 700; }
+.etat-classe tr { break-inside: avoid; }
+.etat-total { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-radius: 8px; background: #123f4a; color: #fff; margin-top: 6px; }
+.etat-total strong { font-family: var(--f-display); font-size: 18px; color: #f2c14e; }
+@media print { .doc.etat { height: auto !important; page-break-after: always; } .doc.etat::before { position: fixed; } }

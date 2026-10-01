@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Wallet, Search, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, CheckCircle2, Clock } from "lucide-react";
+import { Download, Wallet, Search, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, CheckCircle2, Clock, Printer } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, initiales, moisAbr, nombre } from "../lib/format";
@@ -53,6 +53,7 @@ export default function Service() {
     <>
       <PageHead title={c.titre} sub={`${c.sub} — ${s.annee?.libelle}`}>
         {rows.length > 0 && <button className="btn" onClick={exporter}><Download size={17} /><span className="hide-m">Exporter en Excel</span></button>}
+        {rows.length > 0 && <button className="btn primary" onClick={() => nav(`/documents?type=service&svc=${type}&filtre=${filtre}${classe ? `&classe=${classe}` : ""}`)}><Printer size={17} />Imprimer par classe</button>}
       </PageHead>
       {data && (
         <div className="dash" style={{ marginBottom: 22 }}>

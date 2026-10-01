@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Search, Download, MessageCircle, Wallet, PartyPopper, Phone } from "lucide-react";
+import { Search, Download, MessageCircle, Wallet, PartyPopper, Phone, Printer } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, initiales, moisLong, moisAbr, nombre, telWa } from "../lib/format";
@@ -41,6 +41,7 @@ export default function Impayes() {
     <>
       <PageHead title="Impayés" sub={`Mensualités et frais échus jusqu'à ${moisLong(jusqua)} inclus`}>
         {data?.rows.length > 0 && <button className="btn" onClick={exporter}><Download size={17} /><span className="hide-m">Exporter</span></button>}
+        {data?.rows.length > 0 && <button className="btn primary" onClick={() => nav(`/documents?type=impayes&mois=${jusqua}${classe ? `&classe=${classe}` : ""}`)}><Printer size={17} />Imprimer par classe</button>}
       </PageHead>
 
       {data && (

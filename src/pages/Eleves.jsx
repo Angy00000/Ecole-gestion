@@ -60,6 +60,7 @@ export default function Eleves() {
           <button className="btn" onClick={() => nav(`/documents?type=liste&classe=${classe}`)}><Printer size={17} /><span className="hide-m">Liste de classe</span></button>
           <button className="btn" onClick={() => nav(`/documents?type=carte&classe=${classe}`)}><IdCard size={17} /><span className="hide-m">Cartes scolaires</span></button>
         </>}
+        {!classe && inscrits === "oui" && <button className="btn" onClick={() => nav("/documents?type=listes")}><Printer size={17} /><span className="hide-m">Imprimer toutes les listes</span></button>}
         <button className="btn" onClick={exporter}><Download size={17} /><span className="hide-m">Exporter en Excel</span></button>
         {s.peut("eleves.ecrire") && <button className="btn primary" onClick={() => setForm(true)}><UserPlus size={17} />Inscrire un élève</button>}
       </PageHead>
