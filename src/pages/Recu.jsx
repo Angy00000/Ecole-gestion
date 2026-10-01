@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Printer, Ban, MessageCircle } from "lucide-react";
+import { ArrowLeft, Printer, Ban, MessageCircle, Pencil, History } from "lucide-react";
+import Encaissement from "../components/Encaissement";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateHeure, enLettres, libelleLigne, MODES, telWa } from "../lib/format";
 import { Spinner, ErrorBox, Modal, Field, Input, useToast } from "../components/ui";
 
-function Ticket({ r, etab, reste, copie }) {
+function Ticket({ r, etab, reste, copie, rectifie }) {
   return (
     <article className={`ticket ${r.annule ? "void" : ""}`}>
       {r.annule && <div className="void-stamp">ANNULÉ</div>}
@@ -41,6 +42,7 @@ function Ticket({ r, etab, reste, copie }) {
         {reste != null && <span>Reste à payer sur l'année : <strong>{fcfa(reste)}</strong></span>}
       </div>
       {r.note && <p className="t-note">{r.note}</p>}
+      {rectifie && <p className="t-note">Reçu rectifié le {date(rectifie)}.</p>}
       <footer className="t-foot">
         <div><span>Encaissé par</span><strong>{r.encaisse_par_nom || "—"}</strong></div>
         <div className="t-sign"><span>Signature et cachet</span></div>
@@ -59,6 +61,7 @@ export default function Recu() {
   const [annul, setAnnul] = useState(false);
   const [motif, setMotif] = useState("");
   const [deux, setDeux] = useState(false);
+  const [edit, setEdit] = useState(false);
   const { data, isLoading, error } = useQuery({ queryKey: ["recu", id], queryFn: () => api.get(`/recus/${id}`) });
 
   if (isLoading) return <Spinner />;
@@ -80,14 +83,35 @@ export default function Recu() {
         <span className="grow" />
         <label className="check small"><input type="checkbox" checked={deux} onChange={(e) => setDeux(e.target.checked)} />Imprimer aussi la souche</label>
         {r.telephone && !r.annule && <a className="btn wa" href={`https://wa.me/${telWa(r.telephone)}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer"><MessageCircle size={17} />Envoyer au parent</a>}
+        {data.modifiable && <button className="btn" onClick={() => setEdit(true)}><Pencil size={17} />Modifier</button>}
         {s.peut("finances.annuler") && !r.annule && <button className="btn danger" onClick={() => setAnnul(true)}><Ban size={17} />Annuler</button>}
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       {r.annule && <div className="alert" style={{ maxWidth: 640, margin: "0 auto 16px" }}>Reçu annulé le {dateHeure(r.annule_le)} par {r.annule_par_nom} — motif : {r.annule_motif}</div>}
       <div className="tickets">
-        <Ticket r={r} etab={etab} reste={reste} copie="Exemplaire parent" />
-        {deux && <Ticket r={r} etab={etab} reste={reste} copie="Souche — école" />}
+        <Ticket r={r} etab={etab} reste={reste} copie="Exemplaire parent" rectifie={data.historique?.[0]?.created_at} />
+        {deux && <Ticket r={r} etab={etab} reste={reste} copie="Souche — école" rectifie={data.historique?.[0]?.created_at} />}
       </div>
+      {data.historique?.length > 0 && (
+        <div className="card historique">
+          <div className="card-head" style={{ paddingBottom: 12 }}><History size={18} /><h3>Historique des corrections</h3></div>
+          <ul className="feed">
+            {data.historique.map((h) => (
+              <li key={h.id} style={{ cursor: "default", alignItems: "flex-start" }}>
+                <div className="grow">
+                  <strong>{dateHeure(h.created_at)} — {h.par}</strong>
+                  <span>Motif : {h.motif}</span>
+                  <div className="small" style={{ marginTop: 6 }}>
+                    <span className="muted">Avant : </span>{fcfa(h.avant.montant)} ({MODES[h.avant.mode]}) — {(h.avant.lignes || []).map(libelleLigne).join(", ")}<br />
+                    <span className="muted">Après : </span>{fcfa(h.apres.montant)} ({MODES[h.apres.mode]}) — {(h.apres.lignes || []).map(libelleLigne).join(", ")}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {edit && <Encaissement recu={r} inscriptionId={r.inscription_id} eleve={r} onClose={() => setEdit(false)} onSaved={() => setEdit(false)} />}
       {annul && (
         <Modal title={`Annuler le reçu ${r.numero}`} onClose={() => setAnnul(false)} footer={<>
           <button className="btn" onClick={() => setAnnul(false)}>Garder le reçu</button>

@@ -865,3 +865,6 @@ tr.appel-retard td { background: var(--gold-50); }
 .dropdown button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 10px 12px; border: 0; background: none; border-radius: 10px; cursor: pointer; text-align: left; font-weight: 600; color: var(--ink); }
 .dropdown button:hover { background: var(--teal-50); color: var(--teal); }
 .doc-menu.open > .btn { position: relative; z-index: 61; }
+.historique { max-width: 148mm; width: 100%; margin: 24px auto 0; }
+.historique .card-head svg { color: var(--teal); }
+@media print { .historique { display: none !important; } }

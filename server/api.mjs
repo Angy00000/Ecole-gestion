@@ -466,12 +466,12 @@ const SQL_IMPAYES = `
       + coalesce((select sum(greatest(du - paye, 0)) from lignes l where l.id=ins.id),0) as reste
   from ins`;
 
-const situation = async (inscriptionId) => {
+const situation = async (inscriptionId, exclure = 0) => {
   const [[ins], lignes] = await tx([
     [`select i.*, c.nom as classe, c.cycle, c.frais_inscription, c.uniforme as prix_uniforme, c.tenue_sport as prix_tenue, c.frais_cantine, a.libelle as annee
       from app.inscriptions i join app.classes c on c.id=i.classe_id join app.annees a on a.id=i.annee_id where i.id=$1`, [inscriptionId]],
     [`with i as (select i.*, c.frais_inscription, c.uniforme as prix_uniforme, c.tenue_sport as prix_tenue, c.frais_cantine from app.inscriptions i join app.classes c on c.id=i.classe_id where i.id=$1),
-      pay as (select p.type, p.mois, sum(p.montant) as m from app.paiements p join app.recus r on r.id=p.recu_id and not r.annule where p.inscription_id=$1 group by 1,2)
+      pay as (select p.type, p.mois, sum(p.montant) as m from app.paiements p join app.recus r on r.id=p.recu_id and not r.annule where p.inscription_id=$1 and r.id <> $2 group by 1,2)
       select 'frais' as groupe, x.code as type, null::text as mois, x.ordre, x.du, coalesce((select sum(m) from pay where pay.type=x.code),0) as paye
       from i, lateral (values ('inscription', 1, case when i.inscription_offerte then 0 else greatest(i.frais_inscription - i.reduction_inscription, 0) end), ('uniforme', 2, case when i.uniforme then i.prix_uniforme else 0 end), ('tenue_sport', 3, case when i.tenue_sport then i.prix_tenue else 0 end), ('cantine', 4, case when i.cantine then i.frais_cantine else 0 end)) x(code, ordre, du)
       where x.du > 0 or exists (select 1 from pay where pay.type=x.code)
@@ -480,7 +480,7 @@ const situation = async (inscriptionId) => {
       from app.mois_annee((select annee_id from i)) d
       union all
       select 'autre', p.type, null, 20, 0, sum(p.m) from pay p where p.type not in ('inscription','uniforme','tenue_sport','cantine','mensualite') group by p.type
-      order by 4, 3`, [inscriptionId]],
+      order by 4, 3`, [inscriptionId, exclure || 0]],
   ]);
   if (!ins) fail(404, "Inscription introuvable.");
   const mois = new Date().toISOString().slice(0, 7);
@@ -490,7 +490,7 @@ const situation = async (inscriptionId) => {
   return { inscription: ins, lignes, total_du: totalDu, total_paye: totalPaye, reste_annee: Math.max(totalDu - totalPaye, 0), reste_echu: echu };
 };
 
-route("GET", "/inscriptions/:id/situation", async (ctx) => { exige(ctx, "finances.lire"); return situation(ctx.params.id); });
+route("GET", "/inscriptions/:id/situation", async (ctx) => { exige(ctx, "finances.lire"); return situation(ctx.params.id, Number(ctx.query.exclure_recu) || 0); });
 
 const recuComplet = async (id) => {
   const [[r], lignes] = await tx([
@@ -512,7 +512,9 @@ route("GET", "/recus/:id", async (ctx) => {
   exige(ctx, "finances.lire");
   const r = await recuComplet(ctx.params.id);
   const sit = await situation(r.inscription_id);
-  return { recu: r, situation: { reste_annee: sit.reste_annee, reste_echu: sit.reste_echu } };
+  const historique = await q(`select m.id, m.motif, m.avant, m.apres, m.created_at, u.prenom || ' ' || u.nom as par
+    from app.recus_modifications m left join app.utilisateurs u on u.id=m.modifie_par where m.recu_id=$1 order by m.created_at desc`, [ctx.params.id]);
+  return { recu: r, situation: { reste_annee: sit.reste_annee, reste_echu: sit.reste_echu }, historique, modifiable: !r.annule && peutModifierRecu(ctx, r) };
 });
 
 route("GET", "/recus", async (ctx) => {
@@ -541,10 +543,7 @@ route("GET", "/recus", async (ctx) => {
   return { rows, total: tot.total, nombre: tot.nombre, modes, types };
 });
 
-route("POST", "/recus", async (ctx) => {
-  exige(ctx, "finances.encaisser");
-  const b = ctx.body;
-  requis(b, [["inscription_id", "L'élève"]]);
+const lignesValides = (b) => {
   if (!MODES.includes(b.mode || "especes")) fail(400, "Mode de paiement invalide.");
   const lignes = (b.lignes || []).filter((l) => Number(l.montant) > 0);
   if (!lignes.length) fail(400, "Ajoutez au moins une ligne avec un montant.");
@@ -554,12 +553,21 @@ route("POST", "/recus", async (ctx) => {
     if (!Number.isInteger(Number(l.montant))) fail(400, "Montant invalide.");
     if (l.type === "autre" && !String(l.libelle || "").trim()) fail(400, "Précisez le motif du paiement « Autre ».");
   }
+  return lignes;
+};
+const valeursLignes = (lignes, params) => lignes.map((l) => { params.push(l.type, TYPES_MOIS.includes(l.type) ? `${l.mois}-01` : null, Number(l.montant), l.libelle ? String(l.libelle).trim() : null); const n = params.length; return `($${n - 3}, $${n - 2}::date, $${n - 1}::int, $${n}::text)`; });
+
+route("POST", "/recus", async (ctx) => {
+  exige(ctx, "finances.encaisser");
+  const b = ctx.body;
+  requis(b, [["inscription_id", "L'élève"]]);
+  const lignes = lignesValides(b);
   const ins = await one("select i.id, a.libelle from app.inscriptions i join app.annees a on a.id=i.annee_id where i.id=$1", [b.inscription_id]);
   if (!ins) fail(404, "Inscription introuvable.");
   const prefixe = "R" + ins.libelle.replace(/^\d{2}(\d{2})-\d{2}(\d{2})$/, "$1$2");
   const total = lignes.reduce((t, l) => t + Number(l.montant), 0);
   const params = [b.inscription_id, b.date_paiement || null, b.mode || "especes", total, b.reference || null, b.note || null, ctx.user.id, prefixe];
-  const values = lignes.map((l) => { params.push(l.type, TYPES_MOIS.includes(l.type) ? `${l.mois}-01` : null, Number(l.montant), l.libelle ? String(l.libelle).trim() : null); const n = params.length; return `($${n - 3}, $${n - 2}::date, $${n - 1}::int, $${n}::text)`; });
+  const values = valeursLignes(lignes, params);
   const r = await one(
     `with r as (
        insert into app.recus (numero, inscription_id, date_paiement, mode, montant, reference, note, encaisse_par)
@@ -569,6 +577,34 @@ route("POST", "/recus", async (ctx) => {
      select r.id, r.numero, r.montant, (select count(*) from l) as lignes from r`, params);
   await journal(ctx, "encaissement", "recu", r.id, { numero: r.numero, montant: r.montant });
   return r;
+});
+
+
+// ── Modification d'un reçu (corrections) ──
+const peutModifierRecu = (ctx, r) => peut(ctx.user.role, "finances.annuler")
+  || (peut(ctx.user.role, "finances.encaisser") && r.encaisse_par === ctx.user.id && String(r.created_at).slice(0, 10) === new Date().toISOString().slice(0, 10));
+route("PUT", "/recus/:id", async (ctx) => {
+  exige(ctx, "finances.encaisser");
+  const b = ctx.body;
+  requis(b, [["motif", "Le motif de la modification"]]);
+  const avant = await recuComplet(ctx.params.id);
+  if (avant.annule) fail(400, "Un reçu annulé ne peut pas être modifié.");
+  if (!peutModifierRecu(ctx, avant)) fail(403, "Seule la direction peut modifier ce reçu. La personne qui a encaissé peut le corriger uniquement le jour même.");
+  const lignes = lignesValides(b);
+  const total = lignes.reduce((t, l) => t + Number(l.montant), 0);
+  const params = [ctx.params.id, b.date_paiement || null, b.mode || "especes", total, b.reference || null, b.note || null];
+  const values = valeursLignes(lignes, params);
+  await tx([
+    [`update app.recus set date_paiement=coalesce($2::date, date_paiement), mode=$3::text, montant=$4::int, reference=$5::text, note=$6::text where id=$1::int`, params.slice(0, 6)],
+    ["delete from app.paiements where recu_id=$1", [ctx.params.id]],
+    [`insert into app.paiements (recu_id, inscription_id, type, mois, montant, libelle)
+      select $1::int, (select inscription_id from app.recus where id=$1::int), v.type, v.mois, v.montant, v.libelle from (values ${values.join(",").replace(/\$(\d+)/g, (m, n) => `$${Number(n) - 5}`)}) v(type, mois, montant, libelle)`, [ctx.params.id, ...params.slice(6)]],
+  ]);
+  const apres = await recuComplet(ctx.params.id);
+  const resume = (r) => ({ date: r.date_paiement, mode: r.mode, montant: r.montant, reference: r.reference, lignes: r.lignes });
+  await q("insert into app.recus_modifications (recu_id, modifie_par, motif, avant, apres) values ($1,$2,$3,$4,$5)", [ctx.params.id, ctx.user.id, b.motif, resume(avant), resume(apres)]);
+  await journal(ctx, "modification", "recu", Number(ctx.params.id), { numero: avant.numero, avant: avant.montant, apres: apres.montant, motif: b.motif });
+  return { ok: true, id: Number(ctx.params.id), numero: apres.numero, montant: apres.montant };
 });
 
 route("POST", "/recus/:id/annuler", async (ctx) => {

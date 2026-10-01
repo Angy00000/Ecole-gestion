@@ -37,7 +37,7 @@ function ChoixEleve({ onPick }) {
   );
 }
 
-export default function Encaissement({ inscriptionId: initIns, eleve: initEleve, preset, onClose, onSaved }) {
+export default function Encaissement({ inscriptionId: initIns, eleve: initEleve, preset, recu, onClose, onSaved }) {
   const s = useSession();
   const toast = useToast();
   const tarif = { cours_soir: s.annee?.frais_cours_soir, cantine_jour: s.annee?.frais_cantine_jour, cotisation: s.annee?.frais_cotisation, fournitures: s.annee?.frais_fournitures, cours_vacances: s.annee?.frais_cours_vacances };
@@ -51,14 +51,15 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
   const [insId, setInsId] = useState(initIns || null);
   const [sel, setSel] = useState({});          // clé -> montant
   const [extras, setExtras] = useState([]);    // {type, montant}
-  const [mode, setMode] = useState("especes");
-  const [date, setDate] = useState(today());
-  const [reference, setReference] = useState("");
-  const [note, setNote] = useState("");
+  const [mode, setMode] = useState(recu?.mode || "especes");
+  const [date, setDate] = useState(recu?.date_paiement?.slice(0, 10) || today());
+  const [reference, setReference] = useState(recu?.reference || "");
+  const [note, setNote] = useState(recu?.note || "");
+  const [motif, setMotif] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const sit = useQuery({ queryKey: ["situation", insId], queryFn: () => api.get(`/inscriptions/${insId}/situation`), enabled: !!insId });
+  const sit = useQuery({ queryKey: ["situation", insId, recu?.id || 0], queryFn: () => api.get(`/inscriptions/${insId}/situation`, recu ? { exclure_recu: recu.id } : {}), enabled: !!insId });
   const lignesDues = sit.data?.lignes.filter((l) => l.groupe !== "autre") || [];
   const frais = lignesDues.filter((l) => l.groupe === "frais");
   const mois = lignesDues.filter((l) => l.groupe === "mois" && l.du > 0);
@@ -68,6 +69,18 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
   useEffect(() => {
     if (!sit.data) return;
     const s0 = {};
+    if (recu) {
+      // Modification : on reprend exactement les lignes du reçu
+      const ex = [];
+      recu.lignes.forEach((l) => {
+        if (["inscription", "uniforme", "tenue_sport", "cantine"].includes(l.type) && !l.libelle) s0[`f:${l.type}`] = l.montant;
+        else if (l.type === "mensualite") s0[`m:${l.mois}`] = l.montant;
+        else ex.push({ type: l.type, montant: l.montant, mois: l.mois || undefined, libelle: l.libelle ?? (l.type === "autre" ? "" : undefined),
+          ...(l.type === "cantine_jour" ? { jours: Math.max(1, Math.round(l.montant / (tarif.cantine_jour || l.montant))) } : {}) });
+      });
+      setSel(s0); setExtras(ex);
+      return;
+    }
     if (preset) {
       // Uniformes : uniforme + tenue de sport ; cantine : frais restants, sinon repas au jour ; autres : une ligne du service.
       const cibles = preset === "uniforme" ? ["uniforme", "tenue_sport"] : [preset];
@@ -100,6 +113,12 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
   const save = async () => {
     setBusy(true); setError(null);
     try {
+      if (recu) {
+        const r = await api.put(`/recus/${recu.id}`, { mode, date_paiement: date, reference, note, motif, lignes: lignes.map(({ type, mois, montant, libelle }) => ({ type, mois, montant, libelle })) });
+        toast(`Reçu ${r.numero} modifié — ${fcfa(r.montant)}`);
+        ["situation", "eleve", "dashboard", "recus", "recu", "impayes", "caisse", "service", "rapport"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+        onSaved?.(r); setBusy(false); return;
+      }
       const r = await api.post("/recus", {
         inscription_id: insId, mode, date_paiement: date, reference,
         lignes: lignes.map(({ type, mois, montant, libelle }) => ({ type, mois, montant, libelle })),
@@ -112,19 +131,20 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
     setBusy(false);
   };
 
-  const title = eleve ? `Encaisser — ${eleve.prenom} ${eleve.nom}` : "Nouvel encaissement";
+  const title = recu ? `Modifier le reçu ${recu.numero} — ${recu.prenom} ${recu.nom}` : eleve ? `Encaisser — ${eleve.prenom} ${eleve.nom}` : "Nouvel encaissement";
   return (
     <Modal wide pad={false} title={title} onClose={onClose}
       icon={<span className="ic green" style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center" }}><Wallet size={19} /></span>}
       footer={insId && <>
         <span className="muted small" style={{ marginRight: "auto" }}>{lignes.length} ligne{lignes.length > 1 ? "s" : ""}</span>
         <button className="btn" onClick={onClose}>Annuler</button>
-        <button className="btn primary" onClick={save} disabled={busy || total <= 0 || lignes.some((l) => l.type === "autre" && !String(l.libelle || "").trim())}><Check size={17} />{busy ? "Enregistrement…" : `Encaisser ${fcfa(total)}`}</button>
+        <button className="btn primary" onClick={save} disabled={busy || total <= 0 || lignes.some((l) => l.type === "autre" && !String(l.libelle || "").trim()) || (recu && !motif.trim())}><Check size={17} />{busy ? "Enregistrement…" : recu ? `Enregistrer la correction (${fcfa(total)})` : `Encaisser ${fcfa(total)}`}</button>
       </>}>
       {!insId ? <ChoixEleve onPick={(r) => { setEleve(r); setInsId(r.inscription_id); }} /> : sit.isLoading ? <Spinner /> : sit.error ? <ErrorBox error={sit.error} /> : (
         <div className="enc">
           <div className="enc-left">
             <ErrorBox error={error} />
+            {recu && <div className="alert info" style={{ marginTop: 0 }}>Correction du reçu {recu.numero} : les montants « déjà payés » ci-dessous ne tiennent pas compte de ce reçu.</div>}
             <div className="enc-summary">
               <div><span className="l">Total de l'année</span><strong>{fcfa(sit.data.total_du)}</strong></div>
               <div><span className="l">Déjà payé</span><strong style={{ color: "var(--green)" }}>{fcfa(sit.data.total_paye)}</strong></div>
@@ -199,6 +219,9 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
               <Field label={mode === "cheque" ? "N° de chèque" : mode === "especes" ? "Référence" : "N° de transaction"}><Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={mode === "especes" ? "Facultatif" : ""} /></Field>
             </div>
             <Field label="Remarque"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Facultatif" /></Field>
+            {recu && <Field label="Motif de la correction" required hint={`Ancien montant : ${fcfa(recu.montant)}. La correction est enregistrée dans l'historique du reçu.`}>
+              <Input value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Erreur de mois, mauvais montant…" aria-label="Motif de la correction" />
+            </Field>}
           </div>
         </div>
       )}
