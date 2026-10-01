@@ -11,7 +11,7 @@ export default function TarifScolarite({ value, onChange, normal }) {
     normal: { gratuit: false, inscription_offerte: false, mensualite_speciale: null },
     perso: { gratuit: false, inscription_offerte: false, mensualite_speciale: value.mensualite_speciale || normal || null },
     mensualites_offertes: { gratuit: true, inscription_offerte: false, mensualite_speciale: null },
-    gratuit_total: { gratuit: true, inscription_offerte: true, mensualite_speciale: null },
+    gratuit_total: { gratuit: true, inscription_offerte: true, mensualite_speciale: null, reduction_inscription: 0 },
   }[m]);
   const aide = {
     normal: `Tarif de la classe${normal ? ` : ${fcfa(normal)} par mois` : ""}.`,
@@ -33,7 +33,21 @@ export default function TarifScolarite({ value, onChange, normal }) {
 
 export function BadgeFormule({ v, style }) {
   const m = formule(v);
-  if (m === "normal") return null;
+  const red = v.reduction_inscription > 0 && !v.inscription_offerte ? <span className="badge gold" style={style}>Réduction inscription −{fcfa(v.reduction_inscription)}</span> : null;
+  if (m === "normal") return red;
   const cls = { perso: "gold", mensualites_offertes: "teal", gratuit_total: "green" }[m];
-  return <span className={`badge ${cls}`} style={style}>{m === "perso" ? `Mensualité perso${v.mensualite_speciale ? ` : ${fcfa(v.mensualite_speciale)}` : ""}` : FORMULES[m]}</span>;
+  return <>{red}<span className={`badge ${cls}`} style={style}>{m === "perso" ? `Mensualité perso${v.mensualite_speciale ? ` : ${fcfa(v.mensualite_speciale)}` : ""}` : FORMULES[m]}</span></>;
+}
+
+// Réduction (en francs) sur le droit d'inscription.
+export function ReductionInscription({ value, onChange, droit }) {
+  if (value.inscription_offerte) return null;
+  const r = value.reduction_inscription || 0;
+  return (
+    <div className="field">
+      <label>Réduction sur le droit d'inscription</label>
+      <Money value={r || null} onChange={(x) => onChange({ reduction_inscription: Math.min(x || 0, droit || x || 0) })} placeholder="0" aria-label="Réduction sur le droit d'inscription" />
+      <span className="hint">{r > 0 && droit ? `Droit d'inscription : ${fcfa(droit)} − ${fcfa(r)} = ${fcfa(Math.max(droit - r, 0))}` : "Laisser vide s'il n'y a pas de réduction."}</span>
+    </div>
+  );
 }

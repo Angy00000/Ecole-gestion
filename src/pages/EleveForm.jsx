@@ -5,7 +5,7 @@ import { useSession } from "../lib/session";
 import { fcfa, today } from "../lib/format";
 import { Modal, Field, Input, Select, Textarea, ErrorBox, useToast } from "../components/ui";
 import { User, Users, GraduationCap, NotebookPen, UserPlus, Pencil } from "lucide-react";
-import TarifScolarite from "../components/TarifScolarite";
+import TarifScolarite, { ReductionInscription } from "../components/TarifScolarite";
 const Sec = ({ icon: I, tone, title, sub, children }) => (
   <section className="form-section">
     <div className="head"><span className={`ic ${tone}`}><I size={18} /></span><div><h3>{title}</h3>{sub && <p>{sub}</p>}</div></div>
@@ -27,7 +27,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
   const qc = useQueryClient();
   const edition = !!eleve;
   const [v, setV] = useState(() => ({ ...VIDE, ...(eleve || {}), date_naissance: eleve?.date_naissance?.slice(0, 10) || "" }));
-  const [ins, setIns] = useState({ classe_id: "", cantine: false, date_inscription: today(), type: "nouvelle", gratuit: false, inscription_offerte: false, mensualite_speciale: null, uniforme: false, tenue_sport: false });
+  const [ins, setIns] = useState({ classe_id: "", cantine: false, date_inscription: today(), type: "nouvelle", gratuit: false, inscription_offerte: false, mensualite_speciale: null, uniforme: false, tenue_sport: false, reduction_inscription: 0 });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
@@ -56,11 +56,12 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["classes"] });
       qc.invalidateQueries({ queryKey: ["matricule"] });
+      ["situation", "impayes", "service"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
     } catch (e) { setError(e); document.querySelector(".modal-body")?.scrollTo({ top: 0, behavior: "smooth" }); }
     setBusy(false);
   };
 
-  const droit = classe ? (ins.inscription_offerte ? 0 : classe.frais_inscription) : 0;
+  const droit = classe ? (ins.inscription_offerte ? 0 : Math.max(classe.frais_inscription - (ins.reduction_inscription || 0), 0)) : 0;
   const fraisInscription = classe ? droit + (ins.uniforme ? classe.uniforme : 0) + (ins.tenue_sport ? classe.tenue_sport : 0) + (ins.cantine ? classe.frais_cantine : 0) : 0;
   const mensuel = classe ? (ins.cantine ? classe.mensualite_cantine : classe.mensualite) : 0;
   const mensuelReel = ins.gratuit ? 0 : ins.mensualite_speciale || mensuel;
@@ -128,6 +129,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
                   <Field label="Date d'inscription"><Input type="date" value={ins.date_inscription} onChange={(e) => setIns({ ...ins, date_inscription: e.target.value })} /></Field>
                 </div>
                 <TarifScolarite value={ins} normal={mensuel} onChange={(x) => setIns({ ...ins, ...x })} />
+                <ReductionInscription value={ins} droit={classe?.frais_inscription} onChange={(x) => setIns({ ...ins, ...x })} />
                 <div className="options-3">
                   <label className="switch-card"><input type="checkbox" checked={ins.uniforme} onChange={(e) => setIns({ ...ins, uniforme: e.target.checked })} /><div><strong>Uniforme</strong><div className="xs muted">{classe ? fcfa(classe.uniforme) : "—"}</div></div></label>
                   <label className="switch-card"><input type="checkbox" checked={ins.tenue_sport} onChange={(e) => setIns({ ...ins, tenue_sport: e.target.checked })} /><div><strong>Tenue de sport</strong><div className="xs muted">{classe ? fcfa(classe.tenue_sport) : "—"}</div></div></label>
@@ -138,6 +140,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
                 <h4>Frais à régler à l'inscription</h4>
                 {classe ? <>
                   <div className="recap-row" style={{ marginTop: 10 }}><span>Droit d'inscription</span><span>{ins.inscription_offerte ? "Offert" : fcfa(classe.frais_inscription)}</span></div>
+                  {!ins.inscription_offerte && ins.reduction_inscription > 0 && <div className="recap-row" style={{ color: "var(--gold)" }}><span>Réduction accordée</span><span>−{fcfa(Math.min(ins.reduction_inscription, classe.frais_inscription))}</span></div>}
                   {ins.uniforme && <div className="recap-row"><span>Uniforme</span><span>{fcfa(classe.uniforme)}</span></div>}
                   {ins.tenue_sport && <div className="recap-row"><span>Tenue de sport</span><span>{fcfa(classe.tenue_sport)}</span></div>}
                   {ins.cantine && <div className="recap-row"><span>Inscription cantine</span><span>{fcfa(classe.frais_cantine)}</span></div>}

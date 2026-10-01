@@ -8,7 +8,7 @@ import { fcfa, date, dateLongue, age, initiales } from "../lib/format";
 import { Spinner, ErrorBox, Empty, Modal, Field, Select, Input, Confirm, useToast } from "../components/ui";
 import EleveForm from "./EleveForm";
 import Encaissement from "../components/Encaissement";
-import TarifScolarite, { BadgeFormule } from "../components/TarifScolarite";
+import TarifScolarite, { BadgeFormule, ReductionInscription } from "../components/TarifScolarite";
 import { moisNom, moisLong, libelleLigne, TYPES_COURTS } from "../lib/format";
 
 function Situation({ inscription, peutEncaisser, onEncaisser }) {
@@ -87,7 +87,7 @@ function InscriptionModal({ eleve, inscription, onClose }) {
   const qc = useQueryClient();
   const edition = !!inscription;
   const [v, setV] = useState({
-    classe_id: inscription?.classe_id || "", cantine: inscription?.cantine || false, uniforme: inscription?.uniforme ?? false, tenue_sport: inscription?.tenue_sport ?? false,
+    classe_id: inscription?.classe_id || "", cantine: inscription?.cantine || false, uniforme: inscription?.uniforme ?? false, tenue_sport: inscription?.tenue_sport ?? false, reduction_inscription: inscription?.reduction_inscription || 0,
     gratuit: inscription?.gratuit || false, inscription_offerte: inscription?.inscription_offerte || false, mensualite_speciale: inscription?.mensualite_speciale || null,
     statut: inscription?.statut || "active", date_inscription: inscription?.date_inscription?.slice(0, 10) || new Date().toISOString().slice(0, 10),
   });
@@ -101,7 +101,7 @@ function InscriptionModal({ eleve, inscription, onClose }) {
       if (edition) await api.put(`/inscriptions/${inscription.id}`, v);
       else await api.post(`/eleves/${eleve.id}/inscriptions`, { ...v, annee_id: annee, type: "reinscription" });
       toast(edition ? "Inscription mise à jour" : `${eleve.prenom} réinscrit(e) pour ${s.annee?.libelle}`);
-      ["eleve", "eleves", "dashboard", "classes"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      ["eleve", "eleves", "dashboard", "classes", "situation", "impayes", "service", "recus"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       onClose();
     } catch (e) { setError(e); }
   };
@@ -133,6 +133,7 @@ function InscriptionModal({ eleve, inscription, onClose }) {
           <label className="switch-card"><input type="checkbox" checked={v.cantine} onChange={(e) => setV({ ...v, cantine: e.target.checked })} /><strong>Cantine</strong></label>
         </div>
         <TarifScolarite value={v} normal={classes.data?.find((c) => c.id === Number(v.classe_id))?.[v.cantine ? "mensualite_cantine" : "mensualite"]} onChange={(x) => setV({ ...v, ...x })} />
+        <ReductionInscription value={v} droit={classes.data?.find((c) => c.id === Number(v.classe_id))?.frais_inscription} onChange={(x) => setV({ ...v, ...x })} />
       </div>
     </Modal>
   );
@@ -261,7 +262,7 @@ export default function EleveFiche() {
                     <td>{i.type === "nouvelle" ? "Nouvelle" : "Réinscription"}</td>
                     <td className="hide-m num">{date(i.date_inscription)}</td>
                     <td>{i.cantine ? <span className="badge coral">Oui</span> : <span className="muted">Non</span>}</td>
-                    <td className="hide-m num r"><strong>{i.gratuit ? "Offerte" : fcfa(i.mensualite_speciale ?? (i.cantine ? i.mensualite_cantine : i.mensualite))}</strong>{i.mensualite_speciale && !i.gratuit ? <div className="xs muted">personnalisée</div> : null}{i.inscription_offerte ? <div className="xs muted">inscription offerte</div> : null}</td>
+                    <td className="hide-m num r"><strong>{i.gratuit ? "Offerte" : fcfa(i.mensualite_speciale ?? (i.cantine ? i.mensualite_cantine : i.mensualite))}</strong>{i.mensualite_speciale && !i.gratuit ? <div className="xs muted">personnalisée</div> : null}{i.inscription_offerte ? <div className="xs muted">inscription offerte</div> : i.reduction_inscription > 0 ? <div className="xs muted">réduction inscription −{fcfa(i.reduction_inscription)}</div> : null}</td>
                     <td><span className={`badge ${i.statut === "active" ? "green" : "coral"}`}>{STATUTS[i.statut]}</span></td>
                     <td className="r">{s.peut("eleves.ecrire") && <button className="btn sm ghost" onClick={() => setInsc(i)}><Pencil size={14} />Modifier</button>}</td>
                   </tr>
