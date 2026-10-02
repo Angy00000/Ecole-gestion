@@ -27,7 +27,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
   const qc = useQueryClient();
   const edition = !!eleve;
   const [v, setV] = useState(() => ({ ...VIDE, ...(eleve || {}), date_naissance: eleve?.date_naissance?.slice(0, 10) || "" }));
-  const [ins, setIns] = useState({ classe_id: "", cantine: false, date_inscription: today(), type: "nouvelle", gratuit: false, inscription_offerte: false, mensualite_speciale: null, uniforme: false, tenue_sport: false, reduction_inscription: 0 });
+  const [ins, setIns] = useState({ classe_id: "", cantine: false, date_inscription: today(), type: "nouvelle", gratuit: false, inscription_offerte: false, mensualite_speciale: null, uniforme: false, tenue_sport: false, cours_soir: false, reduction_inscription: 0 });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
@@ -63,7 +63,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
 
   const droit = classe ? (ins.inscription_offerte ? 0 : Math.max(classe.frais_inscription - (ins.reduction_inscription || 0), 0)) : 0;
   const fraisInscription = classe ? droit + (ins.uniforme ? classe.uniforme : 0) + (ins.tenue_sport ? classe.tenue_sport : 0) + (ins.cantine ? classe.frais_cantine : 0) : 0;
-  const cs = classe?.cours_soir || 0;
+  const cs = ins.cours_soir ? classe?.cours_soir || 0 : 0;
   const mensuel = classe ? (ins.cantine ? classe.mensualite_cantine : classe.mensualite) : 0;
   const mensuelReel = ins.gratuit ? 0 : ins.mensualite_speciale || mensuel;
 
@@ -134,6 +134,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
                 <div className="options-3">
                   <label className="switch-card"><input type="checkbox" checked={ins.uniforme} onChange={(e) => setIns({ ...ins, uniforme: e.target.checked })} /><div><strong>Uniforme</strong><div className="xs muted">{classe ? fcfa(classe.uniforme) : "—"}</div></div></label>
                   <label className="switch-card"><input type="checkbox" checked={ins.tenue_sport} onChange={(e) => setIns({ ...ins, tenue_sport: e.target.checked })} /><div><strong>Tenue de sport</strong><div className="xs muted">{classe ? fcfa(classe.tenue_sport) : "—"}</div></div></label>
+                  {classe?.cours_soir > 0 && <label className="switch-card"><input type="checkbox" checked={ins.cours_soir} onChange={(e) => setIns({ ...ins, cours_soir: e.target.checked })} /><div><strong>Cours du soir</strong><div className="xs muted">+ {fcfa(classe.cours_soir)} par mois</div></div></label>}
                   <label className="switch-card"><input type="checkbox" checked={ins.cantine} onChange={(e) => setIns({ ...ins, cantine: e.target.checked })} /><div><strong>Cantine</strong><div className="xs muted">{classe ? `${fcfa(classe.frais_cantine)} + mensualité` : "Déjeune à l'école"}</div></div></label>
                 </div>
               </div>
