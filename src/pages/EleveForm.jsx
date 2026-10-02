@@ -27,7 +27,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
   const qc = useQueryClient();
   const edition = !!eleve;
   const [v, setV] = useState(() => ({ ...VIDE, ...(eleve || {}), date_naissance: eleve?.date_naissance?.slice(0, 10) || "" }));
-  const [ins, setIns] = useState({ classe_id: "", cantine: false, date_inscription: today(), type: "nouvelle", gratuit: false, inscription_offerte: false, mensualite_speciale: null, uniforme: false, tenue_sport: false, cours_soir: false, reduction_inscription: 0 });
+  const [ins, setIns] = useState({ classe_id: "", cantine: false, date_inscription: today(), type: "nouvelle", gratuit: false, inscription_offerte: false, mensualite_speciale: null, uniforme: false, tenue_sport: false, cours_soir: true, reduction_inscription: 0 });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
@@ -63,8 +63,9 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
 
   const droit = classe ? (ins.inscription_offerte ? 0 : Math.max(classe.frais_inscription - (ins.reduction_inscription || 0), 0)) : 0;
   const fraisInscription = classe ? droit + (ins.uniforme ? classe.uniforme : 0) + (ins.tenue_sport ? classe.tenue_sport : 0) + (ins.cantine ? classe.frais_cantine : 0) : 0;
-  const cs = ins.cours_soir ? classe?.cours_soir || 0 : 0;
-  const mensuel = classe ? (ins.cantine ? classe.mensualite_cantine : classe.mensualite) : 0;
+  const sansCs = !ins.cours_soir && classe?.cours_soir > 0 ? classe.cours_soir : 0;
+  const cs = 0;
+  const mensuel = classe ? (ins.cantine ? classe.mensualite_cantine : classe.mensualite) - sansCs : 0;
   const mensuelReel = ins.gratuit ? 0 : ins.mensualite_speciale || mensuel;
 
   return (
@@ -134,7 +135,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
                 <div className="options-3">
                   <label className="switch-card"><input type="checkbox" checked={ins.uniforme} onChange={(e) => setIns({ ...ins, uniforme: e.target.checked })} /><div><strong>Uniforme</strong><div className="xs muted">{classe ? fcfa(classe.uniforme) : "—"}</div></div></label>
                   <label className="switch-card"><input type="checkbox" checked={ins.tenue_sport} onChange={(e) => setIns({ ...ins, tenue_sport: e.target.checked })} /><div><strong>Tenue de sport</strong><div className="xs muted">{classe ? fcfa(classe.tenue_sport) : "—"}</div></div></label>
-                  {classe?.cours_soir > 0 && <label className="switch-card"><input type="checkbox" checked={ins.cours_soir} onChange={(e) => setIns({ ...ins, cours_soir: e.target.checked })} /><div><strong>Cours du soir</strong><div className="xs muted">+ {fcfa(classe.cours_soir)} par mois</div></div></label>}
+                  {classe?.cours_soir > 0 && <label className="switch-card"><input type="checkbox" checked={ins.cours_soir} onChange={(e) => setIns({ ...ins, cours_soir: e.target.checked })} /><div><strong>Cours du soir</strong><div className="xs muted">{ins.cours_soir ? "Compris dans la mensualité" : `Mensualité − ${fcfa(classe.cours_soir)}`}</div></div></label>}
                   <label className="switch-card"><input type="checkbox" checked={ins.cantine} onChange={(e) => setIns({ ...ins, cantine: e.target.checked })} /><div><strong>Cantine</strong><div className="xs muted">{classe ? `${fcfa(classe.frais_cantine)} + mensualité` : "Déjeune à l'école"}</div></div></label>
                 </div>
               </div>
@@ -147,7 +148,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
                   {ins.tenue_sport && <div className="recap-row"><span>Tenue de sport</span><span>{fcfa(classe.tenue_sport)}</span></div>}
                   {ins.cantine && <div className="recap-row"><span>Inscription cantine</span><span>{fcfa(classe.frais_cantine)}</span></div>}
                   <div className="recap-row total"><span>Total</span><span>{fcfa(fraisInscription)}</span></div>
-                  <p className="note">{ins.gratuit ? "Aucune mensualité à payer." : ins.mensualite_speciale ? `Puis ${fcfa(mensuelReel + cs)} par mois (tarif personnalisé${cs ? ", cours du soir inclus" : ""}), ${fcfa(Math.round(mensuelReel * 1.5) + cs)} en janvier et février.` : `Puis ${fcfa(mensuel + cs)} par mois${cs ? ` (dont ${fcfa(cs)} de cours du soir)` : ""}, ${fcfa((ins.cantine ? classe.mensualite_cantine_jan_fev : classe.mensualite_jan_fev) + cs)} en janvier et février.`}</p>
+                  <p className="note">{ins.gratuit ? "Aucune mensualité à payer." : ins.mensualite_speciale ? `Puis ${fcfa(mensuelReel + cs)} par mois (tarif personnalisé${cs ? ", cours du soir inclus" : ""}), ${fcfa(Math.round(mensuelReel * 1.5) + cs)} en janvier et février.` : `Puis ${fcfa(mensuel)} par mois${classe.cours_soir > 0 ? (ins.cours_soir ? " (cours du soir compris)" : " (sans cours du soir)") : ""}, ${fcfa((ins.cantine ? classe.mensualite_cantine_jan_fev : classe.mensualite_jan_fev) - sansCs)} en janvier et février.`}</p>
                 </> : <p className="note">Choisissez une classe pour afficher les frais.</p>}
               </div>
             </div>

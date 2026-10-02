@@ -77,7 +77,7 @@ function ClasseForm({ classe, onClose }) {
             <Field label="Sans cantine, janv./févr."><Money {...m("mensualite_jan_fev")} /></Field>
             <Field label="Avec cantine"><Money {...m("mensualite_cantine")} /></Field>
             <Field label="Avec cantine, janv./févr."><Money {...m("mensualite_cantine_jan_fev")} /></Field>
-            <Field label="Cours du soir (par mois)" hint="Ajouté à la mensualité des élèves inscrits au cours du soir (case à cocher à l'inscription), d'octobre à mai." className="span2"><Money {...m("cours_soir")} /></Field>
+            <Field label="Cours du soir (par mois)" hint="Montant compris dans la mensualité. Il est retiré pour les élèves qui ne font pas le cours du soir (case décochée à l'inscription)." className="span2"><Money {...m("cours_soir")} /></Field>
           </div>
         </Sec>
       </div>
@@ -147,7 +147,7 @@ export default function Classes() {
                   {c.tenue_sport > 0 && <><dt>Tenue de sport</dt><dd>{fcfa(c.tenue_sport)}</dd></>}
                   <dt>Mensualité</dt><dd>{fcfa(c.mensualite)}</dd>
                   <dt>Avec cantine</dt><dd style={{ color: COL[c.cycle] }}>{fcfa(c.mensualite_cantine)}</dd>
-                  {c.cours_soir > 0 && <><dt>Cours du soir (option)</dt><dd>+ {fcfa(c.cours_soir)} / mois</dd></>}
+                  {c.cours_soir > 0 && <><dt>Dont cours du soir</dt><dd>{fcfa(c.cours_soir)}</dd></>}
                 </dl>
                 <div className="row" style={{ justifyContent: "space-between", fontSize: 13 }}>
                   <span className="row muted" style={{ gap: 6 }}><UserRound size={15} />{c.titulaire || "Pas de titulaire"}</span>
@@ -177,7 +177,7 @@ export default function Classes() {
                     <td className="r num hide-m">{fcfa(c.mensualite_jan_fev)}</td>
                     <td className="r num"><strong>{fcfa(c.mensualite_cantine)}</strong></td>
                     <td className="r num hide-m">{fcfa(c.mensualite_cantine_jan_fev)}</td>
-                    <td className="r num hide-m">{c.cours_soir ? `+ ${fcfa(c.cours_soir)}` : "—"}</td>
+                    <td className="r num hide-m">{c.cours_soir ? `dont ${fcfa(c.cours_soir)}` : "—"}</td>
                     {peut && <td className="r" style={{ whiteSpace: "nowrap" }}>
                       <button className="btn sm ghost icon" onClick={() => setEdit(c)} aria-label={`Modifier ${c.nom}`}><Pencil size={15} /></button>
                       <button className="btn sm ghost icon" onClick={() => setDel(c)} aria-label={`Supprimer ${c.nom}`}><Trash2 size={15} /></button>

@@ -113,7 +113,7 @@ export default function Eleves() {
                     <td>{r.classe ? <span className={`chip ${r.cycle || ""}`}>{r.classe}</span> : <span className="muted">—</span>}</td>
                     <td className="hide-m num">{age(r.date_naissance) != null ? `${age(r.date_naissance)} ans` : <span className="muted">—</span>}</td>
                     <td className="hide-m num">{r.telephone || <span className="muted">—</span>}</td>
-                    <td className="hide-m">{r.cantine ? <span className="badge coral"><Utensils size={12} />Cantine</span> : null}{r.cours_soir ? <span className="badge teal" style={{ marginLeft: 4 }}>Cours du soir</span> : null}{!r.cantine && !r.cours_soir ? <span className="muted small">—</span> : null}</td>
+                    <td className="hide-m">{r.cantine ? <span className="badge coral"><Utensils size={12} />Cantine</span> : null}{r.cycle === "elementaire" && !r.cours_soir ? <span className="badge gold" style={{ marginLeft: 4 }}>Sans cours du soir</span> : null}{!r.cantine && !(r.cycle === "elementaire" && !r.cours_soir) ? <span className="muted small">—</span> : null}</td>
                     {s.peut("finances.lire") && <td className="hide-m">{r.frais_reste == null ? "—" : r.frais_reste <= 0 ? <span className="badge green">Réglée</span> : <span className="badge gold">Reste {fcfa(r.frais_reste)}</span>}</td>}
                     <td className="r"><ChevronRight size={18} className="go" /></td>
                   </tr>
