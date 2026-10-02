@@ -885,3 +885,12 @@ tr.appel-retard td { background: var(--gold-50); }
 .frais-reste.due { color: var(--coral); }
 .line { flex-wrap: wrap; }
 .line-reste { font-size: 11px; font-weight: 800; color: var(--coral); white-space: nowrap; }
+.pay-table { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.pay-head, .pay-row { display: grid; grid-template-columns: 1.6fr 0.8fr 1fr 0.8fr; gap: 12px; align-items: center; padding: 8px 14px; }
+.pay-head { background: var(--surface-2); font-size: 12px; font-weight: 700; color: var(--muted); }
+.pay-row + .pay-row { border-top: 1px solid var(--line); }
+.pay-row .input { height: 38px; }
+.pay-reste { font-weight: 800; color: var(--green); font-size: 13px; }
+.pay-reste.due { color: var(--coral); }
+.pay-total { background: var(--teal-50); font-weight: 800; }
+@media (max-width: 560px) { .pay-head { display: none; } .pay-row { grid-template-columns: 1fr 1fr; } }

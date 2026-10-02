@@ -134,7 +134,7 @@ export default function Eleves() {
         )}
       </div>
 
-      {form && <EleveForm onClose={() => { setForm(false); const p = Object.fromEntries(params); delete p.nouveau; setParams(p); }} onSaved={(id) => { setForm(false); nav(`/eleves/${id}`); }} />}
+      {form && <EleveForm onClose={() => { setForm(false); const p = Object.fromEntries(params); delete p.nouveau; setParams(p); }} onSaved={(id, recuId) => { setForm(false); nav(recuId ? `/recus/${recuId}` : `/eleves/${id}`); }} />}
     </>
   );
 }

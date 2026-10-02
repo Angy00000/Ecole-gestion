@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
-import { fcfa, today } from "../lib/format";
-import { Modal, Field, Input, Select, Textarea, ErrorBox, useToast } from "../components/ui";
-import { User, Users, GraduationCap, NotebookPen, UserPlus, Pencil } from "lucide-react";
+import { fcfa, today, moisLong, MODES } from "../lib/format";
+import { Modal, Field, Input, Select, Textarea, Money, ErrorBox, useToast } from "../components/ui";
+import { User, Users, GraduationCap, NotebookPen, UserPlus, Pencil, Wallet } from "lucide-react";
 import TarifScolarite, { ReductionInscription } from "../components/TarifScolarite";
 const Sec = ({ icon: I, tone, title, sub, children }) => (
   <section className="form-section">
@@ -29,6 +29,10 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
   const [v, setV] = useState(() => ({ ...VIDE, ...(eleve || {}), date_naissance: eleve?.date_naissance?.slice(0, 10) || "" }));
   const [ins, setIns] = useState({ classe_id: "", cantine: false, date_inscription: today(), type: "nouvelle", gratuit: false, inscription_offerte: false, mensualite_speciale: null, uniforme: false, tenue_sport: false, cours_soir: true, reduction_inscription: 0 });
   const [error, setError] = useState(null);
+  const [payer, setPayer] = useState(true);
+  const [paye, setPaye] = useState({});
+  const [modePay, setModePay] = useState("especes");
+  const [refPay, setRefPay] = useState("");
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
 
@@ -48,8 +52,17 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
         onSaved?.(eleve.id);
       } else {
         const r = await api.post("/eleves", { eleve: v, inscription: { ...ins, annee_id: s.annee?.id } });
-        toast(`${r.prenom} ${r.nom} inscrit(e) — matricule ${r.matricule}`);
-        onSaved?.(r.id);
+        let recuId = null;
+        const lignesPay = articles.map((a) => ({ type: a.type, mois: a.mois, montant: montantPaye(a) })).filter((l) => l.montant > 0);
+        if (peutEncaisser && payer && lignesPay.length) {
+          try {
+            const rc = await api.post("/recus", { inscription_id: r.inscription_id, mode: modePay, reference: refPay, lignes: lignesPay });
+            recuId = rc.id;
+            toast(`${r.prenom} ${r.nom} inscrit(e) — reçu ${rc.numero} de ${fcfa(rc.montant)}`);
+            ["recus", "caisse", "rapport", "factures"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+          } catch (e2) { toast(`Élève inscrit(e), mais le paiement n'a pas été enregistré : ${e2.message}`, "error"); }
+        } else toast(`${r.prenom} ${r.nom} inscrit(e) — matricule ${r.matricule}`);
+        onSaved?.(r.id, recuId);
       }
       qc.invalidateQueries({ queryKey: ["eleves"] });
       qc.invalidateQueries({ queryKey: ["eleve"] });
@@ -67,12 +80,24 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
   const cs = 0;
   const mensuel = classe ? (ins.cantine ? classe.mensualite_cantine : classe.mensualite) - sansCs : 0;
   const mensuelReel = ins.gratuit ? 0 : ins.mensualite_speciale || mensuel;
+  const peutEncaisser = s.peut("finances.encaisser");
+  const premierMois = (s.annee?.debut || today()).slice(0, 7);
+  const articles = !classe ? [] : [
+    { type: "inscription", libelle: "Droit d'inscription", du: droit, defaut: droit },
+    ins.uniforme && { type: "uniforme", libelle: "Uniforme", du: classe.uniforme, defaut: classe.uniforme },
+    ins.tenue_sport && { type: "tenue_sport", libelle: "Tenue de sport", du: classe.tenue_sport, defaut: classe.tenue_sport },
+    ins.cantine && { type: "cantine", libelle: "Inscription cantine", du: classe.frais_cantine, defaut: classe.frais_cantine },
+    mensuelReel > 0 && { type: "mensualite", mois: premierMois, libelle: `Mensualité ${moisLong(premierMois)}${classe.cours_soir > 0 && ins.cours_soir ? " (cours du soir compris)" : ""}`, du: mensuelReel, defaut: 0 },
+  ].filter((a) => a && a.du > 0);
+  const montantPaye = (a) => Math.min(Number(paye[a.type] ?? a.defaut) || 0, a.du);
+  const totalPaye = articles.reduce((t, a) => t + montantPaye(a), 0);
+  const totalDu = articles.reduce((t, a) => t + a.du, 0);
 
   return (
     <Modal wide pad={false} icon={<span className="ic teal" style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center" }}>{edition ? <Pencil size={19} /> : <UserPlus size={19} />}</span>}
       title={edition ? `Modifier ${eleve.prenom} ${eleve.nom}` : "Inscrire un nouvel élève"} onClose={onClose} footer={<>
       <button className="btn" onClick={onClose}>Annuler</button>
-      <button className="btn primary" onClick={save} disabled={busy}>{busy ? "Enregistrement…" : edition ? "Enregistrer les modifications" : "Inscrire l'élève"}</button>
+      <button className="btn primary" onClick={save} disabled={busy}>{busy ? "Enregistrement…" : edition ? "Enregistrer les modifications" : peutEncaisser && payer && totalPaye > 0 ? `Inscrire et encaisser ${fcfa(totalPaye)}` : "Inscrire l'élève"}</button>
     </>}>
       <div>
         <ErrorBox error={error} />
@@ -152,6 +177,33 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
                 </> : <p className="note">Choisissez une classe pour afficher les frais.</p>}
               </div>
             </div>
+          </Sec>
+        )}
+
+        {!edition && classe && peutEncaisser && articles.length > 0 && (
+          <Sec icon={Wallet} tone="green" title="Paiement à l'inscription" sub="Indiquez ce que le parent verse aujourd'hui. Si c'est incomplet, le reste sera dû et apparaîtra sur la facture.">
+            <label className="check" style={{ marginBottom: 12 }}><input type="checkbox" checked={payer} onChange={(e) => setPayer(e.target.checked)} />Encaisser un paiement maintenant</label>
+            {payer && <>
+              <div className="pay-table">
+                <div className="pay-head"><span>Élément</span><span>Prix</span><span>Payé aujourd'hui</span><span>Reste</span></div>
+                {articles.map((a) => {
+                  const p = montantPaye(a), reste = a.du - p;
+                  return (
+                    <div key={a.type} className="pay-row">
+                      <span><strong>{a.libelle}</strong></span>
+                      <span className="num">{fcfa(a.du)}</span>
+                      <Money value={paye[a.type] ?? a.defaut} onChange={(x) => setPaye({ ...paye, [a.type]: x ?? 0 })} aria-label={`Payé ${a.libelle}`} />
+                      <span className={`num pay-reste ${reste > 0 ? "due" : ""}`}>{reste > 0 ? fcfa(reste) : "Complet"}</span>
+                    </div>
+                  );
+                })}
+                <div className="pay-row pay-total"><span>Total</span><span className="num">{fcfa(totalDu)}</span><span className="num">{fcfa(totalPaye)}</span><span className={`num pay-reste ${totalDu - totalPaye > 0 ? "due" : ""}`}>{totalDu - totalPaye > 0 ? fcfa(totalDu - totalPaye) : "Complet"}</span></div>
+              </div>
+              <div className="grid g2" style={{ marginTop: 14 }}>
+                <Field label="Mode de paiement"><Select value={modePay} onChange={(e) => setModePay(e.target.value)}>{Object.entries(MODES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
+                <Field label="Référence / n° de transaction"><Input value={refPay} onChange={(e) => setRefPay(e.target.value)} placeholder="Facultatif" /></Field>
+              </div>
+            </>}
           </Sec>
         )}
 
