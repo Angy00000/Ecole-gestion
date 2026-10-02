@@ -109,6 +109,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
     return out;
   }, [sel, extras, sit.data]);
   const total = lignes.reduce((t, l) => t + (Number(l.montant) || 0), 0);
+  const dueDe = (k) => { const l = [...frais, ...mois].find((x) => key(x) === k); return l ? Math.max(l.du - l.paye, 0) : null; };
 
   const save = async () => {
     setBusy(true); setError(null);
@@ -155,13 +156,23 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
               <h4 className="enc-h">Frais d'inscription</h4>
               <div className="enc-frais">
                 {frais.map((l) => {
-                  const k = key(l), solde = l.paye >= l.du, on = k in sel;
+                  const k = key(l), solde = l.paye >= l.du, on = k in sel, du = Math.max(l.du - l.paye, 0);
+                  const reste = on ? du - (Number(sel[k]) || 0) : 0;
                   return (
-                    <label key={k} className={`frais-row ${on ? "on" : ""} ${solde ? "solde" : ""}`}>
-                      <input type="checkbox" checked={on} onChange={() => toggle(l)} />
-                      <div className="grow"><strong>{TYPES[l.type]}</strong><span>{solde ? "Réglé" : l.paye ? `${fcfa(l.paye)} déjà payé sur ${fcfa(l.du)}` : fcfa(l.du)}</span></div>
-                      {solde && !on ? <span className="badge green"><Check size={12} />Payé</span> : <span className="amount">{fcfa(Math.max(l.du - l.paye, 0))}</span>}
-                    </label>
+                    <div key={k} className={`frais-row ${on ? "on" : ""} ${solde ? "solde" : ""}`}>
+                      <label className="frais-main">
+                        <input type="checkbox" checked={on} onChange={() => toggle(l)} />
+                        <div className="grow"><strong>{TYPES[l.type]}</strong><span>{solde ? "Réglé" : l.paye ? `${fcfa(l.paye)} déjà payé sur ${fcfa(l.du)}` : `Prix : ${fcfa(l.du)}`}</span></div>
+                        {solde && !on ? <span className="badge green"><Check size={12} />Payé</span> : !on && <span className="amount">{fcfa(du)}</span>}
+                      </label>
+                      {on && (
+                        <div className="frais-pay">
+                          <span>Montant payé maintenant</span>
+                          <Money value={sel[k]} onChange={(v) => setSel({ ...sel, [k]: v })} aria-label={`Montant payé ${TYPES[l.type]}`} />
+                          <span className={`frais-reste ${reste > 0 ? "due" : ""}`}>{reste > 0 ? `Reste ${fcfa(reste)}` : reste < 0 ? "Dépasse le prix" : "Complet"}</span>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -190,6 +201,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
 
           <div className="enc-right">
             <h4 className="enc-h" style={{ marginTop: 0 }}>Détail du reçu</h4>
+            {lignes.length > 0 && <p className="xs muted" style={{ marginTop: -6 }}>Paiement incomplet ? Tapez le montant réellement versé : le reste sera conservé et apparaîtra sur la facture.</p>}
             <div className="lines">
               {!lignes.length && <p className="muted small">Sélectionnez les frais ou les mois à encaisser.</p>}
               {lignes.map((l) => (
@@ -203,6 +215,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
                   <Money value={l.montant} onChange={(v) => l.k.startsWith("x:")
                     ? setExtras(extras.map((e, i) => (`x:${i}` === l.k ? { ...e, montant: v } : e)))
                     : setSel({ ...sel, [l.k]: v })} aria-label={`Montant ${libelleLigne(l)}`} />
+                  {dueDe(l.k) != null && (Number(l.montant) || 0) < dueDe(l.k) && <span className="line-reste">reste {fcfa(dueDe(l.k) - (Number(l.montant) || 0))}</span>}
                   <button className="btn ghost icon sm" onClick={() => l.k.startsWith("x:") ? setExtras(extras.filter((_, i) => `x:${i}` !== l.k)) : setSel(Object.fromEntries(Object.entries(sel).filter(([k]) => k !== l.k)))} aria-label="Retirer"><X size={15} /></button>
                 </div>
               ))}

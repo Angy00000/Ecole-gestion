@@ -877,3 +877,11 @@ tr.appel-retard td { background: var(--gold-50); }
 .etat-total strong { font-family: var(--f-display); font-size: 18px; color: #f2c14e; }
 @media print { .doc.etat { height: auto !important; page-break-after: always; } .doc.etat::before { position: fixed; } }
 .t-sub { display: block; font-size: 10px; color: #7c9197; font-weight: 600; }
+.frais-row { flex-direction: column; align-items: stretch; gap: 0; padding: 0; cursor: default; }
+.frais-main { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; }
+.frais-pay { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 0 14px 12px 44px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.frais-pay .input { width: 130px; height: 38px; }
+.frais-reste { font-size: 12px; font-weight: 800; color: var(--green); }
+.frais-reste.due { color: var(--coral); }
+.line { flex-wrap: wrap; }
+.line-reste { font-size: 11px; font-weight: 800; color: var(--coral); white-space: nowrap; }
