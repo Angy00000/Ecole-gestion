@@ -11,9 +11,13 @@ import { Select, Spinner, ErrorBox, Empty, PageHead } from "../components/ui";
 const moisDe = (a) => { const out = []; if (!a) return out; const d = new Date(a.debut); d.setDate(1); const f = new Date(a.fin); while (d <= f) { out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); d.setMonth(d.getMonth() + 1); } return out; };
 const moisSuivant = () => { const n = new Date(); const d = n.getDate() >= 20 ? new Date(n.getFullYear(), n.getMonth() + 1, 1) : new Date(n.getFullYear(), n.getMonth(), 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 
-export const messageFacture = (r, etab, mois) => `Bonjour ${r.parent || ""}, voici la facture de ${moisLong(mois)} pour ${r.prenom} ${r.nom} (${r.classe}) — ${etab.nom}.
-${r.reste_mois ? `Mensualité ${moisLong(mois)} : ${fcfa(r.reste_mois)}\n` : ""}${r.arrieres ? `Mois en retard (${r.mois_retard.map(moisAbr).join(", ")}) : ${fcfa(r.arrieres)}\n` : ""}${r.frais_reste ? `Frais d'inscription, uniforme et tenue restants : ${fcfa(r.frais_reste)}\n` : ""}Total à payer : ${fcfa(r.total)}.
-Merci de régler au secrétariat (espèces, Wave ou Orange Money). Facture n° ${r.numero}.`;
+export const messageFacture = (r, etab, mois) => {
+  const L = [];
+  if (r.reste_mois) L.push(`- Mensualité ${moisLong(mois)} : ${fcfa(r.reste_mois)}${r.paye_mois ? ` (payé ${fcfa(r.paye_mois)} sur ${fcfa(r.du_mois)})` : ""}`);
+  (r.details_retards || []).forEach((d) => L.push(`- Retard ${moisLong(d.mois)} : ${fcfa(d.reste)}${d.paye ? ` (payé ${fcfa(d.paye)} sur ${fcfa(d.du)})` : ""}`));
+  (r.details_frais || []).forEach((d) => L.push(`- ${d.libelle} : reste ${fcfa(d.reste)}${d.paye ? ` (payé ${fcfa(d.paye)} sur ${fcfa(d.du)})` : ""}`));
+  return `Bonjour ${r.parent || ""}, voici la facture de ${moisLong(mois)} pour ${r.prenom} ${r.nom} (${r.classe}) — ${etab.nom}.\n${L.join("\n")}\nTotal à payer : ${fcfa(r.total)}.\nMerci de régler au secrétariat (espèces, Wave ou Orange Money). Facture n° ${r.numero}.`;
+};
 
 export default function Factures() {
   const s = useSession();
@@ -96,9 +100,9 @@ function Facture({ r, mois, etab }) {
       <table className="t-lines">
         <thead><tr><th>Désignation</th><th>Montant</th></tr></thead>
         <tbody>
-          {r.du_mois > 0 && <tr><td>Mensualité {moisLong(mois)}{r.paye_mois > 0 ? ` (déjà payé ${fcfa(r.paye_mois)})` : ""}</td><td>{fcfa(r.reste_mois)}</td></tr>}
-          {r.arrieres > 0 && <tr><td>Mois en retard : {r.mois_retard.map(moisLong).join(", ")}</td><td>{fcfa(r.arrieres)}</td></tr>}
-          {r.frais_reste > 0 && <tr><td>Frais d'inscription, uniforme et tenue restants</td><td>{fcfa(r.frais_reste)}</td></tr>}
+          {r.du_mois > 0 && <tr><td>Mensualité {moisLong(mois)}{r.paye_mois > 0 ? <small className="t-sub">payé {fcfa(r.paye_mois)} sur {fcfa(r.du_mois)}</small> : null}</td><td>{fcfa(r.reste_mois)}</td></tr>}
+          {(r.details_retards || []).map((d) => <tr key={d.mois}><td>Retard — mensualité {moisLong(d.mois)}{d.paye > 0 ? <small className="t-sub">payé {fcfa(d.paye)} sur {fcfa(d.du)}</small> : null}</td><td>{fcfa(d.reste)}</td></tr>)}
+          {(r.details_frais || []).map((d) => <tr key={d.type}><td>{d.libelle}{d.paye > 0 ? <small className="t-sub">payé {fcfa(d.paye)} sur {fcfa(d.du)}</small> : <small className="t-sub">non payé</small>}</td><td>{fcfa(d.reste)}</td></tr>)}
           {r.total === 0 && <tr><td>Aucun montant dû pour ce mois. Merci !</td><td>0 F</td></tr>}
         </tbody>
         <tfoot><tr><td>Total à payer</td><td>{fcfa(r.total)}</td></tr></tfoot>

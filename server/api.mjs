@@ -607,6 +607,34 @@ route("GET", "/factures", async (ctx) => {
     return { ...r, reste_mois: resteMois, frais_reste: fraisReste, arrieres, mois_retard: moisRetard, total: r.reste,
       numero: `F${ctx.query.mois.replace("-", "").slice(2)}-${r.matricule}` };
   });
+  // Détail ligne par ligne : chaque frais et chaque mois en retard avec payé / dû / reste
+  const ids = `{${out.map((r) => r.inscription_id).join(",")}}`;
+  if (out.length) {
+    const [frais, retards] = await tx([
+      [`select i.id,
+          case when i.inscription_offerte then 0 else greatest(c.frais_inscription - i.reduction_inscription, 0) end as du_inscription,
+          case when i.uniforme then c.uniforme else 0 end as du_uniforme,
+          case when i.tenue_sport then c.tenue_sport else 0 end as du_tenue_sport,
+          case when i.cantine then c.frais_cantine else 0 end as du_cantine,
+          (select coalesce(json_object_agg(t, m), '{}') from (select pa.type as t, sum(pa.montant) as m from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule
+            where pa.inscription_id=i.id and pa.type in ('inscription','uniforme','tenue_sport','cantine') group by pa.type) z) as payes
+        from app.inscriptions i join app.classes c on c.id=i.classe_id where i.id = any($1::int[])`, [ids]],
+      [`select i.id, to_char(d,'YYYY-MM') as mois, app.du_mois(i.id, d) as du,
+          coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule
+            where pa.inscription_id=i.id and pa.type='mensualite' and pa.mois=d),0) as paye
+        from app.inscriptions i cross join app.mois_annee($2) d
+        where i.id = any($1::int[]) and d < $3::date and app.du_mois(i.id, d) > coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule
+            where pa.inscription_id=i.id and pa.type='mensualite' and pa.mois=d),0)
+        order by i.id, d`, [ids, annee, m1]],
+    ]);
+    const LIB = { inscription: "Droit d'inscription", uniforme: "Uniforme", tenue_sport: "Tenue de sport", cantine: "Inscription cantine" };
+    out.forEach((r) => {
+      const f = frais.find((x) => x.id === r.inscription_id);
+      r.details_frais = f ? Object.keys(LIB).map((t) => ({ type: t, libelle: LIB[t], du: f[`du_${t}`], paye: Math.min(f.payes?.[t] || 0, f[`du_${t}`]) }))
+        .filter((x) => x.du > x.paye).map((x) => ({ ...x, reste: x.du - x.paye })) : [];
+      r.details_retards = retards.filter((x) => x.id === r.inscription_id).map((x) => ({ mois: x.mois, du: x.du, paye: x.paye, reste: x.du - x.paye }));
+    });
+  }
   return { mois: ctx.query.mois, rows: out, total: out.reduce((t, r) => t + r.total, 0), a_payer: out.filter((r) => r.total > 0).length };
 });
 

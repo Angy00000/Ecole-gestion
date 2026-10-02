@@ -876,3 +876,4 @@ tr.appel-retard td { background: var(--gold-50); }
 .etat-total { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-radius: 8px; background: #123f4a; color: #fff; margin-top: 6px; }
 .etat-total strong { font-family: var(--f-display); font-size: 18px; color: #f2c14e; }
 @media print { .doc.etat { height: auto !important; page-break-after: always; } .doc.etat::before { position: fixed; } }
+.t-sub { display: block; font-size: 10px; color: #7c9197; font-weight: 600; }
