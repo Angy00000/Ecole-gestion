@@ -100,7 +100,7 @@ const journal = (ctx, action, entite, entite_id, details) =>
 const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in obj).map((k) => [k, obj[k] === "" ? null : obj[k]]));
 const COLS_ELEVE = ["nom","prenom","sexe","date_naissance","lieu_naissance","adresse","pere_nom","pere_prenom","pere_profession","pere_telephone","mere_nom","mere_prenom","mere_profession","mere_telephone","tuteur_nom","tuteur_telephone","observations","statut"];
 const COLS_CLASSE = ["nom","cycle","ordre","capacite","titulaire_id","bareme","frais_inscription","uniforme","tenue_sport","cours_soir","mensualite","mensualite_jan_fev","mensualite_cantine","mensualite_cantine_jan_fev","frais_cantine"];
-const COLS_INSC = ["classe_id","cantine","cours_soir","uniforme","tenue_sport","reduction_inscription","statut","mensualite_speciale","gratuit","inscription_offerte","date_inscription","type"];
+const COLS_INSC = ["classe_id","cantine","cours_soir","uniforme","tenue_sport","reduction_inscription","statut","mensualite_speciale","gratuit","inscription_offerte","date_inscription","type","cantine_debut","cantine_fin","cours_soir_debut","cours_soir_fin"];
 const COLS_ETAB = ["nom","slogan","adresse","telephones","email","site_web","ninea","bp","autorisation","logo","directeur","ville"];
 const insertSql = (table, data) => {
   const k = Object.keys(data);
@@ -340,7 +340,7 @@ route("GET", "/eleves/:id", async (ctx) => {
   const id = ctx.params.id;
   const [[eleve], inscriptions, paiements] = await tx([
     ["select * from app.eleves where id=$1", [id]],
-    [`select i.*, a.libelle as annee, a.active as annee_active, c.nom as classe, c.cycle,
+    [`select i.*, a.libelle as annee, a.active as annee_active, a.debut::text as annee_debut, c.nom as classe, c.cycle,
         c.frais_inscription, c.uniforme as prix_uniforme, c.tenue_sport as prix_tenue, c.mensualite, c.mensualite_jan_fev, c.mensualite_cantine, c.mensualite_cantine_jan_fev, c.frais_cantine, c.cours_soir as prix_cours_soir
       from app.inscriptions i join app.annees a on a.id=i.annee_id join app.classes c on c.id=i.classe_id
       where i.eleve_id=$1 order by a.debut desc`, [id]],

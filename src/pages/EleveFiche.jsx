@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt } from "lucide-react";
+import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt, PlusCircle } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateLongue, age, initiales } from "../lib/format";
@@ -81,6 +81,12 @@ function Parent({ rel, prenom, nom, profession, tel, tone }) {
   );
 }
 
+function moisDeLAnnee(ins) {
+  const debut = (ins?.annee_debut || ins?.date_inscription || new Date().toISOString()).slice(0, 7);
+  const [y, m] = debut.split("-").map(Number);
+  return Array.from({ length: 10 }, (_, k) => { const d = new Date(Date.UTC(y, m - 1 + k, 1)); return d.toISOString().slice(0, 7); });
+}
+
 function InscriptionModal({ eleve, inscription, onClose }) {
   const s = useSession();
   const toast = useToast();
@@ -92,13 +98,22 @@ function InscriptionModal({ eleve, inscription, onClose }) {
     statut: inscription?.statut || "active", date_inscription: inscription?.date_inscription?.slice(0, 10) || new Date().toISOString().slice(0, 10),
   });
   const [error, setError] = useState(null);
+  const [aPartir, setAPartir] = useState(new Date().toISOString().slice(0, 7));
   const annee = edition ? inscription.annee_id : s.annee?.id;
+  const chCantine = edition && v.cantine !== !!inscription.cantine;
+  const chSoir = edition && v.cours_soir !== !!inscription.cours_soir;
+  const ajouts = edition ? [!inscription.uniforme && v.uniforme && "Uniforme", !inscription.tenue_sport && v.tenue_sport && "Tenue de sport", !inscription.cantine && v.cantine && "Droit cantine"].filter(Boolean) : [];
   const classes = useQuery({ queryKey: ["classes", annee], queryFn: () => api.get("/classes", { annee_id: annee }) });
 
   const save = async () => {
     setError(null);
     try {
-      if (edition) await api.put(`/inscriptions/${inscription.id}`, v);
+      if (edition) {
+        const d = `${aPartir}-01`, x = { ...v };
+        if (chCantine) Object.assign(x, v.cantine ? { cantine_debut: d, cantine_fin: null } : { cantine_fin: d });
+        if (chSoir) Object.assign(x, v.cours_soir ? { cours_soir_debut: d, cours_soir_fin: null } : { cours_soir_fin: d });
+        await api.put(`/inscriptions/${inscription.id}`, x);
+      }
       else await api.post(`/eleves/${eleve.id}/inscriptions`, { ...v, annee_id: annee, type: "reinscription" });
       toast(edition ? "Inscription mise à jour" : `${eleve.prenom} réinscrit(e) pour ${s.annee?.libelle}`);
       ["eleve", "eleves", "dashboard", "classes", "situation", "impayes", "service", "recus"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
@@ -133,6 +148,18 @@ function InscriptionModal({ eleve, inscription, onClose }) {
           <label className="switch-card"><input type="checkbox" checked={v.cantine} onChange={(e) => setV({ ...v, cantine: e.target.checked })} /><strong>Cantine</strong></label>
           {classes.data?.find((c) => c.id === Number(v.classe_id))?.cours_soir > 0 && <label className="switch-card"><input type="checkbox" checked={v.cours_soir} onChange={(e) => setV({ ...v, cours_soir: e.target.checked })} /><strong>Cours du soir</strong></label>}
         </div>
+        {(chCantine || chSoir) && (
+          <div className="alert info" style={{ display: "grid", gap: 8 }}>
+            <strong>Changement en cours d'année</strong>
+            <span className="small">Le changement ({[chCantine && (v.cantine ? "ajout de la cantine" : "arrêt de la cantine"), chSoir && (v.cours_soir ? "ajout des cours du soir" : "arrêt des cours du soir")].filter(Boolean).join(", ")}) s'appliquera à partir du mois choisi. Les mois précédents ne changent pas.</span>
+            <Field label="À partir du mois de">
+              <Select value={aPartir} onChange={(e) => setAPartir(e.target.value)}>
+                {moisDeLAnnee(inscription).map((m) => <option key={m} value={m}>{moisLong(m)}</option>)}
+              </Select>
+            </Field>
+          </div>
+        )}
+        {ajouts.length > 0 && <p className="small muted">Ajouté au reste à payer : {ajouts.join(", ")}. Vous pourrez l'encaisser (en totalité ou en partie) avec « Encaisser ».</p>}
         <TarifScolarite value={v} normal={classes.data?.find((c) => c.id === Number(v.classe_id))?.[v.cantine ? "mensualite_cantine" : "mensualite"]} onChange={(x) => setV({ ...v, ...x })} />
         <ReductionInscription value={v} droit={classes.data?.find((c) => c.id === Number(v.classe_id))?.frais_inscription} onChange={(x) => setV({ ...v, ...x })} />
       </div>
@@ -208,6 +235,7 @@ export default function EleveFiche() {
                 {courante && s.peut("pedagogie.lire") && <button onClick={() => nav(`/bulletins/imprimer?classe=${courante.classe_id}&trimestre=1&eleve=${e.id}`)}>Bulletin du 1er trimestre</button>}
               </div>
             </div>
+            {s.peut("eleves.ecrire") && courante && <button className="btn" onClick={() => setInsc(courante)}><PlusCircle size={17} />Cantine, uniforme…</button>}
             {s.peut("eleves.ecrire") && !courante && <button className="btn primary" onClick={() => setInsc("new")}><RefreshCcw size={17} />Réinscrire</button>}
             {s.peut("finances.encaisser") && courante && <button className="btn primary" onClick={() => setEnc(true)}><Wallet size={17} />Encaisser</button>}
             {s.peut("eleves.ecrire") && <button className="btn" onClick={() => setEdit(true)}><Pencil size={17} />Modifier</button>}
