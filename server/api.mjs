@@ -514,7 +514,7 @@ route("GET", "/recus/:id", async (ctx) => {
   const sit = await situation(r.inscription_id);
   const historique = await q(`select m.id, m.motif, m.avant, m.apres, m.created_at, u.prenom || ' ' || u.nom as par
     from app.recus_modifications m left join app.utilisateurs u on u.id=m.modifie_par where m.recu_id=$1 order by m.created_at desc`, [ctx.params.id]);
-  return { recu: r, situation: { reste_annee: sit.reste_annee, reste_echu: sit.reste_echu }, historique, modifiable: !r.annule && peutModifierRecu(ctx, r), supprimable: peutSupprimerRecu(ctx, r) };
+  return { recu: r, situation: { reste_annee: sit.reste_annee, reste_echu: sit.reste_echu, total_du: sit.total_du, total_paye: sit.total_paye, lignes: sit.lignes, gratuit: sit.inscription.gratuit, mensualite_speciale: sit.inscription.mensualite_speciale }, historique, modifiable: !r.annule && peutModifierRecu(ctx, r), supprimable: peutSupprimerRecu(ctx, r) };
 });
 
 route("GET", "/recus", async (ctx) => {

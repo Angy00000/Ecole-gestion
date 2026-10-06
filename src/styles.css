@@ -690,7 +690,7 @@ table.table { width: 100%; border-collapse: separate; border-spacing: 0; }
 .t-note { margin-top: 8px; font-style: italic; color: #4a6168; }
 .t-foot { margin-top: auto; display: flex; justify-content: space-between; gap: 20px; padding-top: 16px; }
 .t-foot span { display: block; font-size: 9.5px; color: #7c9197; font-weight: 700; }
-.t-sign { width: 45%; height: 60px; border: 1px dashed #cfdcdf; border-radius: 8px; padding: 6px 8px; }
+.t-sign { width: 45%; height: 46px; border: 1px dashed #cfdcdf; border-radius: 8px; padding: 6px 8px; }
 .t-motto { text-align: center; font-size: 10px; color: #b78a14; font-weight: 700; margin-top: 10px; }
 .ticket::before { content: ""; position: absolute; left: 50%; top: 56%; width: 62%; aspect-ratio: 1; transform: translate(-50%, -50%); background: url(/logo.png) center/contain no-repeat; opacity: 0.06; pointer-events: none; }
 .ticket > * { position: relative; }
@@ -894,3 +894,37 @@ tr.appel-retard td { background: var(--gold-50); }
 .pay-reste.due { color: var(--coral); }
 .pay-total { background: var(--teal-50); font-weight: 800; }
 @media (max-width: 560px) { .pay-head { display: none; } .pay-row { grid-template-columns: 1fr 1fr; } }
+
+/* Reçu détaillé */
+.t-h2 { font-size: 10.5px; font-weight: 800; color: #123f4a; margin: 8px 0 4px; letter-spacing: .02em; }
+.t-detail { font-size: 10.5px; }
+.t-detail th { font-size: 9px; padding: 4px 0; }
+.t-detail td { padding: 4px 0; }
+.t-detail th:not(:first-child), .t-detail td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 6px; }
+.t-detail tfoot td { padding-top: 6px; font-size: 12px; }
+.t-detail tfoot td:last-child { font-size: 15px; }
+.t-due { color: #b23a1e; font-weight: 700; }
+.t-ok { color: #1d7a4a; font-weight: 700; }
+.ticket .t-words { margin: 6px 0; padding: 5px 8px; font-size: 10.5px; }
+.t-reste { margin-top: 8px; padding: 6px 9px 8px; border: 1px solid #cfdcdf; border-radius: 8px; background: #fbfdfd; font-size: 10px; }
+.t-reste .t-h2 { margin-top: 0; }
+.t-grp { margin-bottom: 5px; }
+.t-grp h3 { font-size: 9px; font-weight: 800; color: #7c9197; margin: 0 0 2px; }
+.t-row { display: flex; justify-content: space-between; gap: 8px; padding: 1.5px 0; border-bottom: 1px dotted #dce5e7; }
+.t-row em { font-style: normal; color: #7c9197; font-size: 9px; }
+.t-row strong { color: #b23a1e; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.t-chips { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 9.5px; color: #4a6168; }
+.t-chips b { color: #10262c; font-variant-numeric: tabular-nums; }
+.t-solde { color: #1d7a4a; font-weight: 700; margin: 2px 0 6px; }
+.t-totaux { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+.t-totaux div { background: #f3f8f9; border-radius: 6px; padding: 4px 6px; }
+.t-totaux span { display: block; font-size: 8.5px; color: #7c9197; font-weight: 700; }
+.t-totaux strong { font-size: 11px; font-variant-numeric: tabular-nums; }
+.t-totaux .warn { background: #fdeee9; } .t-totaux .warn strong { color: #b23a1e; }
+.t-totaux .main { background: #123f4a; } .t-totaux .main span { color: #cfe3e7; } .t-totaux .main strong { color: #fff; }
+.t-chips.due b { color: #b23a1e; } .t-sum { margin-left: auto; font-weight: 700; }
+.ticket .t-title { margin: 10px 0 8px; }
+.ticket .t-info { padding: 7px 10px; margin-bottom: 6px; gap: 4px 16px; }
+.ticket .t-head img { width: 54px; height: 54px; }
+.ticket .t-foot { padding-top: 8px; }
+.ticket .t-motto { margin-top: 6px; }
