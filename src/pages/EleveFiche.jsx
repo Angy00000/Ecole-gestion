@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt, PlusCircle } from "lucide-react";
+import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt, PlusCircle, ArrowRightLeft } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateLongue, age, initiales } from "../lib/format";
@@ -167,6 +167,53 @@ function InscriptionModal({ eleve, inscription, onClose }) {
   );
 }
 
+function ChangerClasseModal({ eleve, inscription, onClose }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [classe, setClasse] = useState("");
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const classes = useQuery({ queryKey: ["classes", inscription.annee_id], queryFn: () => api.get("/classes", { annee_id: inscription.annee_id }) });
+  const nouvelle = classes.data?.find((c) => c.id === Number(classe));
+  const mens = (c) => (inscription.cantine ? c.mensualite_cantine : c.mensualite);
+  const save = async () => {
+    setError(null); setBusy(true);
+    try {
+      await api.put(`/inscriptions/${inscription.id}`, { classe_id: Number(classe) });
+      toast(`${eleve.prenom} ${eleve.nom} est maintenant en ${nouvelle.nom}`);
+      ["eleve", "eleves", "dashboard", "classes", "situation", "impayes", "service", "recus", "factures"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      onClose();
+    } catch (e) { setError(e); setBusy(false); }
+  };
+  return (
+    <Modal title="Changer de classe" onClose={onClose} footer={<>
+      <button className="btn" onClick={onClose}>Annuler</button>
+      <button className="btn primary" onClick={save} disabled={!classe || busy}>Changer de classe</button>
+    </>}>
+      <div className="stack" style={{ gap: 14 }}>
+        <ErrorBox error={error} />
+        <p>Classe actuelle : <strong>{inscription.classe}</strong> ({inscription.annee})</p>
+        <Field label="Nouvelle classe" required>
+          <Select value={classe} onChange={(e) => setClasse(e.target.value)} autoFocus>
+            <option value="">Choisir…</option>
+            {classes.data?.filter((c) => c.id !== inscription.classe_id).map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
+          </Select>
+        </Field>
+        {nouvelle && (
+          <table className="table small">
+            <thead><tr><th></th><th className="r">{inscription.classe}</th><th className="r">{nouvelle.nom}</th></tr></thead>
+            <tbody>
+              <tr><td>Mensualité{inscription.cantine ? " (avec cantine)" : ""}</td><td className="r">{fcfa(mens(inscription))}</td><td className="r"><strong>{fcfa(mens(nouvelle))}</strong></td></tr>
+              <tr><td>Droit d'inscription</td><td className="r">{fcfa(inscription.frais_inscription)}</td><td className="r"><strong>{fcfa(nouvelle.frais_inscription)}</strong></td></tr>
+            </tbody>
+          </table>
+        )}
+        <p className="small muted">Les paiements déjà faits sont conservés. Les montants dus et le reste à payer sont recalculés avec les tarifs de la nouvelle classe{inscription.mensualite_speciale || inscription.gratuit ? " (la formule spéciale de l'élève reste appliquée)" : ""}.</p>
+      </div>
+    </Modal>
+  );
+}
+
 export default function EleveFiche() {
   const { id } = useParams();
   const s = useSession();
@@ -176,6 +223,7 @@ export default function EleveFiche() {
   const [tab, setTab] = useState("identite");
   const [edit, setEdit] = useState(false);
   const [insc, setInsc] = useState(null);
+  const [chClasse, setChClasse] = useState(false);
   const [del, setDel] = useState(false);
   const [enc, setEnc] = useState(false);
   const [docs, setDocs] = useState(false);
@@ -235,6 +283,7 @@ export default function EleveFiche() {
                 {courante && s.peut("pedagogie.lire") && <button onClick={() => nav(`/bulletins/imprimer?classe=${courante.classe_id}&trimestre=1&eleve=${e.id}`)}>Bulletin du 1er trimestre</button>}
               </div>
             </div>
+            {s.peut("eleves.ecrire") && courante && <button className="btn" onClick={() => setChClasse(true)}><ArrowRightLeft size={17} />Changer de classe</button>}
             {s.peut("eleves.ecrire") && courante && <button className="btn" onClick={() => setInsc(courante)}><PlusCircle size={17} />Cantine, uniforme…</button>}
             {s.peut("eleves.ecrire") && !courante && <button className="btn primary" onClick={() => setInsc("new")}><RefreshCcw size={17} />Réinscrire</button>}
             {s.peut("finances.encaisser") && courante && <button className="btn primary" onClick={() => setEnc(true)}><Wallet size={17} />Encaisser</button>}
@@ -356,6 +405,7 @@ export default function EleveFiche() {
 
       {enc && courante && <Encaissement inscriptionId={courante.id} eleve={e} onClose={() => setEnc(false)} onSaved={(r) => { setEnc(false); nav(`/recus/${r.id}`); }} />}
       {edit && <EleveForm eleve={e} onClose={() => setEdit(false)} onSaved={() => setEdit(false)} />}
+      {chClasse && courante && <ChangerClasseModal eleve={e} inscription={courante} onClose={() => setChClasse(false)} />}
       {insc && <InscriptionModal eleve={e} inscription={insc === "new" ? null : insc} onClose={() => setInsc(null)} />}
       {del && <Confirm danger title="Supprimer cet élève ?" confirmLabel="Supprimer"
         message={paiements.length ? `${e.prenom} ${e.nom} a des paiements enregistrés : sa fiche sera archivée (marquée « sortie ») et non effacée.` : `La fiche de ${e.prenom} ${e.nom} et ses inscriptions seront définitivement supprimées.`}

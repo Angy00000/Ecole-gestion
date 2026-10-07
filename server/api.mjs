@@ -429,6 +429,10 @@ route("POST", "/eleves/:id/inscriptions", async (ctx) => {
 
 route("PUT", "/inscriptions/:id", async (ctx) => {
   exige(ctx, "eleves.ecrire");
+  if (ctx.body.classe_id) {
+    const ok = await one("select 1 as ok from app.classes c join app.inscriptions i on i.annee_id=c.annee_id where c.id=$1 and i.id=$2", [ctx.body.classe_id, ctx.params.id]);
+    if (!ok) fail(400, "Cette classe n'appartient pas à la même année scolaire.");
+  }
   const r = await one(...updateSql("app.inscriptions", ctx.params.id, pick(ctx.body, COLS_INSC)));
   await journal(ctx, "modification", "inscription", r.id, pick(ctx.body, COLS_INSC));
   return r;
