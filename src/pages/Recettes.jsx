@@ -8,7 +8,7 @@ import { Modal, Field, Input, Select, Money, Spinner, ErrorBox, Empty, Confirm, 
 
 const TEINTES = ["var(--teal)", "var(--gold)", "var(--coral)", "var(--azure)", "var(--rose)", "var(--green)", "#8b6fd6", "#5a8f9c", "#c9a227", "#7c9197", "#b4412f"];
 
-function RecetteForm({ dep, onClose }) {
+function RecetteForm({ dep, onClose, onSaved }) {
   const toast = useToast();
   const qc = useQueryClient();
   const [v, setV] = useState(dep || { date_recette: today(), categorie: "dons", libelle: "", montant: null, mode: "especes", payeur: "", reference: "", note: "" });
@@ -20,7 +20,7 @@ function RecetteForm({ dep, onClose }) {
       const { id, created_at, saisi_par, saisi_par_nom, annee_id, ...d } = v;
       if (dep) await api.put(`/recettes/${dep.id}`, { ...d, date_recette: d.date_recette.slice(0, 10) }); else await api.post("/recettes", d);
       toast(dep ? "Recette modifiée" : `Recette de ${fcfa(v.montant)} enregistrée`);
-      ["recettes", "caisse", "dashboard"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); onClose();
+      ["recettes", "caisse", "dashboard"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); onSaved?.(v.date_recette?.slice(0, 10)); onClose();
     } catch (e) { setError(e); }
   };
   return (
@@ -118,7 +118,7 @@ export default function Recettes() {
           </div>
         )}
       </div>
-      {edit && <RecetteForm dep={edit === "new" ? null : edit} onClose={() => setEdit(null)} />}
+      {edit && <RecetteForm dep={edit === "new" ? null : edit} onClose={() => setEdit(null)} onSaved={(d) => { if (d && d < du) setDu(d); if (d && d > au) setAu(d); }} />}
       {del && <Confirm danger title="Supprimer cette recette ?" confirmLabel="Supprimer" message={`${del.libelle} — ${fcfa(del.montant)}`} onConfirm={supprimer} onClose={() => setDel(null)} />}
     </>
   );

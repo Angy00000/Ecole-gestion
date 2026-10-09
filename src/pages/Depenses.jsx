@@ -8,7 +8,7 @@ import { Modal, Field, Input, Select, Money, Spinner, ErrorBox, Empty, Confirm, 
 
 const TEINTES = ["var(--teal)", "var(--gold)", "var(--coral)", "var(--azure)", "var(--rose)", "var(--green)", "#8b6fd6", "#5a8f9c", "#c9a227", "#7c9197", "#b4412f"];
 
-function DepenseForm({ dep, onClose }) {
+function DepenseForm({ dep, onClose, onSaved }) {
   const toast = useToast();
   const qc = useQueryClient();
   const [v, setV] = useState(dep || { date_depense: today(), categorie: "fournitures", libelle: "", montant: null, mode: "especes", beneficiaire: "", reference: "", note: "" });
@@ -20,7 +20,7 @@ function DepenseForm({ dep, onClose }) {
       const { id, created_at, saisi_par, saisi_par_nom, annee_id, ...d } = v;
       if (dep) await api.put(`/depenses/${dep.id}`, { ...d, date_depense: d.date_depense.slice(0, 10) }); else await api.post("/depenses", d);
       toast(dep ? "Dépense modifiée" : `Dépense de ${fcfa(v.montant)} enregistrée`);
-      ["depenses", "caisse", "dashboard"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); onClose();
+      ["depenses", "caisse", "dashboard"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); onSaved?.(v.date_depense?.slice(0, 10)); onClose();
     } catch (e) { setError(e); }
   };
   return (
@@ -118,7 +118,7 @@ export default function Depenses() {
           </div>
         )}
       </div>
-      {edit && <DepenseForm dep={edit === "new" ? null : edit} onClose={() => setEdit(null)} />}
+      {edit && <DepenseForm dep={edit === "new" ? null : edit} onClose={() => setEdit(null)} onSaved={(d) => { if (d && d < du) setDu(d); if (d && d > au) setAu(d); }} />}
       {del && <Confirm danger title="Supprimer cette dépense ?" confirmLabel="Supprimer" message={`${del.libelle} — ${fcfa(del.montant)}`} onConfirm={supprimer} onClose={() => setDel(null)} />}
     </>
   );
