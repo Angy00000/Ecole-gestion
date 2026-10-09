@@ -118,3 +118,37 @@ export function PageHead({ title, sub, children, back }) {
     </div>
   );
 }
+
+// Choix de période lisible : raccourcis + dates libres + phrase « Affichage du … au … ».
+const iso = (d) => d.toISOString().slice(0, 10);
+export function periodes(annee) {
+  const t = new Date(); const y = t.getUTCFullYear(), m = t.getUTCMonth();
+  const ay = Number(String(annee?.debut || iso(t)).slice(0, 4));
+  return {
+    mois: { label: "Ce mois-ci", du: iso(new Date(Date.UTC(y, m, 1))), au: iso(new Date(Date.UTC(y, m + 1, 0))) },
+    precedent: { label: "Mois dernier", du: iso(new Date(Date.UTC(y, m - 1, 1))), au: iso(new Date(Date.UTC(y, m, 0))) },
+    annee: { label: `Année ${annee?.libelle || "scolaire"}`, du: `${ay}-07-01`, au: `${ay + 1}-06-30` },
+  };
+}
+export function Periode({ annee, du, au, onChange }) {
+  const P = periodes(annee);
+  const [libre, setLibre] = useState(false);
+  const trouve = Object.keys(P).find((k) => P[k].du === du && P[k].au === au);
+  const actif = libre ? null : trouve;
+  const fmt = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  return (
+    <div className="periode">
+      <div className="seg">
+        {Object.entries(P).map(([k, p]) => <button key={k} type="button" className={actif === k ? "on" : ""} onClick={() => { setLibre(false); onChange(p.du, p.au); }}>{p.label}</button>)}
+        <button type="button" className={!actif ? "on" : ""} onClick={() => setLibre(true)}>Autres dates</button>
+      </div>
+      {!actif && (
+        <div className="date-range">
+          <span className="muted">Du</span><input className="input" type="date" value={du} onChange={(e) => onChange(e.target.value, au)} aria-label="Du" />
+          <span className="muted">au</span><input className="input" type="date" value={au} onChange={(e) => onChange(du, e.target.value)} aria-label="Au" />
+        </div>
+      )}
+      <span className="periode-txt">Affichage du <strong>{fmt(du)}</strong> au <strong>{fmt(au)}</strong></span>
+    </div>
+  );
+}

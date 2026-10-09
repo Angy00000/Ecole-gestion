@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Receipt } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
-import { fcfa, date, CATEGORIES, MODES, today } from "../lib/format";
-import { Modal, Field, Input, Select, Money, Spinner, ErrorBox, Empty, Confirm, PageHead, useToast } from "../components/ui";
+import { fcfa, date, CATEGORIES, MODES, today, moisNom } from "../lib/format";
+import { Modal, Field, Input, Select, Money, Spinner, ErrorBox, Empty, Confirm, PageHead, useToast, Periode, periodes } from "../components/ui";
 
 const TEINTES = ["var(--teal)", "var(--gold)", "var(--coral)", "var(--azure)", "var(--rose)", "var(--green)", "#8b6fd6", "#5a8f9c", "#c9a227", "#7c9197", "#b4412f"];
 
@@ -49,8 +49,8 @@ export default function Depenses() {
   const s = useSession();
   const toast = useToast();
   const qc = useQueryClient();
-  const [du, setDu] = useState(today().slice(0, 8) + "01");
-  const [au, setAu] = useState(today());
+  const [du, setDu] = useState(() => periodes(s.annee).annee.du);
+  const [au, setAu] = useState(() => periodes(s.annee).annee.au);
   const [cat, setCat] = useState("");
   const [edit, setEdit] = useState(null);
   const [del, setDel] = useState(null);
@@ -89,10 +89,7 @@ export default function Depenses() {
       )}
       <div className="card">
         <div className="toolbar">
-          <div className="date-range">
-            <input className="input" type="date" value={du} onChange={(e) => setDu(e.target.value)} aria-label="Du" /><span className="muted">au</span>
-            <input className="input" type="date" value={au} onChange={(e) => setAu(e.target.value)} aria-label="Au" />
-          </div>
+          <Periode annee={s.annee} du={du} au={au} onChange={(d, f) => { setDu(d); setAu(f); }} />
           <Select value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Catégorie"><option value="">Toutes les catégories</option>{Object.entries(CATEGORIES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
         </div>
         {isLoading ? <Spinner /> : error ? <div style={{ padding: 18 }}><ErrorBox error={error} /></div> : !data.rows.length ? (
@@ -101,8 +98,9 @@ export default function Depenses() {
           <div className="table-wrap" style={{ opacity: isFetching ? 0.65 : 1 }}>
             <table className="table">
               <thead><tr><th>Date</th><th>Libellé</th><th className="hide-m">Catégorie</th><th className="hide-m">Bénéficiaire</th><th className="hide-m">Mode</th><th className="r">Montant</th>{peut && <th />}</tr></thead>
-              <tbody>{data.rows.map((d) => (
-                <tr key={d.id}>
+              <tbody>{data.rows.map((d, i) => (
+                <Fragment key={d.id}>{(i === 0 || data.rows[i - 1].date_depense.slice(0, 7) !== d.date_depense.slice(0, 7)) && <tr className="mois-row"><td colSpan={9}>{moisNom(d.date_depense.slice(0, 7))} {d.date_depense.slice(0, 4)} <span className="xs muted">· {fcfa(data.rows.filter((x) => x.date_depense.slice(0, 7) === d.date_depense.slice(0, 7)).reduce((t, x) => t + x.montant, 0))}</span></td></tr>}
+                <tr>
                   <td className="num">{date(d.date_depense)}</td>
                   <td><strong>{d.libelle}</strong>{d.reference && <div className="xs muted">Pièce {d.reference}</div>}</td>
                   <td className="hide-m"><span className="badge">{CATEGORIES[d.categorie]}</span></td>
@@ -113,7 +111,7 @@ export default function Depenses() {
                     <button className="btn sm ghost icon" onClick={() => setEdit(d)} aria-label="Modifier"><Pencil size={15} /></button>
                     <button className="btn sm ghost icon" onClick={() => setDel(d)} aria-label="Supprimer"><Trash2 size={15} /></button>
                   </td>}
-                </tr>))}</tbody>
+                </tr></Fragment>))}</tbody>
             </table>
           </div>
         )}

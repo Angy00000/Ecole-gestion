@@ -928,3 +928,9 @@ tr.appel-retard td { background: var(--gold-50); }
 .ticket .t-head img { width: 54px; height: 54px; }
 .ticket .t-foot { padding-top: 8px; }
 .ticket .t-motto { margin-top: 6px; }
+.periode { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.periode .seg { flex-wrap: wrap; }
+.periode-txt { font-size: 13px; color: var(--muted); }
+.periode-txt strong { color: var(--ink); }
+.mois-row td { background: var(--surface-2); font-weight: 800; padding-top: 10px; padding-bottom: 10px; }
+.mois-row td .xs { font-weight: 600; }
