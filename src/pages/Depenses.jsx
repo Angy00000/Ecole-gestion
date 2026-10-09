@@ -34,7 +34,7 @@ function DepenseForm({ dep, onClose }) {
         <div className="grid g2">
           <Field label="Montant" required><Money value={v.montant} onChange={(x) => setV({ ...v, montant: x })} /></Field>
           <Field label="Date"><Input type="date" value={v.date_depense?.slice(0, 10)} onChange={set("date_depense")} max={today()} /></Field>
-          <Field label="Catégorie"><Select value={v.categorie} onChange={set("categorie")}>{Object.entries(CATEGORIES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
+          <Field label="Catégorie"><Select value={v.categorie} onChange={set("categorie")}>{Object.entries(CATEGORIES).filter(([k]) => k !== "electricite_eau" || v.categorie === k).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
           <Field label="Mode de paiement"><Select value={v.mode} onChange={set("mode")}>{Object.entries(MODES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
           <Field label="Bénéficiaire"><Input value={v.beneficiaire || ""} onChange={set("beneficiaire")} placeholder="Fournisseur, personne…" /></Field>
           <Field label="N° de facture / pièce"><Input value={v.reference || ""} onChange={set("reference")} /></Field>
