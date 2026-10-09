@@ -43,7 +43,7 @@ export const MODES = { especes: "Espèces", wave: "Wave", orange_money: "Orange 
 export const MODE_COULEUR = { especes: "var(--green)", wave: "#1da1f2", orange_money: "#f47b20", cheque: "var(--azure)", virement: "var(--teal)" };
 export const CATEGORIES = {
   salaires: "Salaires", loyer: "Loyer", electricite_eau: "Électricité et eau", fournitures: "Fournitures", cantine: "Cantine",
-  entretien: "Entretien et réparations", transport: "Transport", communication: "Téléphone et internet", evenements: "Fêtes et événements", impots: "Impôts et taxes", autre: "Autre",
+  entretien: "Entretien et réparations", transport: "Transport", communication: "Téléphone et internet", evenements: "Fêtes et événements", impots: "Impôts et taxes", banque_asep: "Banque / Asep", bon_enseignant: "Bon enseignant", petit_dejeuner: "Petit déjeuner personnel", autre: "Autre",
 };
 const MOIS_L = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 export const moisLong = (ym) => { if (!ym) return ""; const [y, m] = String(ym).split("-"); return `${MOIS_L[+m - 1]} ${y}`; };
