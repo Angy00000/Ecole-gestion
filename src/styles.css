@@ -940,3 +940,4 @@ tr.appel-retard td { background: var(--gold-50); }
 
 .month:disabled, .frais-row.solde input:disabled { cursor: not-allowed; }
 .month.paid:disabled { opacity: 0.75; }
+.motif-box { padding: 12px 14px; border-radius: 12px; background: #fff6dc; border: 1px solid #f0d58a; }

@@ -110,6 +110,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
   }, [sel, extras, sit.data]);
   const total = lignes.reduce((t, l) => t + (Number(l.montant) || 0), 0);
   const depasse = Object.keys(sel).some((k) => { const l = [...frais, ...mois].find((x) => key(x) === k); return l && (Number(sel[k]) || 0) > Math.max(l.du - l.paye, 0); });
+  const blocage = total <= 0 ? "Choisissez au moins un frais ou un mois." : depasse ? "Un montant dépasse ce qui reste à payer." : lignes.some((l) => l.type === "autre" && !String(l.libelle || "").trim()) ? "Précisez le motif de la ligne « Autre »." : recu && !motif.trim() ? "Écrivez le motif de la correction (en haut à droite) pour enregistrer." : "";
   const dueDe = (k) => { const l = [...frais, ...mois].find((x) => key(x) === k); return l ? Math.max(l.du - l.paye, 0) : null; };
 
   const save = async () => {
@@ -138,7 +139,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
     <Modal wide pad={false} title={title} onClose={onClose}
       icon={<span className="ic green" style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center" }}><Wallet size={19} /></span>}
       footer={insId && <>
-        <span className="muted small" style={{ marginRight: "auto" }}>{lignes.length} ligne{lignes.length > 1 ? "s" : ""}</span>
+        <span className="small" style={{ marginRight: "auto", color: blocage ? "var(--coral)" : "var(--muted)", fontWeight: blocage ? 700 : 400 }}>{blocage || `${lignes.length} ligne${lignes.length > 1 ? "s" : ""}`}</span>
         <button className="btn" onClick={onClose}>Annuler</button>
         <button className="btn primary" onClick={save} disabled={busy || total <= 0 || depasse || lignes.some((l) => l.type === "autre" && !String(l.libelle || "").trim()) || (recu && !motif.trim())}><Check size={17} />{busy ? "Enregistrement…" : recu ? `Enregistrer la correction (${fcfa(total)})` : `Encaisser ${fcfa(total)}`}</button>
       </>}>
@@ -201,7 +202,12 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
           </div>
 
           <div className="enc-right">
-            <h4 className="enc-h" style={{ marginTop: 0 }}>Détail du reçu</h4>
+            {recu && <div className="motif-box">
+              <Field label="Motif de la correction (obligatoire)" required hint={`Ancien montant : ${fcfa(recu.montant)}. La correction est gardée dans l'historique du reçu.`}>
+                <Input value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Ex. : erreur de mois, mauvais montant…" aria-label="Motif de la correction" autoFocus />
+              </Field>
+            </div>}
+            <h4 className="enc-h" style={{ marginTop: recu ? 16 : 0 }}>Détail du reçu</h4>
             {depasse && <div className="alert" style={{ marginBottom: 10 }}>Un montant dépasse ce qui reste à payer pour ce frais ou ce mois. Corrigez-le avant d'encaisser.</div>}
             {lignes.length > 0 && <p className="xs muted" style={{ marginTop: -6 }}>Paiement incomplet ? Tapez le montant réellement versé : le reste sera conservé et apparaîtra sur la facture.</p>}
             <div className="lines">
@@ -234,9 +240,6 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
               <Field label={mode === "cheque" ? "N° de chèque" : mode === "especes" ? "Référence" : "N° de transaction"}><Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={mode === "especes" ? "Facultatif" : ""} /></Field>
             </div>
             <Field label="Remarque"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Facultatif" /></Field>
-            {recu && <Field label="Motif de la correction" required hint={`Ancien montant : ${fcfa(recu.montant)}. La correction est enregistrée dans l'historique du reçu.`}>
-              <Input value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Erreur de mois, mauvais montant…" aria-label="Motif de la correction" />
-            </Field>}
           </div>
         </div>
       )}
