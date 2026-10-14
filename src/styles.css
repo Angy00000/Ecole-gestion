@@ -937,3 +937,6 @@ tr.appel-retard td { background: var(--gold-50); }
 .pick-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; text-align: left; }
 .pick-row:hover { border-color: var(--teal); background: var(--surface-2); }
 .pick-row .avatar { width: 30px; height: 30px; font-size: 12px; }
+
+.month:disabled, .frais-row.solde input:disabled { cursor: not-allowed; }
+.month.paid:disabled { opacity: 0.75; }

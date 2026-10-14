@@ -98,7 +98,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
 
   const toggle = (l) => setSel((x) => {
     const k = key(l), n = { ...x };
-    if (k in n) delete n[k]; else n[k] = Math.max(l.du - l.paye, 0) || l.du;
+    if (k in n) delete n[k]; else if (l.paye < l.du) n[k] = l.du - l.paye;
     return n;
   });
 
@@ -109,6 +109,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
     return out;
   }, [sel, extras, sit.data]);
   const total = lignes.reduce((t, l) => t + (Number(l.montant) || 0), 0);
+  const depasse = Object.keys(sel).some((k) => { const l = [...frais, ...mois].find((x) => key(x) === k); return l && (Number(sel[k]) || 0) > Math.max(l.du - l.paye, 0); });
   const dueDe = (k) => { const l = [...frais, ...mois].find((x) => key(x) === k); return l ? Math.max(l.du - l.paye, 0) : null; };
 
   const save = async () => {
@@ -139,7 +140,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
       footer={insId && <>
         <span className="muted small" style={{ marginRight: "auto" }}>{lignes.length} ligne{lignes.length > 1 ? "s" : ""}</span>
         <button className="btn" onClick={onClose}>Annuler</button>
-        <button className="btn primary" onClick={save} disabled={busy || total <= 0 || lignes.some((l) => l.type === "autre" && !String(l.libelle || "").trim()) || (recu && !motif.trim())}><Check size={17} />{busy ? "Enregistrement…" : recu ? `Enregistrer la correction (${fcfa(total)})` : `Encaisser ${fcfa(total)}`}</button>
+        <button className="btn primary" onClick={save} disabled={busy || total <= 0 || depasse || lignes.some((l) => l.type === "autre" && !String(l.libelle || "").trim()) || (recu && !motif.trim())}><Check size={17} />{busy ? "Enregistrement…" : recu ? `Enregistrer la correction (${fcfa(total)})` : `Encaisser ${fcfa(total)}`}</button>
       </>}>
       {!insId ? <ChoixEleve onPick={(r) => { setEleve(r); setInsId(r.inscription_id); }} /> : sit.isLoading ? <Spinner /> : sit.error ? <ErrorBox error={sit.error} /> : (
         <div className="enc">
@@ -161,7 +162,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
                   return (
                     <div key={k} className={`frais-row ${on ? "on" : ""} ${solde ? "solde" : ""}`}>
                       <label className="frais-main">
-                        <input type="checkbox" checked={on} onChange={() => toggle(l)} />
+                        <input type="checkbox" checked={on} onChange={() => toggle(l)} disabled={solde && !on} />
                         <div className="grow"><strong>{TYPES[l.type]}</strong><span>{solde ? "Réglé" : l.paye ? `${fcfa(l.paye)} déjà payé sur ${fcfa(l.du)}` : `Prix : ${fcfa(l.du)}`}</span></div>
                         {solde && !on ? <span className="badge green"><Check size={12} />Payé</span> : !on && <span className="amount">{fcfa(du)}</span>}
                       </label>
@@ -183,7 +184,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
               {mois.map((l) => {
                 const k = key(l), on = k in sel, solde = l.paye >= l.du, partiel = l.paye > 0 && !solde;
                 return (
-                  <button key={k} type="button" className={`month ${on ? "on" : ""} ${solde ? "paid" : partiel ? "partial" : ""}`} onClick={() => toggle(l)} title={moisLong(l.mois)}>
+                  <button key={k} type="button" className={`month ${on ? "on" : ""} ${solde ? "paid" : partiel ? "partial" : ""}`} onClick={() => toggle(l)} disabled={solde && !on} title={solde ? `${moisLong(l.mois)} : déjà payé` : moisLong(l.mois)}>
                     <span className="mn">{moisAbr(l.mois)}</span>
                     <span className="mv">{solde ? <Check size={16} /> : fcfa(l.du - l.paye).replace(" F", "")}</span>
                     <span className="ms">{solde ? "Payé" : partiel ? "Partiel" : on ? "Choisi" : "À payer"}</span>
@@ -201,6 +202,7 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
 
           <div className="enc-right">
             <h4 className="enc-h" style={{ marginTop: 0 }}>Détail du reçu</h4>
+            {depasse && <div className="alert" style={{ marginBottom: 10 }}>Un montant dépasse ce qui reste à payer pour ce frais ou ce mois. Corrigez-le avant d'encaisser.</div>}
             {lignes.length > 0 && <p className="xs muted" style={{ marginTop: -6 }}>Paiement incomplet ? Tapez le montant réellement versé : le reste sera conservé et apparaîtra sur la facture.</p>}
             <div className="lines">
               {!lignes.length && <p className="muted small">Sélectionnez les frais ou les mois à encaisser.</p>}

@@ -561,6 +561,24 @@ const lignesValides = (b) => {
 };
 const valeursLignes = (lignes, params) => lignes.map((l) => { params.push(l.type, TYPES_MOIS.includes(l.type) ? `${l.mois}-01` : null, Number(l.montant), l.libelle ? String(l.libelle).trim() : null); const n = params.length; return `($${n - 3}, $${n - 2}::date, $${n - 1}::int, $${n}::text)`; });
 
+// Refuse d'encaisser un frais ou un mois déjà soldé (ou au-delà de ce qui reste dû).
+const verifierDejaPaye = async (inscriptionId, lignes, exclure = 0) => {
+  const sit = await situation(inscriptionId, exclure);
+  const cumul = {};
+  for (const l of lignes) {
+    const estMois = l.type === "mensualite", estFrais = ["inscription", "uniforme", "tenue_sport", "cantine"].includes(l.type);
+    if (!estMois && !estFrais) continue;
+    const s = sit.lignes.find((x) => x.type === l.type && (estMois ? x.mois === l.mois : true));
+    if (!s) continue;
+    const k = `${l.type}|${l.mois || ""}`;
+    cumul[k] = (cumul[k] || 0) + Number(l.montant);
+    const reste = Math.max(s.du - s.paye, 0);
+    const nom = estMois ? `La mensualité de ${["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"][Number(l.mois.slice(5, 7)) - 1]} ${l.mois.slice(0, 4)}` : ({ inscription: "Le droit d'inscription", uniforme: "L'uniforme", tenue_sport: "La tenue de sport", cantine: "L'inscription cantine" })[l.type];
+    if (reste === 0) fail(400, `${nom} est déjà entièrement payé(e).`);
+    if (cumul[k] > reste) fail(400, `${nom} : il ne reste que ${reste} F à payer.`);
+  }
+};
+
 route("POST", "/recus", async (ctx) => {
   exige(ctx, "finances.encaisser");
   const b = ctx.body;
@@ -568,6 +586,7 @@ route("POST", "/recus", async (ctx) => {
   const lignes = lignesValides(b);
   const ins = await one("select i.id, a.libelle from app.inscriptions i join app.annees a on a.id=i.annee_id where i.id=$1", [b.inscription_id]);
   if (!ins) fail(404, "Inscription introuvable.");
+  await verifierDejaPaye(b.inscription_id, lignes);
   const prefixe = "R" + ins.libelle.replace(/^\d{2}(\d{2})-\d{2}(\d{2})$/, "$1$2");
   const total = lignes.reduce((t, l) => t + Number(l.montant), 0);
   const params = [b.inscription_id, b.date_paiement || null, b.mode || "especes", total, b.reference || null, b.note || null, ctx.user.id, prefixe];
@@ -672,6 +691,7 @@ route("PUT", "/recus/:id", async (ctx) => {
   if (avant.lignes.some((l) => l.type === "article")) fail(400, "Un reçu de vente de fournitures ne se modifie pas : supprimez-le (le jour même) ou annulez-le, puis refaites la vente.");
   if (!peutModifierRecu(ctx, avant)) fail(403, "Seule la direction peut modifier ce reçu. La personne qui a encaissé peut le corriger uniquement le jour même.");
   const lignes = lignesValides(b);
+  await verifierDejaPaye(avant.inscription_id, lignes, avant.id);
   const total = lignes.reduce((t, l) => t + Number(l.montant), 0);
   const params = [ctx.params.id, b.date_paiement || null, b.mode || "especes", total, b.reference || null, b.note || null];
   const values = valeursLignes(lignes, params);
