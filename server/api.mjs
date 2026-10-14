@@ -506,7 +506,7 @@ const recuComplet = async (id) => {
       join app.classes c on c.id=i.classe_id join app.annees a on a.id=i.annee_id
       left join app.utilisateurs u on u.id=r.encaisse_par left join app.utilisateurs ua on ua.id=r.annule_par
       where r.id=$1`, [id]],
-    ["select type, to_char(mois,'YYYY-MM') as mois, montant, libelle from app.paiements where recu_id=$1 order by mois nulls first, id", [id]],
+    ["select id, type, to_char(mois,'YYYY-MM') as mois, montant, libelle from app.paiements where recu_id=$1 order by mois nulls first, id", [id]],
   ]);
   if (!r) fail(404, "Reçu introuvable.");
   return { ...r, lignes };
@@ -686,6 +686,29 @@ route("PUT", "/recus/:id", async (ctx) => {
   await q("insert into app.recus_modifications (recu_id, modifie_par, motif, avant, apres) values ($1,$2,$3,$4,$5)", [ctx.params.id, ctx.user.id, b.motif, resume(avant), resume(apres)]);
   await journal(ctx, "modification", "recu", Number(ctx.params.id), { numero: avant.numero, avant: avant.montant, apres: apres.montant, motif: b.motif });
   return { ok: true, id: Number(ctx.params.id), numero: apres.numero, montant: apres.montant };
+});
+
+// Retirer une seule ligne (ex. une mensualité cochée par erreur) sans toucher au reste du reçu.
+route("POST", "/recus/:id/retirer-ligne", async (ctx) => {
+  exige(ctx, "finances.encaisser");
+  const b = ctx.body;
+  requis(b, [["motif", "Le motif"]]);
+  const avant = await recuComplet(ctx.params.id);
+  if (avant.annule) fail(400, "Ce reçu est annulé.");
+  if (!peutModifierRecu(ctx, avant)) fail(403, "Seule la direction peut modifier ce reçu. La personne qui a encaissé peut le corriger uniquement le jour même.");
+  const ligne = avant.lignes.find((l) => l.id === Number(b.paiement_id));
+  if (!ligne) fail(404, "Ligne introuvable sur ce reçu.");
+  if (ligne.type === "article") fail(400, "Une vente de fournitures s'annule avec le reçu entier.");
+  if (avant.lignes.length === 1) fail(400, "C'est la seule ligne du reçu : supprimez ou annulez le reçu entier.");
+  await tx([
+    ["delete from app.paiements where id=$1 and recu_id=$2", [ligne.id, avant.id]],
+    ["update app.recus set montant = montant - $2 where id=$1", [avant.id, ligne.montant]],
+  ]);
+  const apres = await recuComplet(ctx.params.id);
+  const resume = (r) => ({ date: r.date_paiement, mode: r.mode, montant: r.montant, reference: r.reference, lignes: r.lignes });
+  await q("insert into app.recus_modifications (recu_id, modifie_par, motif, avant, apres) values ($1,$2,$3,$4,$5)", [avant.id, ctx.user.id, b.motif, resume(avant), resume(apres)]);
+  await journal(ctx, "modification", "recu", avant.id, { numero: avant.numero, ligne_retiree: ligne.type, mois: ligne.mois, montant: ligne.montant, motif: b.motif });
+  return { ok: true, montant: apres.montant };
 });
 
 route("POST", "/recus/:id/annuler", async (ctx) => {

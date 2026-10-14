@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Printer, Ban, MessageCircle, Pencil, History, Trash2 } from "lucide-react";
+import { ArrowLeft, Printer, Ban, MessageCircle, Pencil, History, Trash2, MinusCircle } from "lucide-react";
 import Encaissement from "../components/Encaissement";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
@@ -125,6 +125,8 @@ export default function Recu() {
   const [deux, setDeux] = useState(false);
   const [edit, setEdit] = useState(false);
   const [suppr, setSuppr] = useState(false);
+  const [retrait, setRetrait] = useState(null);
+  const [motifR, setMotifR] = useState("");
   const { data, isLoading, error } = useQuery({ queryKey: ["recu", id], queryFn: () => api.get(`/recus/${id}`) });
 
   if (isLoading) return <Spinner />;
@@ -157,6 +159,22 @@ export default function Recu() {
         <Ticket r={r} etab={etab} sit={sit} copie="Exemplaire parent" rectifie={data.historique?.[0]?.created_at} />
         {deux && <Ticket r={r} etab={etab} sit={sit} copie="Souche — école" rectifie={data.historique?.[0]?.created_at} />}
       </div>
+      {data.modifiable && !r.lignes.some((l) => l.type === "article") && (
+        <div className="card historique">
+          <div className="card-head" style={{ paddingBottom: 6 }}><MinusCircle size={18} /><h3>Retirer une ligne enregistrée par erreur</h3></div>
+          <p className="small muted" style={{ padding: "0 20px 10px" }}>{r.lignes.length > 1
+            ? "Une mensualité ou un frais coché par erreur ? Retirez seulement cette ligne : le reste du reçu est conservé et le mois redevient « à payer »."
+            : "Ce reçu n'a qu'une seule ligne : pour l'enlever, utilisez « Supprimer » (le jour même) ou « Annuler » en haut de la page."}</p>
+          {r.lignes.length > 1 && <ul className="feed">
+            {r.lignes.map((l) => (
+              <li key={l.id} style={{ cursor: "default", alignItems: "center" }}>
+                <div className="grow"><strong>{libelleLigne(l)}</strong><span>{fcfa(l.montant)}</span></div>
+                <button className="btn sm danger" onClick={() => { setRetrait(l); setMotifR(""); }}><MinusCircle size={15} />Retirer</button>
+              </li>
+            ))}
+          </ul>}
+        </div>
+      )}
       {data.historique?.length > 0 && (
         <div className="card historique">
           <div className="card-head" style={{ paddingBottom: 12 }}><History size={18} /><h3>Historique des corrections</h3></div>
@@ -187,6 +205,24 @@ export default function Recu() {
           } catch (e) { toast(e.message, "error"); setSuppr(false); }
         }} onClose={() => setSuppr(false)} />}
       {edit && <Encaissement recu={r} inscriptionId={r.inscription_id} eleve={r} onClose={() => setEdit(false)} onSaved={() => setEdit(false)} />}
+      {retrait && (
+        <Modal title={`Retirer « ${libelleLigne(retrait)} » ?`} onClose={() => setRetrait(null)} footer={<>
+          <button className="btn" onClick={() => setRetrait(null)}>Garder</button>
+          <button className="btn danger" disabled={!motifR.trim()} onClick={async () => {
+            try {
+              await api.post(`/recus/${id}/retirer-ligne`, { paiement_id: retrait.id, motif: motifR });
+              toast(`${libelleLigne(retrait)} retiré(e) du reçu ${r.numero}`);
+              ["recu", "recus", "situation", "eleve", "dashboard", "impayes", "caisse", "service", "rapport", "factures"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+              setRetrait(null);
+            } catch (e) { toast(e.message, "error"); }
+          }}>Retirer {fcfa(retrait.montant)}</button>
+        </>}>
+          <div className="stack" style={{ gap: 14 }}>
+            <p>Le reçu {r.numero} passera de <strong>{fcfa(r.montant)}</strong> à <strong>{fcfa(r.montant - retrait.montant)}</strong>. {retrait.type === "mensualite" ? `${libelleLigne(retrait).replace("Mensualité ", "Le mois de ")} redeviendra « à payer ».` : "Ce montant redeviendra « à payer »."} La correction est gardée dans l'historique du reçu.</p>
+            <Field label="Motif" required><Input value={motifR} onChange={(e) => setMotifR(e.target.value)} autoFocus placeholder="Mois coché par erreur…" /></Field>
+          </div>
+        </Modal>
+      )}
       {annul && (
         <Modal title={`Annuler le reçu ${r.numero}`} onClose={() => setAnnul(false)} footer={<>
           <button className="btn" onClick={() => setAnnul(false)}>Garder le reçu</button>
