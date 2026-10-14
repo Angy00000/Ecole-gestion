@@ -75,7 +75,7 @@ function ClasseForm({ classe, onClose }) {
           <div className="grid g4">
             <Field label="Sans cantine"><Money {...m("mensualite")} /></Field>
             <Field label="Sans cantine, janv./févr."><Money {...m("mensualite_jan_fev")} /></Field>
-            <Field label="Avec cantine"><Money {...m("mensualite_cantine")} /></Field>
+            <Field label="Avec cantine" hint="Mettre 0 si la classe n'a pas de cantine."><Money {...m("mensualite_cantine")} /></Field>
             <Field label="Avec cantine, janv./févr."><Money {...m("mensualite_cantine_jan_fev")} /></Field>
             <Field label="Cours du soir (par mois)" hint="Montant compris dans la mensualité. Il est retiré pour les élèves qui ne font pas le cours du soir (case décochée à l'inscription)." className="span2"><Money {...m("cours_soir")} /></Field>
           </div>
@@ -146,7 +146,7 @@ export default function Classes() {
                   {c.uniforme > 0 && <><dt>Uniforme</dt><dd>{fcfa(c.uniforme)}</dd></>}
                   {c.tenue_sport > 0 && <><dt>Tenue de sport</dt><dd>{fcfa(c.tenue_sport)}</dd></>}
                   <dt>Mensualité</dt><dd>{fcfa(c.mensualite)}</dd>
-                  <dt>Avec cantine</dt><dd style={{ color: COL[c.cycle] }}>{fcfa(c.mensualite_cantine)}</dd>
+                  <dt>Avec cantine</dt><dd style={{ color: COL[c.cycle] }}>{c.mensualite_cantine > 0 ? fcfa(c.mensualite_cantine) : "Pas de cantine"}</dd>
                   {c.cours_soir > 0 && <><dt>Dont cours du soir</dt><dd>{fcfa(c.cours_soir)}</dd></>}
                 </dl>
                 <div className="row" style={{ justifyContent: "space-between", fontSize: 13 }}>
@@ -175,7 +175,7 @@ export default function Classes() {
                     <td className="r num hide-m">{c.tenue_sport ? fcfa(c.tenue_sport) : "—"}</td>
                     <td className="r num"><strong>{fcfa(c.mensualite)}</strong></td>
                     <td className="r num hide-m">{fcfa(c.mensualite_jan_fev)}</td>
-                    <td className="r num"><strong>{fcfa(c.mensualite_cantine)}</strong></td>
+                    <td className="r num"><strong>{c.mensualite_cantine > 0 ? fcfa(c.mensualite_cantine) : "—"}</strong></td>
                     <td className="r num hide-m">{fcfa(c.mensualite_cantine_jan_fev)}</td>
                     <td className="r num hide-m">{c.cours_soir ? `dont ${fcfa(c.cours_soir)}` : "—"}</td>
                     {peut && <td className="r" style={{ whiteSpace: "nowrap" }}>

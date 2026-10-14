@@ -161,7 +161,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
                   <label className="switch-card"><input type="checkbox" checked={ins.uniforme} onChange={(e) => setIns({ ...ins, uniforme: e.target.checked })} /><div><strong>Uniforme</strong><div className="xs muted">{classe ? fcfa(classe.uniforme) : "—"}</div></div></label>
                   <label className="switch-card"><input type="checkbox" checked={ins.tenue_sport} onChange={(e) => setIns({ ...ins, tenue_sport: e.target.checked })} /><div><strong>Tenue de sport</strong><div className="xs muted">{classe ? fcfa(classe.tenue_sport) : "—"}</div></div></label>
                   {classe?.cours_soir > 0 && <label className="switch-card"><input type="checkbox" checked={ins.cours_soir} onChange={(e) => setIns({ ...ins, cours_soir: e.target.checked })} /><div><strong>Cours du soir</strong><div className="xs muted">{ins.cours_soir ? "Compris dans la mensualité" : `Mensualité − ${fcfa(classe.cours_soir)}`}</div></div></label>}
-                  <label className="switch-card"><input type="checkbox" checked={ins.cantine} onChange={(e) => setIns({ ...ins, cantine: e.target.checked })} /><div><strong>Cantine</strong><div className="xs muted">{classe ? `${fcfa(classe.frais_cantine)} + mensualité` : "Déjeune à l'école"}</div></div></label>
+                  {!(classe && !(classe.mensualite_cantine > 0)) && <label className="switch-card"><input type="checkbox" checked={ins.cantine} onChange={(e) => setIns({ ...ins, cantine: e.target.checked })} /><div><strong>Cantine</strong><div className="xs muted">{classe ? `${fcfa(classe.frais_cantine)} + mensualité` : "Déjeune à l'école"}</div></div></label>}
                 </div>
               </div>
               <div className="recap lattice">

@@ -145,7 +145,7 @@ function InscriptionModal({ eleve, inscription, onClose }) {
         <div className="options-3">
           <label className="switch-card"><input type="checkbox" checked={v.uniforme} onChange={(e) => setV({ ...v, uniforme: e.target.checked })} /><strong>Uniforme</strong></label>
           <label className="switch-card"><input type="checkbox" checked={v.tenue_sport} onChange={(e) => setV({ ...v, tenue_sport: e.target.checked })} /><strong>Tenue de sport</strong></label>
-          <label className="switch-card"><input type="checkbox" checked={v.cantine} onChange={(e) => setV({ ...v, cantine: e.target.checked })} /><strong>Cantine</strong></label>
+          {(v.cantine || !(classes.data?.find((c) => c.id === Number(v.classe_id))?.mensualite_cantine === 0)) && <label className="switch-card"><input type="checkbox" checked={v.cantine} onChange={(e) => setV({ ...v, cantine: e.target.checked })} /><strong>Cantine</strong></label>}
           {classes.data?.find((c) => c.id === Number(v.classe_id))?.cours_soir > 0 && <label className="switch-card"><input type="checkbox" checked={v.cours_soir} onChange={(e) => setV({ ...v, cours_soir: e.target.checked })} /><strong>Cours du soir</strong></label>}
         </div>
         {(chCantine || chSoir) && (
