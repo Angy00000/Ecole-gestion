@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, initiales, moisLong, moisAbr, enLettres, telWa, nombre } from "../lib/format";
 import { Select, Spinner, ErrorBox, Empty, PageHead } from "../components/ui";
+import Partager from "../components/Partager";
 
 const moisDe = (a) => { const out = []; if (!a) return out; const d = new Date(a.debut); d.setDate(1); const f = new Date(a.fin); while (d <= f) { out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); d.setMonth(d.getMonth() + 1); } return out; };
 const moisSuivant = () => { const n = new Date(); const d = n.getDate() >= 20 ? new Date(n.getFullYear(), n.getMonth() + 1, 1) : new Date(n.getFullYear(), n.getMonth(), 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
@@ -130,6 +131,7 @@ export function FacturesImpression() {
       <div className="print-bar">
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{rows.length} facture{rows.length > 1 ? "s" : ""}</strong> — {moisLong(mois)}</span>
+        {rows.length > 0 && <Partager format="A5" nom={rows.length === 1 ? `Facture-${mois}-${rows[0].nom}-${rows[0].prenom}` : `Factures-${mois}`} telephone={rows.length === 1 ? rows[0].telephone : null} message={rows.length === 1 ? messageFacture(rows[0], s.etablissement, mois) : `Factures ${moisLong(mois)} — ${s.etablissement?.nom}`} />}
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       <div className="tickets">{rows.map((r) => <Facture key={r.inscription_id} r={r} mois={mois} etab={s.etablissement} />)}</div>

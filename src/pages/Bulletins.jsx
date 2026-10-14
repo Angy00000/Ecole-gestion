@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { note, date, TRIMESTRES } from "../lib/format";
 import { Spinner, ErrorBox } from "../components/ui";
+import Partager from "../components/Partager";
 
 function Bulletin({ e, data, etab }) {
   const B = data.classe.bareme;
@@ -80,6 +81,7 @@ export default function Bulletins() {
       <div className="print-bar">
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{eleves.length} bulletin{eleves.length > 1 ? "s" : ""}</strong> — {data.classe.nom}, {TRIMESTRES[data.trimestre]}</span>
+        {eleves.length > 0 && <Partager format="A4" nom={eleves.length === 1 ? `Bulletin-T${data.trimestre}-${eleves[0].nom}-${eleves[0].prenom}` : `Bulletins-${data.classe.nom}-T${data.trimestre}`} telephone={eleves.length === 1 ? eleves[0].telephone : null} message={eleves.length === 1 ? `Bonjour, voici le bulletin du ${TRIMESTRES[data.trimestre]} de ${eleves[0].prenom} ${eleves[0].nom} (${data.classe.nom}). ${s.etablissement?.nom}` : `Bulletins ${data.classe.nom} — ${TRIMESTRES[data.trimestre]}`} />}
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       <div className="tickets">{eleves.map((e) => <Bulletin key={e.inscription_id} e={e} data={data} etab={s.etablissement} />)}</div>

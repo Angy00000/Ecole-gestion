@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { date, dateLongue, initiales, fcfa, moisLong, moisAbr } from "../lib/format";
 import { Spinner, ErrorBox } from "../components/ui";
+import Partager from "../components/Partager";
 
 const TITRES = { certificat: "Certificat de scolarité", fiche: "Fiche d'inscription", carte: "Cartes scolaires", liste: "Liste de classe", listes: "Listes de toutes les classes", impayes: "État des impayés par classe", service: "État par classe" };
 const SERVICES = { cantine: "Cantine", uniforme: "Uniformes et tenues de sport", fournitures: "Fournitures", cours_soir: "Cours du soir", cotisation: "Cotisation des fêtes" };
@@ -185,12 +186,13 @@ export default function Documents() {
   if (data.isLoading) return <Spinner />;
   if (data.error) return <div style={{ padding: 32 }}><ErrorBox error={data.error} /></div>;
   const etab = s.etablissement;
-  let contenu, format = "A4";
+  let contenu, format = "A4", telDoc = null, nomEleve = "";
   if (eleveId) {
     const e = data.data.eleve;
     const ins = data.data.inscriptions.find((i) => i.annee_id === s.annee?.id) || data.data.inscriptions[0];
     if (!ins && type !== "fiche") return <div style={{ padding: 32 }}><ErrorBox error={new Error("Cet élève n'a aucune inscription.")} /></div>;
     const tel = e.mere_telephone || e.pere_telephone || e.tuteur_telephone;
+    telDoc = tel; nomEleve = `${e.prenom} ${e.nom}`;
     if (type === "certificat") contenu = <Certificat e={e} ins={ins} etab={etab} />;
     else if (type === "fiche") contenu = <Fiche e={e} ins={ins} etab={etab} />;
     else contenu = <article className="doc a4 cartes"><Carte e={{ ...e, telephone: tel }} classe={ins.classe} annee={ins.annee} etab={etab} /></article>;
@@ -215,6 +217,7 @@ export default function Documents() {
       <div className="print-bar">
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{type === "service" ? `${SERVICES[p.get("svc")]} — état par classe` : TITRES[type]}</strong></span>
+        <Partager format={format} nom={`${type === "service" ? `Etat-${p.get("svc")}` : TITRES[type]}${nomEleve ? `-${nomEleve}` : ""}`} telephone={telDoc} message={`${type === "service" ? "État par classe" : TITRES[type]}${nomEleve ? ` — ${nomEleve}` : ""} — ${etab.nom}`} />
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       <div className="tickets">{contenu}</div>

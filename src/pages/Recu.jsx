@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Printer, Ban, MessageCircle, Pencil, History, Trash2, MinusCircle } from "lucide-react";
 import Encaissement from "../components/Encaissement";
+import Partager from "../components/Partager";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateHeure, enLettres, libelleLigne, moisAbr, MODES, telWa } from "../lib/format";
@@ -148,7 +149,7 @@ export default function Recu() {
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow" />
         <label className="check small"><input type="checkbox" checked={deux} onChange={(e) => setDeux(e.target.checked)} />Imprimer aussi la souche</label>
-        {r.telephone && !r.annule && <a className="btn wa" href={`https://wa.me/${telWa(r.telephone)}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer"><MessageCircle size={17} />Envoyer au parent</a>}
+        {!r.annule && <Partager format="A5" nom={`Recu-${r.numero}-${r.nom}-${r.prenom}`} telephone={r.telephone} message={msg} />}
         {data.modifiable && <button className="btn" onClick={() => setEdit(true)}><Pencil size={17} />Modifier</button>}
         {data.supprimable && <button className="btn danger" onClick={() => setSuppr(true)}><Trash2 size={17} />Supprimer</button>}
         {s.peut("finances.annuler") && !r.annule && <button className="btn danger" onClick={() => setAnnul(true)}><Ban size={17} />Annuler</button>}
