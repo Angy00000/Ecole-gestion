@@ -979,3 +979,31 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .vierge .d-photo { min-height: 0; }
 .vierge .b-sigs .b-box { min-height: 64px; }
 .v-liste td, .v-liste th { padding: 0 6px !important; height: 6.6mm; }
+.v-q { font-size: 12px; color: #10262c; min-width: 190px; }
+.v-vacc { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 18px; }
+.v-vacc span { display: flex; align-items: center; justify-content: space-between; }
+.v-vacc i { font-style: normal; font-size: 11px; color: #4a6168; }
+.v-mal { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 6px; margin-bottom: 4px; }
+.v-mal .v-case { margin-right: 0; font-size: 11px; }
+.vierge .d-sec > .v-case { display: flex; margin: 4px 0; align-items: flex-start; } .vierge .d-sec > .v-case b { margin-top: 2px; }
+.v-pieces .v-case { display: inline-flex !important; }
+.v-suite { margin-top: auto; text-align: right; font-size: 11px; font-weight: 700; color: #7a5500; }
+.v-head2 { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1.5px solid #123f4a; padding-bottom: 6px; font-size: 11px; color: #4a6168; }
+.v-head2 strong { color: #123f4a; font-size: 13px; }
+.dense { font-size: 11.5px; padding-top: 10mm; padding-bottom: 9mm; }
+.dense .d-sec { padding: 5px 10px; margin-bottom: 6px; }
+.dense .d-sec h3 { margin-bottom: 2px; font-size: 11px; }
+.dense .v-row { padding: 1.5px 0; gap: 10px; }
+.dense .v-f i { height: 15px; }
+.dense .v-case { font-size: 11px; margin-right: 10px; }
+.dense .v-q { min-width: 170px; font-size: 11px; }
+.dense .v-f span { font-size: 11px; }
+.dense .d-sec > .v-case { margin: 2px 0; }
+.dense .b-sigs .b-box { min-height: 52px; }
+.dense .v-fait { margin: 6px 0; }
+.v-t2 { font-size: 20px !important; margin: 6px 0 8px !important; text-align: left; }
+.v-t2 small { font-size: 11px; font-weight: 600; color: #7a5500; font-family: var(--f-body); }
+.dense .v-vacc { grid-template-columns: repeat(3, 1fr); gap: 2px 14px; }
+.dense .v-mal { gap: 2px 6px; }
+.dense .b-sigs .b-box { min-height: 46px; }
+.dense > p.xs { line-height: 1.45; }

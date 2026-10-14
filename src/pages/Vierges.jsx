@@ -15,38 +15,95 @@ const Case = ({ l }) => <span className="v-case"><b />{l}</span>;
 const Signatures = ({ items }) => <div className="b-sigs" style={{ marginTop: "auto", gridTemplateColumns: `repeat(${items.length}, 1fr)` }}>{items.map((x) => <div key={x} className="b-box"><span>{x}</span></div>)}</div>;
 const Fait = ({ etab }) => <p className="v-fait">Fait à {etab.ville || "Malika"}, le ……………………………………</p>;
 
+const Lignes = ({ n = 2 }) => <>{Array.from({ length: n }, (_, i) => <Row key={i}><C l="" /></Row>)}</>;
+const OuiNon = ({ l, detail }) => <Row><span className="v-q">{l}</span><Case l="Oui" /><Case l="Non" />{detail && <C l={detail} />}</Row>;
+
 function FicheInscription({ etab, annee }) {
   return (
-    <article className="doc a4 vierge">
-      <EnTete etab={etab} />
-      <h1 className="d-title">Fiche d'inscription</h1>
-      <p className="d-num">Année scolaire {annee} · <Case l="Nouvelle inscription" /> <Case l="Réinscription" /></p>
-      <div className="d-photo-row">
-        <div className="d-sec"><h3>Élève</h3>
-          <Row><C l="Nom" /></Row>
-          <Row><C l="Prénom(s)" /></Row>
-          <Row><span className="v-lab">Sexe</span><Case l="Féminin" /><Case l="Masculin" /><C l="Nationalité" /></Row>
-          <Row><C l="Né(e) le" /><C l="à" w={1.4} /></Row>
-          <Row><C l="Adresse (quartier)" /></Row>
+    <>
+      <article className="doc a4 vierge">
+        <EnTete etab={etab} />
+        <h1 className="d-title">Fiche d'inscription</h1>
+        <p className="d-num">Année scolaire {annee} · <Case l="Nouvelle inscription" /> <Case l="Réinscription" /> · Page 1/2</p>
+        <div className="d-photo-row">
+          <div className="d-sec"><h3>1. L'élève</h3>
+            <Row><C l="Nom" /><C l="Prénom(s)" w={1.6} /></Row>
+            <Row><span className="v-lab">Sexe</span><Case l="F" /><Case l="M" /><C l="Né(e) le" /><C l="à" w={1.2} /></Row>
+            <Row><C l="Nationalité" /><C l="N° extrait de naissance" w={1.3} /></Row>
+            <Row><C l="Adresse complète (quartier, repère)" /></Row>
+            <Row><C l="Langue(s) parlée(s) à la maison" /><C l="Religion (facultatif)" w={0.8} /></Row>
+          </div>
+          <div className="d-photo">Photo</div>
         </div>
-        <div className="d-photo">Photo</div>
-      </div>
-      <div className="d-sec"><h3>Scolarité</h3>
-        <Row><C l="Classe demandée" /><C l="École d'origine" w={1.6} /></Row>
-        <Row><span className="v-lab">Options</span><Case l="Cantine" /><Case l="Uniforme" /><Case l="Tenue de sport" /><Case l="Cours du soir" /></Row>
-      </div>
-      <div className="d-grid2">
-        <div className="d-sec"><h3>Père</h3><Row><C l="Prénom et nom" /></Row><Row><C l="Profession" /></Row><Row><C l="Téléphone" /></Row><Row><C l="WhatsApp" /></Row></div>
-        <div className="d-sec"><h3>Mère</h3><Row><C l="Prénom et nom" /></Row><Row><C l="Profession" /></Row><Row><C l="Téléphone" /></Row><Row><C l="WhatsApp" /></Row></div>
-      </div>
-      <div className="d-sec"><h3>Tuteur (si l'enfant ne vit pas avec ses parents)</h3><Row><C l="Prénom et nom" w={1.5} /><C l="Lien" /><C l="Téléphone" /></Row></div>
-      <div className="d-sec"><h3>Personne à prévenir en cas d'urgence</h3><Row><C l="Prénom et nom" w={1.5} /><C l="Téléphone" /></Row><Row><C l="Remarques utiles (santé, allergie…)" /></Row></div>
-      <div className="d-sec v-pieces"><h3>Pièces à fournir</h3>
-        <Case l="2 extraits de naissance" /><Case l="Cette fiche remplie et signée" /><Case l="Certificat de scolarité de l'école d'origine (nouveaux)" /><Case l="Bulletin de fin d'année (nouveaux)" /><Case l="2 photos d'identité" />
-      </div>
-      <p className="xs" style={{ margin: "4px 0 10px" }}>Le parent qui inscrit son enfant s'engage à respecter le règlement intérieur et à payer la scolarité annuelle. Quelle que soit la date d'inscription, tous les mois de l'année scolaire sont à payer.</p>
-      <Signatures items={["Signature du parent", "Le secrétariat", "La Direction"]} />
-    </article>
+        <div className="d-sec"><h3>2. Scolarité</h3>
+          <Row><C l="Classe demandée" /><C l="Classe de l'an passé" /><C l="Redoublant" w={0.6} /></Row>
+          <Row><C l="École d'origine" w={1.6} /><C l="Ville" /></Row>
+          <Row><span className="v-lab">Options</span><Case l="Cantine" /><Case l="Uniforme" /><Case l="Tenue de sport" /><Case l="Cours du soir" /><Case l="Cours de vacances" /></Row>
+          <Row><span className="v-lab">Venue à l'école</span><Case l="À pied" /><Case l="Véhicule des parents" /><Case l="Transport scolaire" /><Case l="Autre" /></Row>
+          <Row><C l="Frères et sœurs dans l'école (nom, classe)" /></Row>
+        </div>
+        <div className="d-grid2">
+          <div className="d-sec"><h3>3. Père</h3><Row><C l="Prénom et nom" /></Row><Row><C l="Profession" /></Row><Row><C l="Employeur / lieu de travail" /></Row><Row><C l="Téléphone" /></Row><Row><C l="WhatsApp" /></Row><Row><C l="E-mail" /></Row><Row><span className="v-lab">En vie</span><Case l="Oui" /><Case l="Non" /></Row></div>
+          <div className="d-sec"><h3>4. Mère</h3><Row><C l="Prénom et nom" /></Row><Row><C l="Profession" /></Row><Row><C l="Employeur / lieu de travail" /></Row><Row><C l="Téléphone" /></Row><Row><C l="WhatsApp" /></Row><Row><C l="E-mail" /></Row><Row><span className="v-lab">En vie</span><Case l="Oui" /><Case l="Non" /></Row></div>
+        </div>
+        <div className="d-sec"><h3>5. Situation familiale</h3>
+          <Row><span className="v-lab">Parents</span><Case l="Mariés" /><Case l="Séparés / divorcés" /><Case l="Veuf / veuve" /><Case l="Célibataire" /></Row>
+          <Row><span className="v-lab">L'enfant vit avec</span><Case l="Ses deux parents" /><Case l="Son père" /><Case l="Sa mère" /><Case l="Un tuteur" /></Row>
+          <Row><C l="Tuteur : prénom et nom" w={1.5} /><C l="Lien de parenté" /><C l="Téléphone" /></Row>
+          <Row><C l="Personne responsable des paiements" w={1.5} /><C l="Téléphone" /></Row>
+        </div>
+        <div className="d-sec"><h3>6. Personnes à prévenir en cas d'urgence (autres que les parents)</h3>
+          <Row><C l="1. Prénom et nom" w={1.5} /><C l="Lien" /><C l="Téléphone" /></Row>
+          <Row><C l="2. Prénom et nom" w={1.5} /><C l="Lien" /><C l="Téléphone" /></Row>
+        </div>
+        <div className="d-sec"><h3>7. Personnes autorisées à récupérer l'enfant</h3>
+          <Row><C l="1. Prénom et nom" w={1.5} /><C l="Lien" /><C l="Téléphone" /></Row>
+          <Row><C l="2. Prénom et nom" w={1.5} /><C l="Lien" /><C l="Téléphone" /></Row>
+        </div>
+        <p className="v-suite">Suite au verso : fiche médicale, autorisations et engagement →</p>
+      </article>
+
+      <article className="doc a4 vierge dense">
+        <div className="v-head2"><strong>{etab.nom}</strong><span>Fiche d'inscription {annee} · Page 2/2 · Élève : ………………………………………… Classe : …………</span></div>
+        <h1 className="d-title v-t2">Fiche médicale <small>— informations confidentielles, utilisées uniquement pour la santé et la sécurité de l'enfant</small></h1>
+        <div className="d-sec"><h3>8. Santé générale</h3>
+          <Row><span className="v-lab">Groupe sanguin</span>{["A+", "A−", "B+", "B−", "AB+", "AB−", "O+", "O−", "Inconnu"].map((g) => <Case key={g} l={g} />)}</Row>
+          <Row><C l="Poids" w={0.6} /><C l="Taille" w={0.6} /><C l="Médecin traitant" w={1.4} /><C l="Téléphone" /></Row>
+          <Row><C l="Hôpital ou centre de santé préféré" w={1.6} /><C l="Assurance / IPM / mutuelle" /></Row>
+        </div>
+        <div className="d-sec"><h3>9. Vaccinations (joindre une copie du carnet)</h3>
+          <div className="v-vacc">{["BCG", "Polio", "Pentavalent (DTC…)", "Rougeole / rubéole", "Fièvre jaune", "Méningite", "Pneumocoque", "Hépatite B", "Covid-19", "Autre : …………"].map((v) => <span key={v}><Case l={v} /><i>date : ……………</i></span>)}</div>
+        </div>
+        <div className="d-sec"><h3>10. Maladies et problèmes de santé</h3>
+          <div className="v-mal">{["Asthme", "Drépanocytose", "Épilepsie / convulsions", "Diabète", "Maladie cardiaque", "Hypertension", "Anémie", "Paludisme fréquent", "Problème de vue (lunettes)", "Problème d'audition", "Problème de langage", "Énurésie (pipi au lit)", "Saignements de nez", "Maux de tête fréquents", "Eczéma / problème de peau", "Autre"].map((m) => <Case key={m} l={m} />)}</div>
+          <Row><C l="Précisions (traitement, conduite à tenir en cas de crise)" /></Row>
+        </div>
+        <div className="d-sec"><h3>11. Allergies</h3>
+          <OuiNon l="Allergie alimentaire" detail="Laquelle" />
+          <OuiNon l="Allergie à un médicament" detail="Lequel" />
+          <OuiNon l="Autre allergie (piqûre, poussière…)" detail="Laquelle" />
+          <Row><C l="Réaction et conduite à tenir" /></Row>
+        </div>
+        <div className="d-sec"><h3>12. Traitements, handicap, besoins particuliers</h3>
+          <OuiNon l="Traitement médical en cours" detail="Nom, dose, horaires" />
+          <OuiNon l="Médicament à prendre à l'école" detail="Lequel (ordonnance obligatoire)" />
+          <OuiNon l="Handicap ou besoin particulier" detail="Précisez" />
+          <OuiNon l="Opération ou hospitalisation récente" detail="Laquelle, quand" />
+          <Row><span className="v-q">Régime alimentaire</span><Case l="Normal" /><Case l="Sans porc" /><Case l="Végétarien" /><Case l="Sans sel/sucre" /><Case l="Autre" /></Row>
+        </div>
+        <div className="d-sec"><h3>13. Autorisations</h3>
+          <Case l="J'autorise l'école à faire soigner mon enfant et, en cas d'urgence, à le faire transporter au centre de santé le plus proche, après avoir essayé de me joindre." />
+          <Case l="J'autorise mon enfant à participer aux sorties et activités organisées par l'école." />
+          <Case l="J'autorise l'école à utiliser des photos de mon enfant prises lors des activités (affichage, site, réseaux de l'école)." />
+          <Case l="J'autorise mon enfant à rentrer seul après les cours." />
+        </div>
+        <div className="d-sec v-pieces"><h3>14. Pièces à fournir</h3>
+          <Case l="2 extraits de naissance" /><Case l="Cette fiche remplie et signée" /><Case l="2 photos d'identité" /><Case l="Copie du carnet de vaccination" /><Case l="Certificat de scolarité et bulletin de l'école d'origine (nouveaux)" /><Case l="Certificat médical (si maladie signalée)" />
+        </div>
+        <p className="xs" style={{ margin: "2px 0 8px" }}>Je certifie l'exactitude des renseignements ci-dessus et je m'engage à prévenir l'école de tout changement. Je m'engage à respecter le règlement intérieur et à payer la scolarité annuelle : quelle que soit la date d'inscription, tous les mois de l'année scolaire sont à payer. <strong>Fait à {etab.ville || "Malika"}, le ……………………………</strong></p>
+        <Signatures items={["Signature du parent (« lu et approuvé »)", "Le secrétariat", "La Direction"]} />
+      </article>
+    </>
   );
 }
 
@@ -201,7 +258,7 @@ function RecuVierge({ etab }) {
 }
 
 const DOCS = {
-  fiche: { titre: "Fiche d'inscription", sub: "À remplir par le parent : élève, parents, options, pièces à fournir", icon: ClipboardList, format: "A4", C: FicheInscription },
+  fiche: { titre: "Fiche d'inscription complète", sub: "2 pages : élève, parents, situation familiale, urgences, fiche médicale (vaccins, maladies, allergies), autorisations", icon: ClipboardList, format: "A4", C: FicheInscription },
   tarifs: { titre: "Fiche des tarifs", sub: "Frais d'inscription et mensualités de chaque classe, mois par mois (tarifs du logiciel)", icon: BadgeDollarSign, format: "A4", C: Tarifs },
   autorisation: { titre: "Autorisation parentale", sub: "Personnes autorisées, sorties, photos, urgence médicale", icon: ShieldCheck, format: "A4", C: Autorisation },
   certificat: { titre: "Certificat de scolarité", sub: "Modèle vierge à remplir à la main", icon: Award, format: "A4", C: Certificat },
