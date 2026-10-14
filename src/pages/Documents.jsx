@@ -74,7 +74,7 @@ function EtatService({ data, classes, etab, annee, svc, filtre }) {
 const ne = (e) => (e.sexe === "F" ? "née" : "né");
 const aujourdhui = () => dateLongue(new Date().toISOString().slice(0, 10));
 
-function EnTete({ etab }) {
+export function EnTete({ etab }) {
   return (
     <header className="d-head">
       <div className="b-rep"><strong>République du Sénégal</strong><span>Un Peuple – Un But – Une Foi</span><span>Ministère de l'Éducation nationale</span></div>
