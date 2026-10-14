@@ -22,12 +22,14 @@ function ClasseForm({ classe, onClose }) {
   const qc = useQueryClient();
   const [v, setV] = useState({ ...VIDE, ...(classe || {}) });
   const [error, setError] = useState(null);
+  const [cantine, setCantine] = useState(!classe || classe.mensualite_cantine > 0);
   const m = (k) => ({ value: v[k], onChange: (x) => setV({ ...v, [k]: x ?? 0 }) });
   const ens = useQuery({ queryKey: ["enseignants"], queryFn: () => api.get("/enseignants") });
 
   const save = async () => {
     setError(null);
     const { id, annee_id, effectif, filles, titulaire, nb_matieres, ...data } = v;
+    if (!cantine) Object.assign(data, { mensualite_cantine: 0, mensualite_cantine_jan_fev: 0, frais_cantine: 0 });
     try {
       if (classe) await api.put(`/classes/${classe.id}`, data);
       else await api.post("/classes", { ...data, annee_id: s.annee?.id });
@@ -68,15 +70,16 @@ function ClasseForm({ classe, onClose }) {
             <Field label="Droit d'inscription"><Money {...m("frais_inscription")} /></Field>
             <Field label="Uniforme"><Money {...m("uniforme")} /></Field>
             <Field label="Tenue de sport"><Money {...m("tenue_sport")} /></Field>
-            <Field label="Inscription cantine"><Money {...m("frais_cantine")} /></Field>
+            {cantine && <Field label="Inscription cantine"><Money {...m("frais_cantine")} /></Field>}
           </div>
         </Sec>
         <Sec icon={CalendarRange} tone="azure" title="Mensualités" sub="Janvier et février incluent chacun une moitié du mois de juin.">
+          <label className="check" style={{ marginBottom: 14 }}><input type="checkbox" checked={cantine} onChange={(e) => setCantine(e.target.checked)} />Cette classe a la cantine</label>
           <div className="grid g4">
             <Field label="Sans cantine"><Money {...m("mensualite")} /></Field>
             <Field label="Sans cantine, janv./févr."><Money {...m("mensualite_jan_fev")} /></Field>
-            <Field label="Avec cantine" hint="Mettre 0 si la classe n'a pas de cantine."><Money {...m("mensualite_cantine")} /></Field>
-            <Field label="Avec cantine, janv./févr."><Money {...m("mensualite_cantine_jan_fev")} /></Field>
+            {cantine && <Field label="Avec cantine"><Money {...m("mensualite_cantine")} /></Field>}
+            {cantine && <Field label="Avec cantine, janv./févr."><Money {...m("mensualite_cantine_jan_fev")} /></Field>}
             <Field label="Cours du soir (par mois)" hint="Montant compris dans la mensualité. Il est retiré pour les élèves qui ne font pas le cours du soir (case décochée à l'inscription)." className="span2"><Money {...m("cours_soir")} /></Field>
           </div>
         </Sec>
