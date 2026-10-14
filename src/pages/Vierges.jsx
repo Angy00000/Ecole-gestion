@@ -269,11 +269,12 @@ const DOCS = {
 
 export default function Vierges() {
   const nav = useNavigate();
+  const argent = useSession().peut("finances.lire");
   return (
     <>
       <PageHead title="Imprimés vierges" sub="Fiches à imprimer et à donner aux parents, ou à envoyer par WhatsApp" />
       <div className="v-grid">
-        {Object.entries(DOCS).map(([k, d]) => { const I = d.icon; return (
+        {Object.entries(DOCS).filter(([k]) => argent || !["tarifs", "recu"].includes(k)).map(([k, d]) => { const I = d.icon; return (
           <button key={k} className="card v-card" onClick={() => nav(`/imprimes/imprimer?doc=${k}`)}>
             <span className="ic teal"><I size={22} /></span>
             <div><strong>{d.titre}</strong><span>{d.sub}</span></div>

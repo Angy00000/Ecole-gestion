@@ -90,6 +90,7 @@ function ClasseForm({ classe, onClose }) {
 
 export default function Classes() {
   const s = useSession();
+  const argent = s.peut("finances.lire");
   const toast = useToast();
   const qc = useQueryClient();
   const [edit, setEdit] = useState(null);
@@ -144,14 +145,14 @@ export default function Classes() {
                   </div>
                   <div className="legend xs" style={{ marginTop: 8 }}><span><i className="dot" style={{ background: "var(--rose)" }} />{c.filles} filles</span><span><i className="dot" style={{ background: "var(--azure)" }} />{c.effectif - c.filles} garçons</span></div>
                 </div>
-                <dl className="tarifs">
+                {argent && <dl className="tarifs">
                   <dt>Inscription</dt><dd>{fcfa(c.frais_inscription)}</dd>
                   {c.uniforme > 0 && <><dt>Uniforme</dt><dd>{fcfa(c.uniforme)}</dd></>}
                   {c.tenue_sport > 0 && <><dt>Tenue de sport</dt><dd>{fcfa(c.tenue_sport)}</dd></>}
                   <dt>Mensualité</dt><dd>{fcfa(c.mensualite)}</dd>
                   <dt>Avec cantine</dt><dd style={{ color: COL[c.cycle] }}>{c.mensualite_cantine > 0 ? fcfa(c.mensualite_cantine) : "Pas de cantine"}</dd>
                   {c.cours_soir > 0 && <><dt>Dont cours du soir</dt><dd>{fcfa(c.cours_soir)}</dd></>}
-                </dl>
+                </dl>}
                 <div className="row" style={{ justifyContent: "space-between", fontSize: 13 }}>
                   <span className="row muted" style={{ gap: 6 }}><UserRound size={15} />{c.titulaire || "Pas de titulaire"}</span>
                   {c.cycle !== "garderie" && <button className="btn sm" onClick={() => setMat(c)}><BookOpen size={14} />{c.nb_matieres} matière{c.nb_matieres > 1 ? "s" : ""}</button>}
@@ -165,22 +166,22 @@ export default function Classes() {
           <div className="table-wrap">
             <table className="table" style={{ marginTop: -1 }}>
               <thead><tr>
-                <th>Classe</th><th>Effectif</th><th className="r">Inscription</th><th className="r hide-m">Uniforme</th><th className="r hide-m">Tenue sport</th>
-                <th className="r">Mensualité</th><th className="r hide-m">Janv./févr.</th><th className="r">Avec cantine</th><th className="r hide-m">Janv./févr.</th><th className="r hide-m">Cours du soir</th>{peut && <th />}
+                <th>Classe</th><th>Effectif</th>{argent && <><th className="r">Inscription</th><th className="r hide-m">Uniforme</th><th className="r hide-m">Tenue sport</th>
+                <th className="r">Mensualité</th><th className="r hide-m">Janv./févr.</th><th className="r">Avec cantine</th><th className="r hide-m">Janv./févr.</th><th className="r hide-m">Cours du soir</th></>}{peut && <th />}
               </tr></thead>
               <tbody>
                 {data.map((c) => (
                   <tr key={c.id}>
                     <td><span className={`chip ${c.cycle}`}>{c.nom}</span></td>
                     <td className="num">{c.effectif}{c.capacite ? <span className="muted"> / {c.capacite}</span> : ""}</td>
-                    <td className="r num">{fcfa(c.frais_inscription)}</td>
+                    {argent && <><td className="r num">{fcfa(c.frais_inscription)}</td>
                     <td className="r num hide-m">{c.uniforme ? fcfa(c.uniforme) : "—"}</td>
                     <td className="r num hide-m">{c.tenue_sport ? fcfa(c.tenue_sport) : "—"}</td>
                     <td className="r num"><strong>{fcfa(c.mensualite)}</strong></td>
                     <td className="r num hide-m">{fcfa(c.mensualite_jan_fev)}</td>
                     <td className="r num"><strong>{c.mensualite_cantine > 0 ? fcfa(c.mensualite_cantine) : "—"}</strong></td>
                     <td className="r num hide-m">{fcfa(c.mensualite_cantine_jan_fev)}</td>
-                    <td className="r num hide-m">{c.cours_soir ? `dont ${fcfa(c.cours_soir)}` : "—"}</td>
+                    <td className="r num hide-m">{c.cours_soir ? `dont ${fcfa(c.cours_soir)}` : "—"}</td></>}
                     {peut && <td className="r" style={{ whiteSpace: "nowrap" }}>
                       <button className="btn sm ghost icon" onClick={() => setEdit(c)} aria-label={`Modifier ${c.nom}`}><Pencil size={15} /></button>
                       <button className="btn sm ghost icon" onClick={() => setDel(c)} aria-label={`Supprimer ${c.nom}`}><Trash2 size={15} /></button>

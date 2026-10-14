@@ -86,10 +86,24 @@ const DROITS = {
                "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire",
                "pedagogie.lire", "pedagogie.ecrire", "enseignants.ecrire", "absences.ecrire"],
   comptable:  ["eleves.lire", "finances.lire", "finances.encaisser", "depenses.lire", "depenses.ecrire"],
-  secretaire: ["eleves.lire", "eleves.ecrire", "finances.lire", "finances.encaisser", "pedagogie.lire", "absences.ecrire"],
+  secretaire: ["eleves.lire", "eleves.ecrire", "pedagogie.lire", "absences.ecrire"],
   professeur: ["eleves.lire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire"],
 };
 const peut = (role, droit) => (DROITS[role] || []).some((d) => d === "*" || d === droit);
+// Pour les comptes sans accès aux finances (secrétaire…) : on retire tous les montants des réponses.
+const ARGENT_CLASSE = ["frais_inscription", "uniforme", "tenue_sport", "cours_soir", "mensualite", "mensualite_jan_fev", "mensualite_cantine", "mensualite_cantine_jan_fev", "frais_cantine", "prix_uniforme", "prix_tenue", "prix_cours_soir"];
+const ARGENT_INSC = ["mensualite_speciale", "reduction_inscription", "frais_reste", "montant_uniforme", "montant_tenue", "montant_frais_cantine", "montant_cantine_mois", "montant_cours_soir"];
+const sansArgent = (ctx, row) => {
+  if (!row || peut(ctx.user.role, "finances.lire")) return row;
+  const o = { ...row };
+  if (typeof o.mensualite_cantine === "number") o.cantine_dispo = o.mensualite_cantine > 0;
+  if (typeof o.cours_soir === "number") o.cours_soir_dispo = o.cours_soir > 0;
+  if (typeof o.prix_cours_soir === "number") o.cours_soir_dispo = o.prix_cours_soir > 0;
+  // Les cases cochées (uniforme, cantine, cours_soir de l'inscription) sont des booléens : on les garde.
+  for (const k of ARGENT_CLASSE) if (typeof o[k] === "number") delete o[k];
+  for (const k of ARGENT_INSC) delete o[k];
+  return o;
+};
 const exige = (ctx, droit) => { if (!peut(ctx.user.role, droit)) fail(403, "Vous n'avez pas les droits pour cette action."); };
 
 const journal = (ctx, action, entite, entite_id, details) =>
@@ -166,7 +180,9 @@ route("GET", "/bootstrap", async (ctx) => {
     ["select * from app.annees order by debut desc"],
     ["select * from app.types_paiement where actif order by libelle"],
   ]);
-  return { user: ctx.user, etablissement: etab, annees, types_paiement: types, droits: DROITS[ctx.user.role] };
+  const argent = peut(ctx.user.role, "finances.lire");
+  const sansFrais = (a) => argent ? a : Object.fromEntries(Object.entries(a).filter(([k]) => !k.startsWith("frais_")));
+  return { user: ctx.user, etablissement: etab, annees: annees.map(sansFrais), types_paiement: argent ? types : [], droits: DROITS[ctx.user.role] };
 });
 
 // ── Établissement ─────────────────────────────────────────────────────────
@@ -180,9 +196,9 @@ route("PUT", "/etablissement", async (ctx) => {
 });
 
 // ── Années scolaires ──────────────────────────────────────────────────────
-route("GET", "/annees", async () => q(
+route("GET", "/annees", async (ctx) => (await q(
   `select a.*, (select count(*) from app.inscriptions i where i.annee_id=a.id and i.statut='active') as effectif
-   from app.annees a order by debut desc`));
+   from app.annees a order by debut desc`)).map((a) => peut(ctx.user.role, "finances.lire") ? a : Object.fromEntries(Object.entries(a).filter(([k]) => !k.startsWith("frais_")))));
 
 route("POST", "/annees", async (ctx) => {
   exige(ctx, "annees.ecrire");
@@ -223,7 +239,7 @@ route("GET", "/classes", async (ctx) => {
       (select count(*) from app.matieres m where m.classe_id=c.id) as nb_matieres,
       (select count(*) from app.inscriptions i where i.classe_id=c.id and i.statut='active') as effectif,
       (select count(*) filter (where e.sexe='F') from app.inscriptions i join app.eleves e on e.id=i.eleve_id where i.classe_id=c.id and i.statut='active') as filles
-    from app.classes c left join app.enseignants t on t.id=c.titulaire_id where c.annee_id=$1 order by c.ordre, c.nom`, [annee]);
+    from app.classes c left join app.enseignants t on t.id=c.titulaire_id where c.annee_id=$1 order by c.ordre, c.nom`, [annee]).then((rows) => rows.map((x) => sansArgent(ctx, x)));
 });
 
 route("POST", "/classes", async (ctx) => {
@@ -332,7 +348,7 @@ route("GET", "/eleves", async (ctx) => {
       ${base} order by ${SORTS[sort] || SORTS.nom} limit ${limit} offset ${(page - 1) * limit}`, p],
     [`select count(*) as total ${base}`, p],
   ]);
-  return { rows, total, page, limit };
+  return { rows: rows.map((x) => sansArgent(ctx, x)), total, page, limit };
 });
 
 route("GET", "/eleves/:id", async (ctx) => {
@@ -355,7 +371,7 @@ route("GET", "/eleves/:id", async (ctx) => {
   if (!eleve) fail(404, "Élève introuvable.");
   const absences = peut(ctx.user.role, "pedagogie.lire") ? await q(`select a.id, a.date_absence, a.moment, a.type, a.justifiee, a.motif, i.annee_id
     from app.absences a join app.inscriptions i on i.id=a.inscription_id where i.eleve_id=$1 order by a.date_absence desc limit 100`, [id]) : [];
-  return { eleve, inscriptions, paiements, absences };
+  return { eleve, inscriptions: inscriptions.map((i) => sansArgent(ctx, i)), paiements, absences };
 });
 
 const prochainMatricule = async (anneeId) => {
@@ -368,10 +384,16 @@ const prochainMatricule = async (anneeId) => {
 
 route("GET", "/eleves-matricule", async (ctx) => ({ matricule: await prochainMatricule(await anneeCourante(ctx.query.annee_id)) }));
 
+// Sans accès aux finances, on ne peut pas toucher à la formule ni aux réductions.
+const FORMULE = ["mensualite_speciale", "gratuit", "inscription_offerte", "reduction_inscription"];
+const sansFormule = (ctx, ins) => {
+  if (!ins || peut(ctx.user.role, "finances.lire")) return ins;
+  const o = { ...ins }; for (const k of FORMULE) delete o[k]; return o;
+};
 route("POST", "/eleves", async (ctx) => {
   exige(ctx, "eleves.ecrire");
   const e = pick(ctx.body.eleve, COLS_ELEVE);
-  const ins = ctx.body.inscription;
+  const ins = sansFormule(ctx, ctx.body.inscription);
   requis(e, [["nom", "Le nom"], ["prenom", "Le prénom"], ["sexe", "Le sexe"]]);
   requis(ins, [["classe_id", "La classe"]]);
   const annee = await anneeCourante(ins.annee_id);
@@ -416,6 +438,7 @@ route("DELETE", "/eleves/:id", async (ctx) => {
 route("POST", "/eleves/:id/inscriptions", async (ctx) => {
   exige(ctx, "eleves.ecrire");
   requis(ctx.body, [["classe_id", "La classe"]]);
+  ctx.body = sansFormule(ctx, ctx.body);
   const annee = await anneeCourante(ctx.body.annee_id);
   const r = await one(
     `insert into app.inscriptions (eleve_id, annee_id, classe_id, type, cantine, date_inscription, mensualite_speciale, gratuit, inscription_offerte, uniforme, tenue_sport, reduction_inscription, cours_soir)
@@ -433,7 +456,7 @@ route("PUT", "/inscriptions/:id", async (ctx) => {
     const ok = await one("select 1 as ok from app.classes c join app.inscriptions i on i.annee_id=c.annee_id where c.id=$1 and i.id=$2", [ctx.body.classe_id, ctx.params.id]);
     if (!ok) fail(400, "Cette classe n'appartient pas à la même année scolaire.");
   }
-  const r = await one(...updateSql("app.inscriptions", ctx.params.id, pick(ctx.body, COLS_INSC)));
+  const r = await one(...updateSql("app.inscriptions", ctx.params.id, pick(sansFormule(ctx, ctx.body), COLS_INSC)));
   await journal(ctx, "modification", "inscription", r.id, pick(ctx.body, COLS_INSC));
   return r;
 });
@@ -859,7 +882,7 @@ route("GET", "/sauvegarde", async (ctx) => {
 });
 
 // ── Types de paiement personnalisés ──
-route("GET", "/types-paiement", async () => q("select * from app.types_paiement order by actif desc, libelle"));
+route("GET", "/types-paiement", async (ctx) => { exige(ctx, "finances.lire"); return q("select * from app.types_paiement order by actif desc, libelle"); });
 route("POST", "/types-paiement", async (ctx) => {
   exige(ctx, "etablissement.ecrire");
   requis(ctx.body, [["libelle", "Le nom du type"]]);

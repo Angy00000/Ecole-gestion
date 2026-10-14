@@ -107,7 +107,7 @@ export default function Eleves() {
                   <tr key={r.id} className="click" onClick={() => nav(`/eleves/${r.id}`)}>
                     <td><div className="person">
                       <span className={`avatar ${r.sexe || ""}`}>{initiales(r.prenom, r.nom)}</span>
-                      <div><strong>{r.nom} {r.prenom}<BadgeFormule v={r} style={{ marginLeft: 6, height: 20 }} /></strong><span>{r.sexe === "F" ? "Fille" : r.sexe === "M" ? "Garçon" : ""}{r.type_inscription === "reinscription" ? " · réinscrit(e)" : r.type_inscription === "nouvelle" ? " · nouveau" : ""}</span></div>
+                      <div><strong>{r.nom} {r.prenom}{s.peut("finances.lire") && <BadgeFormule v={r} style={{ marginLeft: 6, height: 20 }} />}</strong><span>{r.sexe === "F" ? "Fille" : r.sexe === "M" ? "Garçon" : ""}{r.type_inscription === "reinscription" ? " · réinscrit(e)" : r.type_inscription === "nouvelle" ? " · nouveau" : ""}</span></div>
                     </div></td>
                     <td className="num muted">{r.matricule}</td>
                     <td>{r.classe ? <span className={`chip ${r.cycle || ""}`}>{r.classe}</span> : <span className="muted">—</span>}</td>

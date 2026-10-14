@@ -145,8 +145,8 @@ function InscriptionModal({ eleve, inscription, onClose }) {
         <div className="options-3">
           <label className="switch-card"><input type="checkbox" checked={v.uniforme} onChange={(e) => setV({ ...v, uniforme: e.target.checked })} /><strong>Uniforme</strong></label>
           <label className="switch-card"><input type="checkbox" checked={v.tenue_sport} onChange={(e) => setV({ ...v, tenue_sport: e.target.checked })} /><strong>Tenue de sport</strong></label>
-          {(v.cantine || !(classes.data?.find((c) => c.id === Number(v.classe_id))?.mensualite_cantine === 0)) && <label className="switch-card"><input type="checkbox" checked={v.cantine} onChange={(e) => setV({ ...v, cantine: e.target.checked })} /><strong>Cantine</strong></label>}
-          {classes.data?.find((c) => c.id === Number(v.classe_id))?.cours_soir > 0 && <label className="switch-card"><input type="checkbox" checked={v.cours_soir} onChange={(e) => setV({ ...v, cours_soir: e.target.checked })} /><strong>Cours du soir</strong></label>}
+          {(v.cantine || !(classes.data?.find((c) => c.id === Number(v.classe_id))?.mensualite_cantine === 0 || classes.data?.find((c) => c.id === Number(v.classe_id))?.cantine_dispo === false)) && <label className="switch-card"><input type="checkbox" checked={v.cantine} onChange={(e) => setV({ ...v, cantine: e.target.checked })} /><strong>Cantine</strong></label>}
+          {(classes.data?.find((c) => c.id === Number(v.classe_id))?.cours_soir > 0 || classes.data?.find((c) => c.id === Number(v.classe_id))?.cours_soir_dispo) && <label className="switch-card"><input type="checkbox" checked={v.cours_soir} onChange={(e) => setV({ ...v, cours_soir: e.target.checked })} /><strong>Cours du soir</strong></label>}
         </div>
         {(chCantine || chSoir) && (
           <div className="alert info" style={{ display: "grid", gap: 8 }}>
@@ -159,15 +159,16 @@ function InscriptionModal({ eleve, inscription, onClose }) {
             </Field>
           </div>
         )}
-        {ajouts.length > 0 && <p className="small muted">Ajouté au reste à payer : {ajouts.join(", ")}. Vous pourrez l'encaisser (en totalité ou en partie) avec « Encaisser ».</p>}
-        <TarifScolarite value={v} normal={classes.data?.find((c) => c.id === Number(v.classe_id))?.[v.cantine ? "mensualite_cantine" : "mensualite"]} onChange={(x) => setV({ ...v, ...x })} />
-        <ReductionInscription value={v} droit={classes.data?.find((c) => c.id === Number(v.classe_id))?.frais_inscription} onChange={(x) => setV({ ...v, ...x })} />
+        {s.peut("finances.lire") && ajouts.length > 0 && <p className="small muted">Ajouté au reste à payer : {ajouts.join(", ")}. Vous pourrez l'encaisser (en totalité ou en partie) avec « Encaisser ».</p>}
+        {s.peut("finances.lire") && <TarifScolarite value={v} normal={classes.data?.find((c) => c.id === Number(v.classe_id))?.[v.cantine ? "mensualite_cantine" : "mensualite"]} onChange={(x) => setV({ ...v, ...x })} />}
+        {s.peut("finances.lire") && <ReductionInscription value={v} droit={classes.data?.find((c) => c.id === Number(v.classe_id))?.frais_inscription} onChange={(x) => setV({ ...v, ...x })} />}
       </div>
     </Modal>
   );
 }
 
 function ChangerClasseModal({ eleve, inscription, onClose }) {
+  const s2 = useSession();
   const toast = useToast();
   const qc = useQueryClient();
   const [classe, setClasse] = useState("");
@@ -199,7 +200,7 @@ function ChangerClasseModal({ eleve, inscription, onClose }) {
             {classes.data?.filter((c) => c.id !== inscription.classe_id).map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
           </Select>
         </Field>
-        {nouvelle && (
+        {nouvelle && s2.peut("finances.lire") && (
           <table className="table small">
             <thead><tr><th></th><th className="r">{inscription.classe}</th><th className="r">{nouvelle.nom}</th></tr></thead>
             <tbody>
@@ -208,7 +209,7 @@ function ChangerClasseModal({ eleve, inscription, onClose }) {
             </tbody>
           </table>
         )}
-        <p className="small muted">Les paiements déjà faits sont conservés. Les montants dus et le reste à payer sont recalculés avec les tarifs de la nouvelle classe{inscription.mensualite_speciale || inscription.gratuit ? " (la formule spéciale de l'élève reste appliquée)" : ""}.</p>
+        {s2.peut("finances.lire") && <p className="small muted">Les paiements déjà faits sont conservés. Les montants dus et le reste à payer sont recalculés avec les tarifs de la nouvelle classe{inscription.mensualite_speciale || inscription.gratuit ? " (la formule spéciale de l'élève reste appliquée)" : ""}.</p>}
       </div>
     </Modal>
   );
@@ -266,7 +267,7 @@ export default function EleveFiche() {
               {courante?.uniforme && <span className="badge">Uniforme</span>}
               {courante?.tenue_sport && <span className="badge">Tenue de sport</span>}
               {courante && courante.prix_cours_soir > 0 && !courante.cours_soir && <span className="badge gold">Sans cours du soir</span>}
-              {courante && <BadgeFormule v={courante} />}
+              {courante && s.peut("finances.lire") && <BadgeFormule v={courante} />}
               {courante && courante.statut !== "active" && <span className="badge coral">{STATUTS[courante.statut]}</span>}
               {e.statut === "sorti" && <span className="badge coral">Sorti(e)</span>}
             </div>
@@ -295,7 +296,7 @@ export default function EleveFiche() {
           <div className="mini-stat"><span className="ic teal" style={{ display: "grid", placeItems: "center" }}><School size={18} /></span><div><div className="l">Classe</div><div className="v">{courante?.classe || "—"}</div></div></div>
           <div className="mini-stat"><span className={`ic ${e.sexe === "F" ? "rose" : "azure"}`} style={{ display: "grid", placeItems: "center" }}><Cake size={18} /></span><div><div className="l">Âge</div><div className="v">{a != null ? `${a} ans` : "—"}</div></div></div>
           <div className="mini-stat"><span className="ic gold" style={{ display: "grid", placeItems: "center" }}><CalendarCheck2 size={18} /></span><div><div className="l">Inscrit depuis</div><div className="v">{inscriptions.length ? inscriptions[inscriptions.length - 1].annee : "—"}</div></div></div>
-          <div className="mini-stat"><span className="ic green" style={{ display: "grid", placeItems: "center" }}><Wallet size={18} /></span><div><div className="l">Payé cette année</div><div className="v">{s.peut("finances.lire") ? fcfa(totalPaye) : "—"}</div></div></div>
+          {s.peut("finances.lire") && <div className="mini-stat"><span className="ic green" style={{ display: "grid", placeItems: "center" }}><Wallet size={18} /></span><div><div className="l">Payé cette année</div><div className="v">{fcfa(totalPaye)}</div></div></div>}
         </div>
       </div>
 
@@ -333,7 +334,7 @@ export default function EleveFiche() {
         <div className="card">
           <div className="table-wrap">
             <table className="table" style={{ marginTop: -1 }}>
-              <thead><tr><th>Année</th><th>Classe</th><th>Type</th><th className="hide-m">Date</th><th>Cantine</th><th className="hide-m r">Mensualité</th><th>Situation</th><th /></tr></thead>
+              <thead><tr><th>Année</th><th>Classe</th><th>Type</th><th className="hide-m">Date</th><th>Cantine</th>{s.peut("finances.lire") && <th className="hide-m r">Mensualité</th>}<th>Situation</th><th /></tr></thead>
               <tbody>
                 {inscriptions.map((i) => (
                   <tr key={i.id}>
@@ -342,7 +343,7 @@ export default function EleveFiche() {
                     <td>{i.type === "nouvelle" ? "Nouvelle" : "Réinscription"}</td>
                     <td className="hide-m num">{date(i.date_inscription)}</td>
                     <td>{i.cantine ? <span className="badge coral">Oui</span> : <span className="muted">Non</span>}</td>
-                    <td className="hide-m num r"><strong>{i.gratuit ? "Offerte" : fcfa(i.mensualite_speciale ?? ((i.cantine ? i.mensualite_cantine : i.mensualite) - (!i.cours_soir && i.prix_cours_soir > 0 ? i.prix_cours_soir : 0)))}</strong>{!i.gratuit && i.prix_cours_soir > 0 ? <div className="xs muted">{i.cours_soir ? "cours du soir compris" : "sans cours du soir"}</div> : null}{i.mensualite_speciale && !i.gratuit ? <div className="xs muted">personnalisée</div> : null}{i.inscription_offerte ? <div className="xs muted">inscription offerte</div> : i.reduction_inscription > 0 ? <div className="xs muted">réduction inscription −{fcfa(i.reduction_inscription)}</div> : null}</td>
+                    {s.peut("finances.lire") && <td className="hide-m num r"><strong>{i.gratuit ? "Offerte" : fcfa(i.mensualite_speciale ?? ((i.cantine ? i.mensualite_cantine : i.mensualite) - (!i.cours_soir && i.prix_cours_soir > 0 ? i.prix_cours_soir : 0)))}</strong>{!i.gratuit && i.prix_cours_soir > 0 ? <div className="xs muted">{i.cours_soir ? "cours du soir compris" : "sans cours du soir"}</div> : null}{i.mensualite_speciale && !i.gratuit ? <div className="xs muted">personnalisée</div> : null}{i.inscription_offerte ? <div className="xs muted">inscription offerte</div> : i.reduction_inscription > 0 ? <div className="xs muted">réduction inscription −{fcfa(i.reduction_inscription)}</div> : null}</td>}
                     <td><span className={`badge ${i.statut === "active" ? "green" : "coral"}`}>{STATUTS[i.statut]}</span></td>
                     <td className="r">{s.peut("eleves.ecrire") && <button className="btn sm ghost" onClick={() => setInsc(i)}><Pencil size={14} />Modifier</button>}</td>
                   </tr>

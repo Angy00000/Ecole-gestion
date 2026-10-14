@@ -122,7 +122,7 @@ function Fiche({ e, ins, etab }) {
       </div>
       <div className="d-sec"><h3>Scolarité</h3>
         <L l="Classe" v={ins?.classe} /><L l="Type" v={ins?.type === "reinscription" ? "Réinscription" : "Nouvelle inscription"} /><L l="Date d'inscription" v={ins && date(ins.date_inscription)} />
-        <L l="Cantine" v={ins?.cantine ? "Oui" : "Non"} /><L l="Mensualité" v={tarif} />
+        <L l="Cantine" v={ins?.cantine ? "Oui" : "Non"} />{ins?.mensualite != null && <L l="Mensualité" v={tarif} />}
       </div>
       <div className="d-grid2">
         <div className="d-sec"><h3>Père</h3><L l="Nom" v={[e.pere_prenom, e.pere_nom].filter(Boolean).join(" ")} /><L l="Profession" v={e.pere_profession} /><L l="Téléphone" v={e.pere_telephone} /></div>

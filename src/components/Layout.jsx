@@ -64,7 +64,7 @@ export default function Layout() {
         <nav className="nav" aria-label="Navigation principale">
           {NAV.filter((n) => !n.droit || s.peut(n.droit)).filter((n, i, arr) => !n.group || (arr[i + 1] && !arr[i + 1].group)).map((n, i) => n.group
             ? <div key={i} className="nav-group">{n.group}</div>
-            : <NavLink key={n.to} to={n.to} end={n.end} className={n.soon ? "soon" : undefined}><n.icon size={19} />{n.label}</NavLink>)}
+            : <NavLink key={n.to} to={n.to} end={n.end} className={n.soon ? "soon" : undefined}><n.icon size={19} />{n.to === "/classes" && !s.peut("finances.lire") ? "Classes" : n.label}</NavLink>)}
         </nav>
         <div className="side-user">
           <span className="avatar round gold">{initiales(u?.prenom, u?.nom)}</span>

@@ -390,7 +390,7 @@ export default function Parametres() {
   const tabs = [
     ["etablissement", "Établissement", true, Building2],
     ["annees", "Années scolaires", true, CalendarRange],
-    ["types-paiement", "Types de paiement", true, Tags],
+    ["types-paiement", "Types de paiement", s.peut("finances.lire"), Tags],
     ["utilisateurs", "Utilisateurs", s.peut("utilisateurs"), UsersRound],
     ["sauvegarde", "Sauvegarde", s.peut("etablissement.ecrire"), DatabaseBackup],
     ["journal", "Journal des actions", s.peut("journal.lire"), History],
