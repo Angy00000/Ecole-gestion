@@ -20,6 +20,7 @@ import Emploi from "./pages/Emploi";
 import Recettes from "./pages/Recettes";
 import Rapports from "./pages/Rapports";
 import Service from "./pages/Service";
+import Fournitures from "./pages/Fournitures";
 import MiseAJour from "./components/MiseAJour";
 import Documents from "./pages/Documents";
 import Factures, { FacturesImpression } from "./pages/Factures";
@@ -50,6 +51,7 @@ export default function App() {
         {s.peut("depenses.lire") && <Route path="recettes" element={<Recettes />} />}
         {s.peut("finances.lire") && <Route path="rapports" element={<Rapports />} />}
         {s.peut("finances.lire") && <Route path="services/:type" element={<Service />} />}
+        {s.peut("finances.lire") && <Route path="fournitures" element={<Fournitures />} />}
         {s.peut("pedagogie.lire") && <Route path="notes" element={<Notes />} />}
         {s.peut("pedagogie.lire") && <Route path="absences" element={<Absences />} />}
         {s.peut("pedagogie.lire") && <Route path="enseignants" element={<Enseignants />} />}

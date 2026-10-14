@@ -106,7 +106,8 @@ export function useForm(initial) {
 }
 
 export function PageHead({ title, sub, children, back }) {
-  useEffect(() => { document.title = `${title} — ESJBM`; }, [title]);
+  useEffect(() => { if (title) document.title = `${title} — ESJBM`; }, [title]);
+  if (!title) return children ? <div className="page-head" style={{ justifyContent: "flex-end" }}><div className="actions">{children}</div></div> : null;
   return (
     <div className="page-head">
       <div className="t">

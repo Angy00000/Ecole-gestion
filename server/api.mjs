@@ -441,7 +441,7 @@ route("PUT", "/inscriptions/:id", async (ctx) => {
 
 // ═══ FINANCES ══════════════════════════════════════════════════════════════
 const MODES = ["especes", "wave", "orange_money", "cheque", "virement"];
-const TYPES_LIGNE = ["inscription", "uniforme", "tenue_sport", "cantine", "mensualite", "fournitures", "cours_vacances", "transport", "autre", "cours_soir", "cotisation", "cantine_jour"];
+const TYPES_LIGNE = ["inscription", "uniforme", "tenue_sport", "cantine", "mensualite", "fournitures", "cours_vacances", "transport", "autre", "cours_soir", "cotisation", "cantine_jour", "article"];
 const TYPES_MOIS = ["mensualite", "cours_soir"];
 
 // Reste à payer par inscription, mois échus jusqu'à $2 (date). Paramètres : $1 année.
@@ -669,6 +669,7 @@ route("PUT", "/recus/:id", async (ctx) => {
   requis(b, [["motif", "Le motif de la modification"]]);
   const avant = await recuComplet(ctx.params.id);
   if (avant.annule) fail(400, "Un reçu annulé ne peut pas être modifié.");
+  if (avant.lignes.some((l) => l.type === "article")) fail(400, "Un reçu de vente de fournitures ne se modifie pas : supprimez-le (le jour même) ou annulez-le, puis refaites la vente.");
   if (!peutModifierRecu(ctx, avant)) fail(403, "Seule la direction peut modifier ce reçu. La personne qui a encaissé peut le corriger uniquement le jour même.");
   const lignes = lignesValides(b);
   const total = lignes.reduce((t, l) => t + Number(l.montant), 0);
@@ -791,6 +792,8 @@ route("GET", "/sauvegarde", async (ctx) => {
     recus: `select r.*, e.matricule, e.nom, e.prenom, u.prenom || ' ' || u.nom as encaisse_par_nom from app.recus r join app.inscriptions i on i.id=r.inscription_id join app.eleves e on e.id=i.eleve_id left join app.utilisateurs u on u.id=r.encaisse_par order by r.id`,
     paiements: "select p.*, r.numero from app.paiements p join app.recus r on r.id=p.recu_id order by p.id",
     depenses: "select * from app.depenses order by date_depense, id",
+    articles: "select * from app.articles order by nom",
+    mouvements_stock: "select m.*, a.nom as article from app.mouvements_stock m join app.articles a on a.id=m.article_id order by m.date_mouvement, m.id",
     recettes: "select * from app.recettes order by date_recette, id",
     classes: "select c.*, a.libelle as annee from app.classes c join app.annees a on a.id=c.annee_id order by a.debut, c.ordre",
     matieres: "select m.*, c.nom as classe from app.matieres m join app.classes c on c.id=m.classe_id order by c.id, m.ordre",
@@ -846,7 +849,7 @@ route("GET", "/services/:type", async (ctx) => {
   const annee = await anneeCourante(ctx.query.annee_id);
   const p = [annee, sv.types]; const w = ["i.annee_id=$1", "i.statut='active'"];
   if (ctx.query.classe_id) { p.push(ctx.query.classe_id); w.push(`i.classe_id=$${p.length}`); }
-  const rows = await q(`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle, i.cantine, i.uniforme as a_uniforme, i.tenue_sport as a_tenue,
+  const rows = await q(`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle, i.cantine, i.uniforme as a_uniforme, i.tenue_sport as a_tenue, i.fournitures_remises,
       coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
       ${sv.du} as du,
       coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type = any($2::text[])),0) as paye,
@@ -858,6 +861,132 @@ route("GET", "/services/:type", async (ctx) => {
   const total = rows.reduce((t, r) => t + r.paye, 0);
   const attendu = rows.reduce((t, r) => t + (r.du || 0), 0);
   return { type: ctx.params.type, rows, total, attendu, payeurs: rows.filter((r) => r.paye > 0).length };
+});
+
+// ═══ FOURNITURES : stock, mouvements, ventes ═══════════════════════════════
+const COLS_ART = ["nom", "categorie", "unite", "prix_achat", "prix_vente", "seuil", "actif"];
+const SQL_STOCK = `coalesce((select sum(case when m.sens in ('entree','ajustement') then m.quantite else -m.quantite end)
+  from app.mouvements_stock m left join app.recus r on r.id=m.recu_id where m.article_id=a.id and not coalesce(r.annule, false)), 0)`;
+const stockDe = async (id) => (await one(`select ${SQL_STOCK} as stock from app.articles a where a.id=$1`, [id]))?.stock ?? 0;
+
+route("GET", "/articles", async (ctx) => {
+  exige(ctx, "finances.lire");
+  return q(`select a.*, ${SQL_STOCK} as stock,
+      coalesce((select sum(m.quantite) from app.mouvements_stock m join app.recus r on r.id=m.recu_id and not r.annule where m.article_id=a.id and m.sens='vente'),0) as vendus
+    from app.articles a order by a.actif desc, a.nom`);
+});
+route("POST", "/articles", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const d = pick(ctx.body, COLS_ART);
+  requis(d, [["nom", "Le nom de l'article"]]);
+  const r = await one(...insertSql("app.articles", d));
+  if (Number(ctx.body.stock_initial) > 0)
+    await q("insert into app.mouvements_stock (article_id, sens, quantite, prix_unitaire, note, saisi_par) values ($1,'ajustement',$2,$3,'Stock initial',$4)", [r.id, Number(ctx.body.stock_initial), r.prix_achat, ctx.user.id]);
+  await journal(ctx, "creation", "article", r.id, { nom: r.nom });
+  return r;
+});
+route("PUT", "/articles/:id", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const r = await one(...updateSql("app.articles", ctx.params.id, pick(ctx.body, COLS_ART)));
+  await journal(ctx, "modification", "article", r.id, { nom: r.nom });
+  return r;
+});
+
+route("GET", "/mouvements", async (ctx) => {
+  exige(ctx, "finances.lire");
+  const w = ["1=1"]; const p = [];
+  if (ctx.query.article_id) { p.push(ctx.query.article_id); w.push(`m.article_id=$${p.length}`); }
+  if (ctx.query.sens) { p.push(ctx.query.sens); w.push(`m.sens=$${p.length}`); }
+  if (ctx.query.du) { p.push(ctx.query.du); w.push(`m.date_mouvement >= $${p.length}`); }
+  if (ctx.query.au) { p.push(ctx.query.au); w.push(`m.date_mouvement <= $${p.length}`); }
+  return q(`select m.*, a.nom as article, a.unite, c.nom as classe, r.numero as recu_numero, r.annule as recu_annule,
+      e.id as eleve_id, e.nom as eleve_nom, e.prenom as eleve_prenom, u.prenom || ' ' || u.nom as saisi_par_nom
+    from app.mouvements_stock m join app.articles a on a.id=m.article_id left join app.classes c on c.id=m.classe_id
+    left join app.recus r on r.id=m.recu_id left join app.inscriptions i on i.id=r.inscription_id left join app.eleves e on e.id=i.eleve_id
+    left join app.utilisateurs u on u.id=m.saisi_par
+    where ${w.join(" and ")} order by m.date_mouvement desc, m.id desc limit 500`, p);
+});
+route("POST", "/mouvements", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const b = ctx.body;
+  if (!["entree", "sortie", "ajustement"].includes(b.sens)) fail(400, "Type de mouvement invalide.");
+  const qte = Number(b.quantite);
+  if (!Number.isInteger(qte) || qte === 0 || (b.sens !== "ajustement" && qte < 0)) fail(400, "Quantité invalide.");
+  const art = await one("select * from app.articles where id=$1", [b.article_id]);
+  if (!art) fail(404, "Article introuvable.");
+  const stock = await stockDe(art.id);
+  if ((b.sens === "sortie" && qte > stock) || (b.sens === "ajustement" && stock + qte < 0)) fail(400, `Stock insuffisant : il reste ${stock} ${art.unite}(s) de ${art.nom}.`);
+  const pu = Math.max(Number(b.prix_unitaire) || 0, 0);
+  let depenseId = null;
+  if (b.sens === "entree" && b.creer_depense && pu * qte > 0) {
+    const d = await one(...insertSql("app.depenses", { date_depense: b.date_mouvement || new Date().toISOString().slice(0, 10), categorie: "fournitures",
+      libelle: `Achat ${art.nom} × ${qte}`, montant: pu * qte, mode: MODES.includes(b.mode) ? b.mode : "especes", beneficiaire: b.destinataire || null,
+      saisi_par: ctx.user.id, annee_id: await anneeCourante() }));
+    depenseId = d.id;
+  }
+  const r = await one(...insertSql("app.mouvements_stock", { article_id: art.id, sens: b.sens, quantite: qte, prix_unitaire: pu,
+    date_mouvement: b.date_mouvement || null, destinataire: b.destinataire || null, classe_id: b.classe_id || null, note: b.note || null,
+    depense_id: depenseId, saisi_par: ctx.user.id }));
+  if (b.sens === "entree" && pu > 0 && pu !== art.prix_achat) await q("update app.articles set prix_achat=$2 where id=$1", [art.id, pu]);
+  await journal(ctx, "creation", "mouvement_stock", r.id, { article: art.nom, sens: b.sens, quantite: qte });
+  return r;
+});
+route("DELETE", "/mouvements/:id", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const m = await one("select * from app.mouvements_stock where id=$1", [ctx.params.id]);
+  if (!m) fail(404, "Mouvement introuvable.");
+  if (m.sens === "vente") fail(400, "Une vente s'annule depuis son reçu.");
+  if (m.sens === "entree" || (m.sens === "ajustement" && m.quantite > 0)) {
+    const stock = await stockDe(m.article_id);
+    if (stock - m.quantite < 0) fail(400, "Impossible : une partie de ce stock a déjà été sortie ou vendue.");
+  }
+  await q("delete from app.mouvements_stock where id=$1", [m.id]);
+  await journal(ctx, "suppression", "mouvement_stock", m.id, { sens: m.sens, quantite: m.quantite });
+  return { ok: true, depense_id: m.depense_id };
+});
+
+route("POST", "/ventes", async (ctx) => {
+  exige(ctx, "finances.encaisser");
+  const b = ctx.body;
+  requis(b, [["inscription_id", "L'élève"]]);
+  if (!MODES.includes(b.mode || "especes")) fail(400, "Mode de paiement invalide.");
+  const items = (b.articles || []).filter((x) => Number(x.quantite) > 0);
+  if (!items.length) fail(400, "Ajoutez au moins un article.");
+  const arts = await q("select a.*, " + SQL_STOCK + " as stock from app.articles a where a.id = any($1::int[])", [`{${items.map((x) => Number(x.article_id)).join(",")}}`]);
+  const lignes = items.map((x) => {
+    const a = arts.find((y) => y.id === Number(x.article_id));
+    if (!a) fail(404, "Article introuvable.");
+    const qte = Number(x.quantite), pu = Number(x.prix ?? a.prix_vente);
+    if (!Number.isInteger(qte) || !Number.isInteger(pu) || pu <= 0) fail(400, `Prix ou quantité invalide pour ${a.nom}.`);
+    const deja = items.filter((y) => Number(y.article_id) === a.id).reduce((t, y) => t + Number(y.quantite), 0);
+    if (deja > a.stock) fail(400, `Stock insuffisant : il reste ${a.stock} ${a.unite}(s) de ${a.nom}.`);
+    return { a, qte, pu };
+  });
+  const ins = await one("select i.id, a.libelle from app.inscriptions i join app.annees a on a.id=i.annee_id where i.id=$1", [b.inscription_id]);
+  if (!ins) fail(404, "Inscription introuvable.");
+  const prefixe = "R" + ins.libelle.replace(/^\d{2}(\d{2})-\d{2}(\d{2})$/, "$1$2");
+  const total = lignes.reduce((t, l) => t + l.qte * l.pu, 0);
+  const p = [b.inscription_id, b.date_paiement || null, b.mode || "especes", total, b.reference || null, b.note || null, ctx.user.id, prefixe];
+  const vals = lignes.map((l) => { p.push(l.a.id, l.qte, l.pu, `${l.a.nom} × ${l.qte}`); const n = p.length; return `($${n - 3}::int, $${n - 2}::int, $${n - 1}::int, $${n}::text)`; });
+  const r = await one(
+    `with r as (
+       insert into app.recus (numero, inscription_id, date_paiement, mode, montant, reference, note, encaisse_par)
+       values ($8::text || '-' || lpad(nextval('app.recu_seq')::text, 5, '0'), $1::int, coalesce($2::date, current_date), $3::text, $4::int, $5::text, $6::text, $7::int) returning *),
+     v(article_id, quantite, pu, libelle) as (values ${vals.join(",")}),
+     l as (insert into app.paiements (recu_id, inscription_id, type, montant, libelle) select r.id, r.inscription_id, 'article', v.quantite * v.pu, v.libelle from r, v returning id),
+     m as (insert into app.mouvements_stock (article_id, date_mouvement, sens, quantite, prix_unitaire, recu_id, saisi_par)
+       select v.article_id, r.date_paiement, 'vente', v.quantite, v.pu, r.id, $7::int from r, v returning id)
+     select r.id, r.numero, r.montant, (select count(*) from l) as lignes, (select count(*) from m) as mouvements from r`, p);
+  await journal(ctx, "vente", "recu", r.id, { numero: r.numero, montant: r.montant });
+  return r;
+});
+
+route("PUT", "/inscriptions/:id/fournitures-remises", async (ctx) => {
+  exige(ctx, "finances.encaisser");
+  const r = await one("update app.inscriptions set fournitures_remises=$2 where id=$1 returning id, fournitures_remises", [ctx.params.id, ctx.body.remis ? (ctx.body.date || new Date().toISOString().slice(0, 10)) : null]);
+  if (!r) fail(404, "Inscription introuvable.");
+  await journal(ctx, "modification", "inscription", r.id, { fournitures_remises: r.fournitures_remises });
+  return r;
 });
 
 // ── Recettes diverses (hors élèves) ──

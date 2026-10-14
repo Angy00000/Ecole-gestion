@@ -35,9 +35,9 @@ export const CYCLES = { garderie: "Garderie", prescolaire: "Préscolaire", eleme
 export const TYPES = {
   inscription: "Droit d'inscription", uniforme: "Uniforme", tenue_sport: "Tenue de sport", cantine: "Inscription cantine",
   mensualite: "Mensualité", fournitures: "Fournitures", cours_vacances: "Cours de vacances", transport: "Transport", autre: "Autre",
-  cours_soir: "Cours du soir", cotisation: "Cotisation des fêtes", cantine_jour: "Cantine journalière",
+  cours_soir: "Cours du soir", cotisation: "Cotisation des fêtes", cantine_jour: "Cantine journalière", article: "Vente de fournitures",
 };
-export const TYPES_COURTS = { inscription: "Inscription", uniforme: "Uniforme", tenue_sport: "Tenue de sport", cantine: "Cantine", mensualite: "Mensualité", fournitures: "Fournitures", cours_vacances: "Cours de vacances", transport: "Transport", autre: "Autre", cours_soir: "Cours du soir", cotisation: "Cotisation fêtes", cantine_jour: "Cantine du jour" };
+export const TYPES_COURTS = { inscription: "Inscription", uniforme: "Uniforme", tenue_sport: "Tenue de sport", cantine: "Cantine", mensualite: "Mensualité", fournitures: "Fournitures", cours_vacances: "Cours de vacances", transport: "Transport", autre: "Autre", cours_soir: "Cours du soir", cotisation: "Cotisation fêtes", cantine_jour: "Cantine du jour", article: "Vente fournitures" };
 export const CATEGORIES_RECETTES = { dons: "Dons", subventions: "Subventions", location: "Location de locaux", evenements: "Fêtes et événements", ventes: "Ventes", cotisations: "Cotisations (APE…)", autre: "Autre" };
 export const MODES = { especes: "Espèces", wave: "Wave", orange_money: "Orange Money", cheque: "Chèque", virement: "Virement" };
 export const MODE_COULEUR = { especes: "var(--green)", wave: "#1da1f2", orange_money: "#f47b20", cheque: "var(--azure)", virement: "var(--teal)" };

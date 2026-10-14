@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { Download, Wallet, Search, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, CheckCircle2, Clock, Printer } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Download, Wallet, Search, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, CheckCircle2, Clock, Printer, PackageCheck, ShoppingCart } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, initiales, moisAbr, nombre } from "../lib/format";
-import { Select, Spinner, ErrorBox, Empty, PageHead } from "../components/ui";
+import { Select, Spinner, ErrorBox, Empty, PageHead, useToast } from "../components/ui";
 import Encaissement from "../components/Encaissement";
 
 const CONF = {
@@ -16,8 +16,15 @@ const CONF = {
   cotisation: { titre: "Cotisation des fêtes", icon: PartyPopper, tone: "rose", sub: "Cotisations pour les fêtes de l'école", attendu: "Total attendu" },
 };
 
-export default function Service() {
-  const { type } = useParams();
+export default function Service({ typeFixe, embedded, onVendre }) {
+  const params = useParams();
+  const type = typeFixe || params.type;
+  const qc = useQueryClient();
+  const toast = useToast();
+  const remettre = async (r, remis) => {
+    try { await api.put(`/inscriptions/${r.inscription_id}/fournitures-remises`, { remis }); qc.invalidateQueries({ queryKey: ["service"] }); toast(remis ? `Kit remis à ${r.prenom} ${r.nom}` : "Remise annulée"); }
+    catch (e) { toast(e.message, "error"); }
+  };
   const c = CONF[type];
   const s = useSession();
   const nav = useNavigate();
@@ -38,6 +45,7 @@ export default function Service() {
     if (filtre === "non_payes") return st === "du" || st === "partiel";
     if (filtre === "payeurs") return r.paye > 0;
     if (filtre === "cantine") return r.cantine || r.paye > 0;
+    if (filtre === "a_remettre") return r.paye > 0 && !r.fournitures_remises;
     return true;
   });
   const exporter = () => {
@@ -51,7 +59,7 @@ export default function Service() {
 
   return (
     <>
-      <PageHead title={c.titre} sub={`${c.sub} — ${s.annee?.libelle}`}>
+      <PageHead title={embedded ? null : c.titre} sub={embedded ? null : `${c.sub} — ${s.annee?.libelle}`}>
         {rows.length > 0 && <button className="btn" onClick={exporter}><Download size={17} /><span className="hide-m">Exporter en Excel</span></button>}
         {rows.length > 0 && <button className="btn primary" onClick={() => nav(`/documents?type=service&svc=${type}&filtre=${filtre}${classe ? `&classe=${classe}` : ""}`)}><Printer size={17} />Imprimer par classe</button>}
       </PageHead>
@@ -75,6 +83,7 @@ export default function Service() {
             <button className={filtre === "tous" ? "on" : ""} onClick={() => setFiltre("tous")}>Tous</button>
             {c.attendu && type !== "cantine" && <><button className={filtre === "payes" ? "on" : ""} onClick={() => setFiltre("payes")}>Payé</button><button className={filtre === "non_payes" ? "on" : ""} onClick={() => setFiltre("non_payes")}>Non payé</button></>}
             {type === "cantine" && <button className={filtre === "non_payes" ? "on" : ""} onClick={() => setFiltre("non_payes")}>Non payé</button>}
+            {type === "fournitures" && <button className={filtre === "a_remettre" ? "on" : ""} onClick={() => setFiltre("a_remettre")}>Kit à remettre</button>}
           </div>
         </div>
         {isLoading ? <Spinner /> : error ? <div style={{ padding: 18 }}><ErrorBox error={error} /></div> : !rows.length ? (
@@ -82,7 +91,7 @@ export default function Service() {
         ) : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Élève</th><th>Classe</th>{type === "uniforme" && <th className="hide-m">Commandé</th>}{type === "cantine" && <th className="hide-m">Demi-pension</th>}{c.attendu && <th className="r hide-m">Attendu</th>}<th className="r">Payé</th>{type === "cours_soir" && <th className="hide-m">Mois payés</th>}<th>État</th><th className="hide-m">Dernier paiement</th><th /></tr></thead>
+              <thead><tr><th>Élève</th><th>Classe</th>{type === "uniforme" && <th className="hide-m">Commandé</th>}{type === "cantine" && <th className="hide-m">Demi-pension</th>}{c.attendu && <th className="r hide-m">Attendu</th>}<th className="r">Payé</th>{type === "cours_soir" && <th className="hide-m">Mois payés</th>}<th>État</th>{type === "fournitures" && <th>Kit remis</th>}{type !== "fournitures" && <th className="hide-m">Dernier paiement</th>}<th /></tr></thead>
               <tbody>
                 {rows.map((r) => {
                   const st = statut(r);
@@ -96,8 +105,11 @@ export default function Service() {
                       <td className="r amount" style={{ color: r.paye ? "var(--green)" : "var(--muted)" }}>{fcfa(r.paye)}{type === "cantine" && r.paye_jour > 0 && <div className="xs muted">dont {fcfa(r.paye_jour)} au jour</div>}</td>
                       {type === "cours_soir" && <td className="hide-m"><div className="row" style={{ flexWrap: "wrap", gap: 4 }}>{(r.mois || "").split(",").filter(Boolean).sort().map((m) => <span key={m} className="badge azure" style={{ background: "var(--azure-50)", color: "var(--azure)" }}>{moisAbr(m)}</span>)}</div></td>}
                       <td>{st === "paye" ? <span className="badge green">Payé</span> : st === "partiel" ? <span className="badge gold">Reste {fcfa(r.du - r.paye)}</span> : st === "du" ? <span className="badge coral">Non payé</span> : <span className="muted small">—</span>}</td>
-                      <td className="hide-m num">{r.dernier ? date(r.dernier) : "—"}</td>
-                      <td className="r">{s.peut("finances.encaisser") && <button className="btn sm" onClick={() => setEnc(r)}><Wallet size={15} /><span className="hide-m">Encaisser</span></button>}</td>
+                      {type === "fournitures" && <td>{r.fournitures_remises
+                        ? <button className="badge green" style={{ border: 0, cursor: "pointer" }} title="Cliquer pour annuler" onClick={() => s.peut("finances.encaisser") && remettre(r, false)}><PackageCheck size={12} />Le {date(r.fournitures_remises)}</button>
+                        : s.peut("finances.encaisser") ? <button className="btn sm ghost" onClick={() => remettre(r, true)}><PackageCheck size={15} />Remettre</button> : <span className="muted small">Non</span>}</td>}
+                      {type !== "fournitures" && <td className="hide-m num">{r.dernier ? date(r.dernier) : "—"}</td>}
+                      <td className="r" style={{ whiteSpace: "nowrap" }}>{s.peut("finances.encaisser") && <button className="btn sm" onClick={() => setEnc(r)}><Wallet size={15} /><span className="hide-m">Encaisser</span></button>}{onVendre && s.peut("finances.encaisser") && <> <button className="btn sm ghost" onClick={() => onVendre(r)} title="Vendre des articles"><ShoppingCart size={15} /></button></>}</td>
                     </tr>
                   );
                 })}
