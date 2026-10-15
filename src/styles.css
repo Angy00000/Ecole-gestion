@@ -1038,3 +1038,4 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .fr-li::before { content: "●"; position: absolute; left: 0; color: #1d6b78; font-size: 8px; top: 1px; }
 .fr-p { margin: 2px 0; padding: 3px 7px; background: #fff8e2; border-left: 3px solid #f6c945; line-height: 1.4; }
 .fr-foot { margin-top: auto; display: flex; justify-content: space-between; border-top: 1px solid #dce5e7; padding-top: 5px; font-size: 9.5px; color: #1d6b78; font-weight: 700; }
+.avec-total tbody tr:last-child td { font-weight: 800; background: #f3f8f9; border-top: 2px solid #123f4a; }

@@ -22,6 +22,7 @@ import Rapports from "./pages/Rapports";
 import Service from "./pages/Service";
 import Fournitures from "./pages/Fournitures";
 import Vierges, { ViergesImpression } from "./pages/Vierges";
+import Listes, { ListeImpression } from "./pages/Listes";
 import MiseAJour from "./components/MiseAJour";
 import Documents from "./pages/Documents";
 import Factures, { FacturesImpression } from "./pages/Factures";
@@ -38,6 +39,7 @@ export default function App() {
       <Route path="recus/:id" element={<Recu />} />
       <Route path="documents" element={<Documents />} />
       <Route path="imprimes/imprimer" element={<ViergesImpression />} />
+      <Route path="listes/imprimer" element={<ListeImpression />} />
       {s.peut("finances.lire") && <Route path="factures/imprimer" element={<FacturesImpression />} />}
       {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}
       <Route element={<Layout />}>
@@ -46,6 +48,7 @@ export default function App() {
         <Route path="eleves/:id" element={<EleveFiche />} />
         <Route path="classes" element={<Classes />} />
         <Route path="imprimes" element={<Vierges />} />
+        <Route path="listes" element={<Listes />} />
         <Route path="parametres/*" element={<Parametres />} />
         {s.peut("finances.lire") && <Route path="paiements" element={<Encaissements />} />}
         {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
