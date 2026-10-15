@@ -1011,3 +1011,30 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .droits-grp { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; }
 .droits-grp h4 { font-size: 13px; margin: 0 0 2px; }
 @media (max-width: 700px) { .droits-grid { grid-template-columns: 1fr; } }
+
+/* Fiche de renseignement */
+.fr { font-size: 10.5px; padding: 9mm 11mm 8mm; }
+.fr-head { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #1d6b78; padding-bottom: 8px; margin-bottom: 8px; }
+.fr-head img { width: 54px; height: 54px; object-fit: contain; }
+.fr-ecole { flex: 1; display: flex; flex-direction: column; line-height: 1.35; }
+.fr-ecole strong { font-family: var(--f-display); font-size: 15px; color: #1d6b78; text-transform: uppercase; }
+.fr-ecole span { font-size: 9.5px; color: #4a6168; }
+.fr-ecole span:nth-child(2) { color: #b78a14; font-style: italic; }
+.fr-titre { display: flex; flex-direction: column; align-items: flex-end; text-align: right; font-size: 9px; color: #4a6168; line-height: 1.4; }
+.fr-titre strong { font-family: var(--f-display); font-size: 16px; color: #123f4a; text-transform: uppercase; }
+.fr-annee { background: #f6c945; color: #123f4a !important; font-weight: 800; padding: 2px 8px; border-radius: 4px; margin: 2px 0; font-size: 10px !important; }
+.fr-bar { background: #1d6b78; color: #fff; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding: 5px 10px; border-radius: 4px; margin: 9px 0 6px; }
+.fr h5 { font-size: 10px; color: #b78a14; text-transform: uppercase; margin: 4px 0 3px; }
+.fr-2col { display: grid; grid-template-columns: 1fr 1.2fr; gap: 12px; }
+.fr-tab { width: 100%; border-collapse: collapse; font-size: 9.5px; }
+.fr-tab th { background: #e8f2f3; color: #123f4a; font-weight: 800; padding: 3px 4px; text-transform: uppercase; font-size: 8.5px; }
+.fr-tab td { padding: 2.5px 4px; text-align: center; border-bottom: 1px solid #e3ecee; }
+.fr-tab td:first-child { text-align: left; font-weight: 800; color: #b78a14; }
+.fr-tot { font-weight: 800; color: #1d6b78; }
+.fr-infos { columns: 2; column-gap: 16px; }
+.fr-bloc { break-inside: avoid; margin-bottom: 6px; }
+.fr-bloc h4 { font-size: 10px; color: #b78a14; text-transform: uppercase; margin: 0 0 3px; }
+.fr-li { margin: 1px 0; padding-left: 12px; position: relative; line-height: 1.4; }
+.fr-li::before { content: "●"; position: absolute; left: 0; color: #1d6b78; font-size: 8px; top: 1px; }
+.fr-p { margin: 2px 0; padding: 3px 7px; background: #fff8e2; border-left: 3px solid #f6c945; line-height: 1.4; }
+.fr-foot { margin-top: auto; display: flex; justify-content: space-between; border-top: 1px solid #dce5e7; padding-top: 5px; font-size: 9.5px; color: #1d6b78; font-weight: 700; }

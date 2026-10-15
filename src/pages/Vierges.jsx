@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Printer, FileText, ClipboardList, Award, ShieldCheck, IdCard, ListOrdered, Receipt, BadgeDollarSign } from "lucide-react";
+import { ArrowLeft, Printer, FileText, ClipboardList, Award, ShieldCheck, IdCard, ListOrdered, Receipt, BadgeDollarSign, Pencil } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa } from "../lib/format";
-import { Spinner, ErrorBox, PageHead } from "../components/ui";
+import { Spinner, ErrorBox, PageHead, Modal, useToast } from "../components/ui";
 import Partager from "../components/Partager";
 import { EnTete } from "./Documents";
 
@@ -107,44 +108,92 @@ function FicheInscription({ etab, annee }) {
   );
 }
 
-function Tarifs({ etab, annee, classes }) {
-  const MOIS = ["Oct.", "Nov.", "Déc.", "Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin"];
-  const jf = (i) => i === 3 || i === 4;
-  const avecCantine = classes.filter((c) => c.mensualite_cantine > 0);
-  const ligne = (c, cant) => MOIS.map((_, i) => (i === 8 ? 0 : cant ? (jf(i) ? c.mensualite_cantine_jan_fev : c.mensualite_cantine) : (jf(i) ? c.mensualite_jan_fev : c.mensualite)));
-  const inscr = (c, cant) => c.frais_inscription + c.uniforme + c.tenue_sport + (cant ? c.frais_cantine : 0);
-  const n = (x) => (x ? fcfa(x) : "—");
+export const INFOS_DEFAUT = `## Inscription & mensualité
+- Quelle que soit la date d'inscription, tous les mois de l'année scolaire sont à payer.
+- Le parent qui inscrit son enfant s'engage à payer la scolarité annuelle.
+- Le mois de juin est payé en deux tranches (janvier et février).
+- La scolarité s'arrête le 10 juin, correspondant au paiement de la mensualité de mai.
+- Tous les élèves sont invités à intégrer la cantine pour une meilleure surveillance aux heures de pause.
+- Anglais et informatique : gratuits et obligatoires pour tous les cycles (préscolaire, élémentaire).
+- Les cours de renforcement sont obligatoires et inclus dans la mensualité.
+## Sport & culture
+- Tournoi de foot interclasses — 8e édition.
+- Prestations prévues : majorettes, danses traditionnelles, danses classiques et théâtre.
+## Pièces à fournir
+Les inscriptions et réinscriptions débutent le mercredi 01 juillet 2026.
+- 2 extraits de naissance
+- 1 fiche de renseignement à remplir et retourner à l'école
+- 1 certificat de scolarité de l'école d'origine et le bulletin de notes de fin d'année (pour les nouveaux)
+Bureaux ouverts du mercredi 01 juillet au samedi 08 août. Retour de l'administration le lundi 31 août 2026.
+## Uniforme, tenue de sport & cours de vacances
+- Le port de l'uniforme et de la tenue de sport est obligatoire. Blousons : 15 000F.
+- Cours de vacances du lundi 31 août au vendredi 25 septembre 2026, de 9h à 13h — 5 000F par élève, obligatoires pour les nouveaux et du CI au CM2.
+## Rentrée scolaire
+- Distribution des fournitures et tenues à partir du lundi 22 septembre 2026, pour les élèves inscrits ayant payé fournitures et tenue.
+- Rentrée des enseignants : lundi 05 octobre 2026 · Rentrée des élèves : mercredi 07 octobre 2026.`;
+
+// Petit format texte : « ## Titre », « - puce », autres lignes = paragraphe.
+export function TexteInfos({ texte }) {
+  const blocs = []; let cur = null;
+  (texte || "").split("\n").forEach((l) => {
+    const t = l.trim(); if (!t) return;
+    if (t.startsWith("## ")) { cur = { titre: t.slice(3), lignes: [] }; blocs.push(cur); return; }
+    if (!cur) { cur = { titre: "", lignes: [] }; blocs.push(cur); }
+    cur.lignes.push(t);
+  });
   return (
-    <article className="doc a4 vierge tarifs">
-      <EnTete etab={etab} />
-      <h1 className="d-title">Fiche de renseignements {annee}</h1>
-      <p className="d-num">Frais d'inscription et mensualités</p>
-      <h3 className="v-h">Inscription</h3>
-      <table className="b-table d-list v-tab">
-        <thead><tr><th>Classe</th><th>Droit d'inscription</th><th>Uniforme</th><th>Tenue de sport</th><th>Total sans cantine</th><th>Inscription cantine</th><th>Total avec cantine</th></tr></thead>
-        <tbody>{classes.map((c) => <tr key={c.id}><td><strong>{c.nom}</strong></td><td>{n(c.frais_inscription)}</td><td>{n(c.uniforme)}</td><td>{n(c.tenue_sport)}</td><td><strong>{fcfa(inscr(c, false))}</strong></td><td>{c.mensualite_cantine > 0 ? n(c.frais_cantine) : "—"}</td><td>{c.mensualite_cantine > 0 ? <strong>{fcfa(inscr(c, true))}</strong> : "—"}</td></tr>)}</tbody>
-      </table>
-      <h3 className="v-h">Mensualités sans cantine</h3>
-      <table className="b-table d-list v-tab">
-        <thead><tr><th>Classe</th>{MOIS.map((m) => <th key={m}>{m}</th>)}</tr></thead>
-        <tbody>{classes.map((c) => <tr key={c.id}><td><strong>{c.nom}</strong></td>{ligne(c, false).map((x, i) => <td key={i} className={jf(i) ? "v-jf" : ""}>{fcfa(x).replace(" F", "")}</td>)}</tr>)}</tbody>
-      </table>
-      {avecCantine.length > 0 && <>
-        <h3 className="v-h">Mensualités avec cantine</h3>
-        <table className="b-table d-list v-tab">
-          <thead><tr><th>Classe</th>{MOIS.map((m) => <th key={m}>{m}</th>)}</tr></thead>
-          <tbody>{avecCantine.map((c) => <tr key={c.id}><td><strong>{c.nom}</strong></td>{ligne(c, true).map((x, i) => <td key={i} className={jf(i) ? "v-jf" : ""}>{fcfa(x).replace(" F", "")}</td>)}</tr>)}</tbody>
-        </table>
-      </>}
-      <div className="d-sec" style={{ marginTop: 12 }}><h3>À savoir</h3>
-        <ul className="v-ul">
-          <li>Le mois de juin est payé en deux moitiés, ajoutées aux mensualités de janvier et de février.</li>
-          {classes.some((c) => c.cours_soir > 0) && <li>Les cours de renforcement (cours du soir) sont compris dans la mensualité.</li>}
-          <li>Pièces à fournir : 2 extraits de naissance, la fiche d'inscription remplie, et pour les nouveaux le certificat de scolarité et le bulletin de l'école d'origine.</li>
-          <li>Le port de l'uniforme et de la tenue de sport est obligatoire.</li>
-        </ul>
+    <div className="fr-infos">
+      {blocs.map((b, i) => (
+        <section key={i} className="fr-bloc">
+          {b.titre && <h4>{b.titre}</h4>}
+          {b.lignes.map((l, j) => l.startsWith("- ") ? <p key={j} className="fr-li">{l.slice(2)}</p> : <p key={j} className="fr-p">{l}</p>)}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function Tarifs({ etab, annee, classes }) {
+  const MOIS = ["OCT", "NOV", "DÉC", "JANV", "FÉV", "MARS", "AVR", "MAI", "JUIN"];
+  const jf = (i) => i === 3 || i === 4;
+  // On regroupe les classes qui ont exactement les mêmes tarifs (PS/MS/GS, CI/CP…)
+  const groupes = [];
+  classes.forEach((c) => {
+    const cle = [c.frais_inscription, c.uniforme + c.tenue_sport, c.frais_cantine, c.mensualite, c.mensualite_jan_fev, c.mensualite_cantine, c.mensualite_cantine_jan_fev].join("|");
+    const g = groupes.find((x) => x.cle === cle);
+    if (g) g.noms.push(c.nom); else groupes.push({ cle, noms: [c.nom], c });
+  });
+  const lignes = groupes.map((g) => ({ ...g.c, nom: g.noms.join("/"), us: g.c.uniforme + g.c.tenue_sport }));
+  const avecCantine = lignes.filter((c) => c.mensualite_cantine > 0);
+  const mois = (c, cant) => MOIS.map((_, i) => (i === 8 ? 0 : cant ? (jf(i) ? c.mensualite_cantine_jan_fev : c.mensualite_cantine) : (jf(i) ? c.mensualite_jan_fev : c.mensualite)));
+  const f = (x) => (x ? fcfa(x).replace(" F", "F") : "—");
+  return (
+    <article className="doc a4 vierge fr">
+      <header className="fr-head">
+        <img src="/logo.png" alt="" />
+        <div className="fr-ecole"><strong>{etab.nom}</strong><span>« {etab.slogan || "Éduquer c'est rendre libre !"} » — {etab.adresse}</span><span>Tél : {etab.telephones}</span></div>
+        <div className="fr-titre"><strong>Fiche de renseignement</strong><span className="fr-annee">Année scolaire {annee.replace("-", " / ")}</span>
+          <span>{etab.autorisation && `Aut. ${/^n\s*°/i.test(etab.autorisation) ? etab.autorisation : `n° ${etab.autorisation}`}`}</span><span>{[etab.ninea && `NINEA : ${etab.ninea}`, etab.bp && `BP : ${etab.bp}`].filter(Boolean).join(" • ")}</span></div>
+      </header>
+      <h3 className="fr-bar">Frais d'inscription</h3>
+      <div className="fr-2col">
+        <div><h5>Sans cantine</h5>
+          <table className="fr-tab"><thead><tr><th>Classe</th><th>Droit d'inscription</th><th>Uniforme & sport</th><th>Total</th></tr></thead>
+            <tbody>{lignes.map((c) => <tr key={c.nom}><td>{c.nom}</td><td>{f(c.frais_inscription)}</td><td>{f(c.us)}</td><td className="fr-tot">{f(c.frais_inscription + c.us)}</td></tr>)}</tbody></table></div>
+        <div><h5>Avec cantine</h5>
+          <table className="fr-tab"><thead><tr><th>Classe</th><th>Droit</th><th>Unif. & sport</th><th>Cantine</th><th>Total</th></tr></thead>
+            <tbody>{lignes.map((c) => <tr key={c.nom}><td>{c.nom}</td><td>{f(c.frais_inscription)}</td><td>{f(c.us)}</td><td>{f(c.mensualite_cantine > 0 ? c.frais_cantine : 0)}</td><td className="fr-tot">{c.mensualite_cantine > 0 ? f(c.frais_inscription + c.us + c.frais_cantine) : "—"}</td></tr>)}</tbody></table></div>
       </div>
-      <p className="v-fait" style={{ marginTop: "auto" }}>La Direction</p>
+      <h3 className="fr-bar">Mensualités {annee.replace("-", " / ")}</h3>
+      <h5>Sans cantine</h5>
+      <table className="fr-tab"><thead><tr><th>Classe / mois</th>{MOIS.map((m) => <th key={m}>{m}</th>)}</tr></thead>
+        <tbody>{lignes.map((c) => <tr key={c.nom}><td>{c.nom}</td>{mois(c, false).map((x, i) => <td key={i} className={jf(i) ? "v-jf" : ""}>{fcfa(x).replace(" F", "F")}</td>)}</tr>)}</tbody></table>
+      {avecCantine.length > 0 && <><h5>Avec cantine</h5>
+        <table className="fr-tab"><thead><tr><th>Classe / mois</th>{MOIS.map((m) => <th key={m}>{m}</th>)}</tr></thead>
+          <tbody>{avecCantine.map((c) => <tr key={c.nom}><td>{c.nom}</td>{mois(c, true).map((x, i) => <td key={i} className={jf(i) ? "v-jf" : ""}>{fcfa(x).replace(" F", "F")}</td>)}</tr>)}</tbody></table></>}
+      <h3 className="fr-bar">Informations importantes</h3>
+      <TexteInfos texte={etab.fiche_infos || INFOS_DEFAUT} />
+      <footer className="fr-foot"><span>La Direction</span><span>{etab.site_web || ""}</span><span>★ ★ ★</span></footer>
     </article>
   );
 }
@@ -259,7 +308,7 @@ function RecuVierge({ etab }) {
 
 const DOCS = {
   fiche: { titre: "Fiche d'inscription complète", sub: "2 pages : élève, parents, situation familiale, urgences, fiche médicale (vaccins, maladies, allergies), autorisations", icon: ClipboardList, format: "A4", C: FicheInscription },
-  tarifs: { titre: "Fiche des tarifs", sub: "Frais d'inscription et mensualités de chaque classe, mois par mois (tarifs du logiciel)", icon: BadgeDollarSign, format: "A4", C: Tarifs },
+  tarifs: { titre: "Fiche de renseignement", sub: "Tarifs d'inscription et mensualités (remplis automatiquement), informations importantes, pièces à fournir, rentrée", icon: BadgeDollarSign, format: "A4", C: Tarifs },
   autorisation: { titre: "Autorisation parentale", sub: "Personnes autorisées, sorties, photos, urgence médicale", icon: ShieldCheck, format: "A4", C: Autorisation },
   certificat: { titre: "Certificat de scolarité", sub: "Modèle vierge à remplir à la main", icon: Award, format: "A4", C: Certificat },
   cartes: { titre: "Cartes scolaires", sub: "8 cartes vierges par page", icon: IdCard, format: "A4", C: Cartes },
@@ -295,6 +344,8 @@ export function ViergesImpression() {
   const classes = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }), enabled: doc === "tarifs" });
   const etab = s.etablissement, annee = s.annee?.libelle || "";
   const d = DOCS[doc];
+  const [editInfos, setEditInfos] = useState(null);
+  const toast = useToast();
   if (!d) return <div style={{ padding: 32 }}><ErrorBox error={new Error("Document inconnu.")} /></div>;
   if (doc === "tarifs" && classes.isLoading) return <Spinner />;
   if (doc === "tarifs" && classes.error) return <div style={{ padding: 32 }}><ErrorBox error={classes.error} /></div>;
@@ -308,9 +359,21 @@ export function ViergesImpression() {
         <span className="grow"><strong>{d.titre}</strong> (vierge)</span>
         {doc !== "tarifs" && <label className="small row" style={{ gap: 6, alignItems: "center" }}>Exemplaires
           <input className="input" type="number" min={1} max={30} value={nb} onChange={(e) => setP({ doc, n: e.target.value })} style={{ width: 70, height: 38 }} /></label>}
+        {doc === "tarifs" && s.peut("etablissement.ecrire") && <button className="btn" onClick={() => setEditInfos(etab.fiche_infos || INFOS_DEFAUT)}><Pencil size={17} />Modifier le texte</button>}
         <Partager format={d.format} nom={`${d.titre}-vierge`} message={`${d.titre} — ${etab.nom}`} />
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
+      {editInfos != null && (
+        <Modal wide title="Texte de la fiche de renseignement" onClose={() => setEditInfos(null)} footer={<>
+          <button className="btn" onClick={() => setEditInfos(INFOS_DEFAUT)}>Texte par défaut</button>
+          <span className="grow" />
+          <button className="btn" onClick={() => setEditInfos(null)}>Annuler</button>
+          <button className="btn primary" onClick={async () => { try { await api.put("/etablissement", { fiche_infos: editInfos }); toast("Texte enregistré"); s.refresh(); setEditInfos(null); } catch (e) { toast(e.message, "error"); } }}>Enregistrer</button>
+        </>}>
+          <p className="small muted" style={{ marginBottom: 8 }}>Une ligne qui commence par <b>##</b> = un titre · par <b>-</b> = une puce · les autres lignes = un paragraphe. Les tarifs, eux, viennent automatiquement de « Classes et tarifs ».</p>
+          <textarea className="textarea" style={{ width: "100%", minHeight: 380, fontFamily: "inherit", fontSize: 13 }} value={editInfos} onChange={(e) => setEditInfos(e.target.value)} />
+        </Modal>
+      )}
       <div className="tickets">{Array.from({ length: copies }, (_, i) => <Comp key={i} etab={etab} annee={annee} classes={classes.data || []} />)}</div>
     </div>
   );
