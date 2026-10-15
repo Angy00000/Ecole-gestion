@@ -157,7 +157,7 @@ const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in ob
 const COLS_ELEVE = ["nom","prenom","sexe","date_naissance","lieu_naissance","adresse","pere_nom","pere_prenom","pere_profession","pere_telephone","mere_nom","mere_prenom","mere_profession","mere_telephone","tuteur_nom","tuteur_telephone","observations","statut"];
 const COLS_CLASSE = ["nom","cycle","ordre","capacite","titulaire_id","bareme","frais_inscription","uniforme","tenue_sport","cours_soir","mensualite","mensualite_jan_fev","mensualite_cantine","mensualite_cantine_jan_fev","frais_cantine"];
 const COLS_INSC = ["classe_id","cantine","cours_soir","uniforme","tenue_sport","reduction_inscription","statut","mensualite_speciale","gratuit","inscription_offerte","date_inscription","type","cantine_debut","cantine_fin","cours_soir_debut","cours_soir_fin"];
-const COLS_ETAB = ["nom","slogan","adresse","telephones","email","site_web","ninea","bp","autorisation","logo","directeur","ville","fiche_infos"];
+const COLS_ETAB = ["nom","slogan","adresse","telephones","email","site_web","ninea","bp","autorisation","logo","directeur","ville","fiche_infos","textes"];
 const insertSql = (table, data) => {
   const k = Object.keys(data);
   return [`insert into ${table} (${k.join(",")}) values (${k.map((_, i) => `$${i + 1}`).join(",")}) returning *`, k.map((c) => data[c])];

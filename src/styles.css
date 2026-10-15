@@ -1055,3 +1055,16 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .edt-pause td { text-align: center; font-size: 12px; font-weight: 800; letter-spacing: .25em; text-transform: uppercase; color: #a07a0e; background: #fff6dc; border-radius: 8px; padding: 6px; }
 .edt-pause td.edt-h { background: none; letter-spacing: 0; text-transform: none; color: var(--muted); }
 @media print { .edt-table-wrap { padding: 0; } .edt-cell { background: #fff !important; } .edt-table { border-spacing: 2px; } }
+.doc-texte .fr-infos { columns: 1; }
+.doc-texte { font-size: 11.5px; }
+.doc-texte .fr-bloc h4 { font-size: 11.5px; color: #123f4a; border-bottom: 1px solid #f2c14e; padding-bottom: 2px; margin-top: 6px; }
+.doc-texte .fr-p { background: none; border: 0; padding: 2px 0; }
+.dt-coupon { margin-top: 10px; font-size: 11px; line-height: 1.6; }
+.dt-cut { color: #7c9197; font-size: 10px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; }
+.doc-texte { font-size: 11px; padding-top: 11mm; padding-bottom: 9mm; }
+.doc-texte .d-title { margin: 8px 0 2px !important; }
+.doc-texte .d-num { margin-bottom: 6px; }
+.doc-texte .fr-li { line-height: 1.35; margin: 0; }
+.doc-texte .fr-bloc { margin-bottom: 3px; }
+.doc-texte .b-sigs .b-box { min-height: 52px; }
+.doc-texte .v-fait { margin: 6px 0; }

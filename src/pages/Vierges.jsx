@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Printer, FileText, ClipboardList, Award, ShieldCheck, IdCard, ListOrdered, Receipt, BadgeDollarSign, Pencil } from "lucide-react";
+import { ArrowLeft, Printer, FileText, ClipboardList, Award, ShieldCheck, IdCard, ListOrdered, Receipt, BadgeDollarSign, Pencil, Scale, BookOpenCheck, Handshake, Mail, TriangleAlert, FileCheck2, DoorOpen } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa } from "../lib/format";
 import { Spinner, ErrorBox, PageHead, Modal, useToast } from "../components/ui";
 import Partager from "../components/Partager";
 import { EnTete } from "./Documents";
+import { TEXTES } from "../lib/textesEcole";
 
 // Champ à remplir à la main
 const C = ({ l, w }) => <div className="v-f" style={w ? { flex: w } : undefined}><span>{l}</span><i /></div>;
@@ -306,6 +307,23 @@ function RecuVierge({ etab }) {
   );
 }
 
+function DocTexte({ etab, annee, cle }) {
+  const t = TEXTES[cle];
+  const texte = etab.textes?.[cle] || t.texte;
+  return (
+    <article className="doc a4 vierge doc-texte etat">
+      <EnTete etab={etab} />
+      <h1 className="d-title" style={{ marginTop: 14 }}>{t.titre}</h1>
+      <p className="d-num">Année scolaire {annee}</p>
+      <div className="dt-corps"><TexteInfos texte={texte} /></div>
+      {t.coupon && <div className="dt-coupon"><p className="dt-cut">✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - à découper et à remettre à l'école</p><p>{t.coupon}</p></div>}
+      <p className="v-fait">Fait à {etab.ville || "Malika"}, le ……………………………</p>
+      <Signatures items={t.signatures} />
+    </article>
+  );
+}
+const docTexte = (cle) => (p) => <DocTexte {...p} cle={cle} />;
+
 const DOCS = {
   fiche: { titre: "Fiche d'inscription complète", sub: "2 pages : élève, parents, situation familiale, urgences, fiche médicale (vaccins, maladies, allergies), autorisations", icon: ClipboardList, format: "A4", C: FicheInscription },
   tarifs: { titre: "Fiche de renseignement", sub: "Tarifs d'inscription et mensualités (remplis automatiquement), informations importantes, pièces à fournir, rentrée", icon: BadgeDollarSign, format: "A4", C: Tarifs },
@@ -314,6 +332,13 @@ const DOCS = {
   cartes: { titre: "Cartes scolaires", sub: "8 cartes vierges par page", icon: IdCard, format: "A4", C: Cartes },
   liste: { titre: "Liste de classe", sub: "Tableau vierge de 32 lignes", icon: ListOrdered, format: "A4", C: ListeVierge },
   recu: { titre: "Reçu de paiement", sub: "Reçu manuel A5, en cas de coupure d'internet", icon: Receipt, format: "A5", C: RecuVierge },
+  reglement_eleves: { titre: "Règlement intérieur des élèves", sub: "Horaires, absences, tenue, comportement, sanctions — avec coupon d'engagement", icon: Scale, format: "A4", C: docTexte("reglement_eleves") },
+  reglement_personnel: { titre: "Règlement intérieur des enseignants", sub: "Présence, préparation, notes et appel, relations, sanctions — avec engagement", icon: BookOpenCheck, format: "A4", C: docTexte("reglement_personnel") },
+  charte_parents: { titre: "Charte d'engagement des parents", sub: "Engagements des parents et de l'école", icon: Handshake, format: "A4", C: docTexte("charte_parents") },
+  convocation: { titre: "Convocation des parents", sub: "Date, heure et motif de l'entretien", icon: Mail, format: "A4", C: docTexte("convocation") },
+  avertissement: { titre: "Avertissement disciplinaire", sub: "À signer par les parents", icon: TriangleAlert, format: "A4", C: docTexte("avertissement") },
+  justificatif: { titre: "Justificatif d'absence / retard", sub: "À remplir par les parents", icon: FileCheck2, format: "A4", C: docTexte("justificatif") },
+  bon_sortie: { titre: "Bon de sortie exceptionnelle", sub: "Sortie d'un élève pendant les heures de cours", icon: DoorOpen, format: "A4", C: docTexte("bon_sortie") },
 };
 
 export default function Vierges() {
@@ -359,18 +384,18 @@ export function ViergesImpression() {
         <span className="grow"><strong>{d.titre}</strong> (vierge)</span>
         {doc !== "tarifs" && <label className="small row" style={{ gap: 6, alignItems: "center" }}>Exemplaires
           <input className="input" type="number" min={1} max={30} value={nb} onChange={(e) => setP({ doc, n: e.target.value })} style={{ width: 70, height: 38 }} /></label>}
-        {doc === "tarifs" && s.peut("etablissement.ecrire") && <button className="btn" onClick={() => setEditInfos(etab.fiche_infos || INFOS_DEFAUT)}><Pencil size={17} />Modifier le texte</button>}
+        {(doc === "tarifs" || TEXTES[doc]) && s.peut("etablissement.ecrire") && <button className="btn" onClick={() => setEditInfos(doc === "tarifs" ? etab.fiche_infos || INFOS_DEFAUT : etab.textes?.[doc] || TEXTES[doc].texte)}><Pencil size={17} />Modifier le texte</button>}
         <Partager format={d.format} nom={`${d.titre}-vierge`} message={`${d.titre} — ${etab.nom}`} />
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       {editInfos != null && (
-        <Modal wide title="Texte de la fiche de renseignement" onClose={() => setEditInfos(null)} footer={<>
-          <button className="btn" onClick={() => setEditInfos(INFOS_DEFAUT)}>Texte par défaut</button>
+        <Modal wide title={`Texte — ${d.titre}`} onClose={() => setEditInfos(null)} footer={<>
+          <button className="btn" onClick={() => setEditInfos(doc === "tarifs" ? INFOS_DEFAUT : TEXTES[doc].texte)}>Texte par défaut</button>
           <span className="grow" />
           <button className="btn" onClick={() => setEditInfos(null)}>Annuler</button>
-          <button className="btn primary" onClick={async () => { try { await api.put("/etablissement", { fiche_infos: editInfos }); toast("Texte enregistré"); s.refresh(); setEditInfos(null); } catch (e) { toast(e.message, "error"); } }}>Enregistrer</button>
+          <button className="btn primary" onClick={async () => { try { await api.put("/etablissement", doc === "tarifs" ? { fiche_infos: editInfos } : { textes: { ...(etab.textes || {}), [doc]: editInfos } }); toast("Texte enregistré"); s.refresh(); setEditInfos(null); } catch (e) { toast(e.message, "error"); } }}>Enregistrer</button>
         </>}>
-          <p className="small muted" style={{ marginBottom: 8 }}>Une ligne qui commence par <b>##</b> = un titre · par <b>-</b> = une puce · les autres lignes = un paragraphe. Les tarifs, eux, viennent automatiquement de « Classes et tarifs ».</p>
+          <p className="small muted" style={{ marginBottom: 8 }}>Une ligne qui commence par <b>##</b> = un titre · par <b>-</b> = une puce · les autres lignes = un paragraphe. {doc === "tarifs" ? "Les tarifs, eux, viennent automatiquement de « Classes et tarifs »." : "Adaptez les articles à votre école ; le texte sera gardé pour les prochaines impressions."}</p>
           <textarea className="textarea" style={{ width: "100%", minHeight: 380, fontFamily: "inherit", fontSize: 13 }} value={editInfos} onChange={(e) => setEditInfos(e.target.value)} />
         </Modal>
       )}
