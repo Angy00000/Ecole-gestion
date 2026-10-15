@@ -475,7 +475,11 @@ route("DELETE", "/eleves/:id", async (ctx) => {
   exige(ctx, "eleves.supprimer");
   const n = await one(`select count(*) as n from app.recus r join app.inscriptions i on i.id=r.inscription_id where i.eleve_id=$1`, [ctx.params.id]);
   if (n.n > 0) {
-    await q("update app.eleves set statut='sorti', updated_at=now() where id=$1", [ctx.params.id]);
+    await tx([
+      ["update app.eleves set statut='sorti', updated_at=now() where id=$1", [ctx.params.id]],
+      // L'élève sorti ne compte plus dans les effectifs, les impayés ni les factures de l'année en cours.
+      ["update app.inscriptions set statut='abandon' where eleve_id=$1 and statut='active' and annee_id=(select id from app.annees where active)", [ctx.params.id]],
+    ]);
     await journal(ctx, "sortie", "eleve", Number(ctx.params.id));
     return { ok: true, archive: true };
   }
