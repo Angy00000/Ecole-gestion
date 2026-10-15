@@ -975,9 +975,13 @@ route("GET", "/services/:type", async (ctx) => {
   const rows = await q(`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle, i.cantine, i.uniforme as a_uniforme, i.tenue_sport as a_tenue, i.fournitures_remises, i.cours_soir as inscrit_soir, c.cours_soir > 0 as soir_dispo,
       coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
       ${sv.du} as du,
-      coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type = any($2::text[])),0) as paye,
+      ${ctx.params.type === "cours_soir"
+        // Compris dans la mensualité : part cours du soir de chaque mois payé (+ éventuels paiements séparés)
+        ? `case when i.cours_soir and c.cours_soir > 0 then coalesce((select sum(least(x.m, c.cours_soir)) from (select pa.mois, sum(pa.montant) as m from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type='mensualite' group by pa.mois) x),0) else 0 end
+           + coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type='cours_soir'),0) as paye,`
+        : `coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type = any($2::text[])),0) as paye,`}
       coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type='cantine_jour'),0) as paye_jour,
-      (select string_agg(distinct to_char(pa.mois,'YYYY-MM'), ',') from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type = any($2::text[]) and pa.mois is not null) as mois,
+      (select string_agg(distinct to_char(pa.mois,'YYYY-MM'), ',') from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type = any(${ctx.params.type === "cours_soir" ? "'{mensualite,cours_soir}'" : "$2"}::text[]) and pa.mois is not null${ctx.params.type === "cours_soir" ? " and i.cours_soir" : ""}) as mois,
       (select max(r.date_paiement) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type = any($2::text[])) as dernier
     from app.inscriptions i join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id join app.annees a on a.id=i.annee_id
     where ${w.join(" and ")} order by c.ordre, e.nom, e.prenom`, [annee, `{${sv.types.join(",")}}`, ...p.slice(2)]);
