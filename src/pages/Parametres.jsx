@@ -155,7 +155,7 @@ function Utilisateurs() {
   const [error, setError] = useState(null);
   const { data, isLoading, error: loadErr } = useQuery({ queryKey: ["utilisateurs"], queryFn: () => api.get("/utilisateurs") });
   const ref = useQuery({ queryKey: ["droits"], queryFn: () => api.get("/droits") });
-  const ens = useQuery({ queryKey: ["enseignants"], queryFn: () => api.get("/enseignants") });
+  const classesQ = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }) });
   const parRole = (role) => ref.data?.roles?.[role] || [];
   const effectifs = (f) => (f.role === "admin" ? ref.data?.codes || [] : Array.isArray(f.droits) ? f.droits : parRole(f.role));
   const perso = (f) => f.role !== "admin" && Array.isArray(f.droits);
@@ -170,9 +170,9 @@ function Utilisateurs() {
   const save = async () => {
     setError(null);
     try {
-      const { id, dernier_login, created_at, enseignant, classes, ...d } = form;
+      const { id, dernier_login, created_at, enseignant, classes, enseignant_id, ...d } = form;
       if (!d.mot_de_passe) delete d.mot_de_passe;
-      d.enseignant_id = d.enseignant_id ? Number(d.enseignant_id) : null;
+      d.classe_id = d.classe_id ? Number(d.classe_id) : null;
       if (id) await api.put(`/utilisateurs/${id}`, d); else await api.post("/utilisateurs", d);
       toast(id ? "Compte mis à jour" : `Compte créé pour ${d.prenom}`);
       ["utilisateurs", "enseignants"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); setForm(null);
@@ -186,7 +186,7 @@ function Utilisateurs() {
     <div className="card">
       <div className="card-head" style={{ paddingBottom: 16 }}>
         <h3>Comptes utilisateurs</h3>
-        <button className="btn primary" onClick={() => { setError(null); setForm({ nom: "", prenom: "", email: "", role: "secretaire", mot_de_passe: "", actif: true, droits: null, classe_seule: false, enseignant_id: "" }); }}><Plus size={16} />Créer un compte</button>
+        <button className="btn primary" onClick={() => { setError(null); setForm({ nom: "", prenom: "", email: "", role: "secretaire", mot_de_passe: "", actif: true, droits: null, classe_seule: false, classe_id: "" }); }}><Plus size={16} />Créer un compte</button>
       </div>
       <div className="table-wrap">
         <table className="table">
@@ -199,7 +199,7 @@ function Utilisateurs() {
                   {u.classe_seule && <div className="xs" style={{ color: "var(--teal)" }}>Seulement sa classe{u.classes ? ` : ${u.classes}` : " (aucune classe liée)"}</div>}</td>
                 <td className="hide-m">{u.dernier_login ? dateHeure(u.dernier_login) : <span className="muted">Jamais</span>}</td>
                 <td>{u.actif ? <span className="badge green">Actif</span> : <span className="badge coral">Désactivé</span>}</td>
-                <td className="r"><button className="btn sm ghost" onClick={() => { setError(null); setForm({ ...u, mot_de_passe: "", enseignant_id: u.enseignant_id || "" }); }}><Pencil size={14} />Modifier</button></td>
+                <td className="r"><button className="btn sm ghost" onClick={() => { setError(null); setForm({ ...u, mot_de_passe: "", classe_id: u.classe_id || "" }); }}><Pencil size={14} />Modifier</button></td>
               </tr>
             ))}
           </tbody>
@@ -207,7 +207,7 @@ function Utilisateurs() {
       </div>
       <div className="card-body small muted" style={{ borderTop: "1px solid var(--line)" }}>
         Chaque rôle donne des accès par défaut. En modifiant un compte, vous pouvez cocher ou décocher précisément ce que la personne peut voir et faire.
-        Pour un enseignant, liez son compte à sa fiche enseignant et cochez « Seulement sa classe » : il ne verra que les élèves, notes et absences de sa classe.
+        Pour un enseignant : choisissez le rôle « Enseignant » puis sa classe. Il ne verra que les élèves, notes et absences de sa classe.
       </div>
       {form && (
         <Modal wide title={form.id ? `${form.prenom} ${form.nom}` : "Nouveau compte"} onClose={() => setForm(null)} footer={<>
@@ -228,12 +228,12 @@ function Utilisateurs() {
                   {Object.entries(ROLES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 </Select>
               </Field>
-              <Field label="Fiche enseignant liée" hint="Pour un enseignant : sa classe vient de sa fiche (Enseignants).">
-                <Select value={form.enseignant_id || ""} onChange={(e) => setForm({ ...form, enseignant_id: e.target.value })}>
-                  <option value="">Aucune</option>
-                  {ens.data?.filter((x) => !x.utilisateur_id || x.utilisateur_id === form.id).map((x) => <option key={x.id} value={x.id}>{x.prenom} {x.nom}{x.classes_titulaire ? ` — ${x.classes_titulaire}` : ""}</option>)}
+{(form.role === "professeur" || form.classe_seule) && <Field label="Sa classe" hint="L'enseignant ne verra que cette classe.">
+                <Select value={form.classe_id || ""} onChange={(e) => setForm({ ...form, classe_id: e.target.value })}>
+                  <option value="">Aucune classe</option>
+                  {classesQ.data?.map((c) => <option key={c.id} value={c.id}>{c.nom}{c.titulaire && Number(form.classe_id) !== c.id ? ` (déjà : ${c.titulaire})` : ""}</option>)}
                 </Select>
-              </Field>
+              </Field>}
             </div>
             {form.role === "admin" ? <div className="alert info">L'administrateur a accès à tout.</div> : <>
               <div className="between"><strong>Accès</strong>{perso(form) && <button type="button" className="btn sm ghost" onClick={() => setForm({ ...form, droits: null })}>Revenir aux accès du rôle « {ROLES[form.role]} »</button>}</div>
@@ -245,7 +245,7 @@ function Utilisateurs() {
                 ))}
               </div>
               <label className="check"><input type="checkbox" checked={!!form.classe_seule} onChange={(e) => setForm({ ...form, classe_seule: e.target.checked })} /><span><strong>Seulement sa classe</strong> — ne voit que les élèves, notes, absences et emploi du temps de la classe dont il est titulaire</span></label>
-              {form.classe_seule && !form.enseignant_id && <p className="xs" style={{ color: "var(--coral)" }}>Liez une fiche enseignant ci-dessus, sinon la personne ne verra aucune classe.</p>}
+              {form.classe_seule && !form.classe_id && <p className="xs" style={{ color: "var(--coral)" }}>Choisissez sa classe ci-dessus, sinon la personne ne verra aucune classe.</p>}
             </>}
             {form.id && <label className="check"><input type="checkbox" checked={form.actif} onChange={(e) => setForm({ ...form, actif: e.target.checked })} />Compte actif</label>}
           </div>

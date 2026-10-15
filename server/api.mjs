@@ -1475,6 +1475,16 @@ route("DELETE", "/emploi/:id", async (ctx) => {
 // ── Utilisateurs (admin) ──────────────────────────────────────────────────
 route("GET", "/droits", async (ctx) => { exige(ctx, "utilisateurs"); return { codes: CODES_DROITS, roles: DROITS }; });
 const droitsValides = (x) => (Array.isArray(x) ? JSON.stringify([...new Set(x.filter((c) => CODES_DROITS.includes(c)))]) : null);
+// Compte enseignant : on choisit directement sa classe ; la fiche enseignant est créée et liée automatiquement.
+const classePourCompte = async (userId, classeId) => {
+  let e = await one("select id from app.enseignants where utilisateur_id=$1", [userId]);
+  if (!e && !classeId) return;
+  if (!e) {
+    const u = await one("select nom, prenom, email from app.utilisateurs where id=$1", [userId]);
+    e = await one("insert into app.enseignants (nom, prenom, email, statut, utilisateur_id) values (upper($1), $2, $3, 'actif', $4) returning id", [u.nom, u.prenom, u.email, userId]);
+  }
+  await affecterClasse(e.id, classeId || null);
+};
 const lierEnseignant = async (userId, ensId) => {
   await q("update app.enseignants set utilisateur_id=null where utilisateur_id=$1", [userId]);
   if (ensId) await q("update app.enseignants set utilisateur_id=$1 where id=$2", [userId, ensId]);
@@ -1482,7 +1492,8 @@ const lierEnseignant = async (userId, ensId) => {
 route("GET", "/utilisateurs", async (ctx) => {
   exige(ctx, "utilisateurs");
   return q(`select ${USER_COLS.split(", ").map((c) => "u." + c).join(", ")}, e.id as enseignant_id, e.prenom || ' ' || e.nom as enseignant,
-      (select string_agg(c.nom, ', ' order by c.ordre) from app.classes c join app.annees a on a.id=c.annee_id and a.active where c.titulaire_id=e.id) as classes
+      (select string_agg(c.nom, ', ' order by c.ordre) from app.classes c join app.annees a on a.id=c.annee_id and a.active where c.titulaire_id=e.id) as classes,
+      (select c.id from app.classes c join app.annees a on a.id=c.annee_id and a.active where c.titulaire_id=e.id order by c.ordre limit 1) as classe_id
     from app.utilisateurs u left join app.enseignants e on e.utilisateur_id=u.id order by u.nom, u.prenom`);
 });
 
@@ -1493,7 +1504,8 @@ route("POST", "/utilisateurs", async (ctx) => {
   if (b.mot_de_passe.length < 8) fail(400, "Le mot de passe doit faire au moins 8 caractères.");
   const r = await one(`insert into app.utilisateurs (nom, prenom, email, mot_de_passe, role, droits, classe_seule)
     values ($1,$2,lower($3),crypt($4, gen_salt('bf')),$5,$6::jsonb,$7) returning ${USER_COLS}`, [b.nom.trim(), b.prenom.trim(), b.email.trim(), b.mot_de_passe, b.role, droitsValides(b.droits), !!b.classe_seule]);
-  await lierEnseignant(r.id, b.enseignant_id);
+  if (b.enseignant_id) await lierEnseignant(r.id, b.enseignant_id);
+  if ("classe_id" in b) await classePourCompte(r.id, b.classe_id);
   await journal(ctx, "creation", "utilisateur", r.id, { email: r.email, role: r.role });
   return r;
 });
@@ -1512,6 +1524,7 @@ route("PUT", "/utilisateurs/:id", async (ctx) => {
   }
   if (list.length) await tx(list);
   if ("enseignant_id" in ctx.body) await lierEnseignant(Number(ctx.params.id), ctx.body.enseignant_id);
+  if ("classe_id" in ctx.body) await classePourCompte(Number(ctx.params.id), ctx.body.classe_id);
   await journal(ctx, "modification", "utilisateur", Number(ctx.params.id), { ...d, mot_de_passe: ctx.body.mot_de_passe ? "réinitialisé" : undefined });
   return one(`select ${USER_COLS} from app.utilisateurs where id=$1`, [ctx.params.id]);
 });
