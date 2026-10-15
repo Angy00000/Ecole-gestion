@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Printer, CalendarClock, Trash2 } from "lucide-react";
+import { Plus, Printer, CalendarClock, Trash2, Download } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { JOURS } from "../lib/format";
@@ -58,6 +58,20 @@ export default function Emploi() {
   const { data, isLoading, error } = useQuery({ queryKey: ["emploi", classe?.id], queryFn: () => api.get("/emploi", { classe_id: classe.id }), enabled: !!classe });
   const [edit, setEdit] = useState(null);
   const peut = s.peut("classes.ecrire");
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [imp, setImp] = useState(false);
+  const importer = async () => {
+    if (!window.confirm("Remplacer les emplois du temps et les matières de PS, MS, GS, CI, CP, CE1, CE2, CM1, CM2 par les emplois du temps officiels ? (les matières qui ont déjà des notes sont gardées)")) return;
+    setImp(true);
+    try {
+      const { default: data } = await import("../lib/edtOfficiel.js");
+      const r = await api.post("/emploi/importer", data);
+      toast(`${r.creneaux} créneaux et ${r.matieres} matières importés`);
+      ["emploi", "classes", "matieres", "evaluations"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    } catch (e) { toast(e.message, "error"); }
+    setImp(false);
+  };
   const couleurs = {};
   (data || []).forEach((c) => { const k = c.matiere || c.libelle; if (!(k in couleurs)) couleurs[k] = TEINTES[Object.keys(couleurs).length % TEINTES.length]; });
   const hauteur = (H1 - H0) * 64;
@@ -65,6 +79,7 @@ export default function Emploi() {
     <>
       <PageHead title="Emploi du temps" sub={classe ? `${classe.nom}${classe.titulaire ? ` · titulaire ${classe.titulaire}` : ""}` : ""}>
         <button className="btn" onClick={() => window.print()}><Printer size={17} /><span className="hide-m">Imprimer</span></button>
+        {peut && <button className="btn" onClick={importer} disabled={imp}><Download size={17} /><span className="hide-m">{imp ? "Import…" : "Importer l'emploi du temps officiel"}</span></button>}
         {peut && classe && <button className="btn primary" onClick={() => setEdit({})}><Plus size={17} />Ajouter un créneau</button>}
       </PageHead>
       {classes.data && <div className="class-tabs">{classes.data.map((c) => <button key={c.id} className={`class-tab ${c.id === classe?.id ? "on" : ""}`} onClick={() => setClasseId(c.id)}>{c.nom}</button>)}</div>}

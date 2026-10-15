@@ -972,7 +972,7 @@ route("GET", "/services/:type", async (ctx) => {
   const annee = await anneeCourante(ctx.query.annee_id);
   const p = [annee, sv.types]; const w = ["i.annee_id=$1", "i.statut='active'"];
   if (ctx.query.classe_id) { p.push(ctx.query.classe_id); w.push(`i.classe_id=$${p.length}`); }
-  const rows = await q(`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle, i.cantine, i.uniforme as a_uniforme, i.tenue_sport as a_tenue, i.fournitures_remises,
+  const rows = await q(`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle, i.cantine, i.uniforme as a_uniforme, i.tenue_sport as a_tenue, i.fournitures_remises, i.cours_soir as inscrit_soir, c.cours_soir > 0 as soir_dispo,
       coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
       ${sv.du} as du,
       coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule where pa.inscription_id=i.id and pa.type = any($2::text[])),0) as paye,
@@ -1471,6 +1471,36 @@ route("GET", "/emploi", async (ctx) => {
       t.matiere_id, t.libelle, t.enseignant_id, t.salle, m.nom as matiere, c.nom as classe, e.prenom || ' ' || e.nom as enseignant
     from app.emploi_temps t join app.classes c on c.id=t.classe_id left join app.matieres m on m.id=t.matiere_id left join app.enseignants e on e.id=t.enseignant_id
     where ${w} order by t.jour, t.heure_debut`, p);
+});
+// Import des emplois du temps officiels : remplace matières (sans évaluation) et créneaux des classes concernées.
+route("POST", "/emploi/importer", async (ctx) => {
+  exige(ctx, "classes.ecrire");
+  const { slots, mats } = ctx.body || {};
+  const annee = await anneeCourante();
+  const classes = await q("select id, nom, bareme from app.classes where annee_id=$1", [annee]);
+  let n = 0, m = 0;
+  for (const c of classes) {
+    if (!slots?.[c.nom]) continue;
+    await tx([
+      ["delete from app.emploi_temps where classe_id=$1", [c.id]],
+      ["delete from app.matieres x where x.classe_id=$1 and not exists (select 1 from app.evaluations e where e.matiere_id=x.id)", [c.id]],
+    ]);
+    const exist = await q("select id, nom from app.matieres where classe_id=$1", [c.id]);
+    const ids = Object.fromEntries(exist.map((x) => [x.nom, x.id]));
+    for (const [i, nom] of (mats[c.nom] || []).entries()) {
+      if (ids[nom]) continue;
+      ids[nom] = (await one("insert into app.matieres (classe_id, nom, coefficient, bareme, ordre) values ($1,$2,1,$3,$4) returning id", [c.id, nom, c.bareme || 10, i + 1])).id; m++;
+    }
+    const rows = slots[c.nom].filter((r) => r[0] >= 1 && r[0] <= 6);
+    for (let k = 0; k < rows.length; k += 40) {
+      const part = rows.slice(k, k + 40), p = [c.id];
+      const vals = part.map((r) => { p.push(r[0], r[1], r[2], r[4] ? ids[r[4]] ?? null : null, String(r[3]).slice(0, 200)); const b = p.length; return `($1,$${b - 4}::int,$${b - 3}::time,$${b - 2}::time,$${b - 1}::int,$${b})`; });
+      await q(`insert into app.emploi_temps (classe_id, jour, heure_debut, heure_fin, matiere_id, libelle) values ${vals.join(",")}`, p);
+      n += part.length;
+    }
+  }
+  await journal(ctx, "import", "emploi_temps", null, { creneaux: n, matieres: m });
+  return { ok: true, creneaux: n, matieres: m };
 });
 const COLS_EDT = ["classe_id", "jour", "heure_debut", "heure_fin", "matiere_id", "libelle", "enseignant_id", "salle"];
 const conflitEdt = async (d, id) => {

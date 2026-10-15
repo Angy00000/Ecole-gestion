@@ -12,7 +12,7 @@ const CONF = {
   cantine: { titre: "Cantine", icon: Utensils, tone: "coral", sub: "Demi-pensionnaires et repas payés au jour", attendu: "Inscriptions cantine attendues" },
   uniforme: { titre: "Uniformes et tenues de sport", icon: Shirt, tone: "teal", sub: "Uniformes et tenues de sport commandés à l'inscription", attendu: "Total attendu" },
   fournitures: { titre: "Fournitures", icon: PencilRuler, tone: "gold", sub: "Paiements des fournitures scolaires", attendu: "Total attendu" },
-  cours_soir: { titre: "Cours du soir", icon: MoonStar, tone: "azure", sub: "Élèves inscrits aux cours du soir et mois payés", attendu: null },
+  cours_soir: { titre: "Cours du soir", icon: MoonStar, tone: "azure", sub: "Élèves inscrits aux cours de renforcement (compris dans la mensualité)", attendu: null },
   cotisation: { titre: "Cotisation des fêtes", icon: PartyPopper, tone: "rose", sub: "Cotisations pour les fêtes de l'école", attendu: "Total attendu" },
 };
 
@@ -21,6 +21,11 @@ export default function Service({ typeFixe, embedded, onVendre }) {
   const type = typeFixe || params.type;
   const qc = useQueryClient();
   const toast = useToast();
+  const basculerSoir = async (r, oui) => {
+    const m = `${new Date().toISOString().slice(0, 7)}-01`;
+    try { await api.put(`/inscriptions/${r.inscription_id}`, oui ? { cours_soir: true, cours_soir_debut: m, cours_soir_fin: null } : { cours_soir: false, cours_soir_fin: m }); qc.invalidateQueries({ queryKey: ["service"] }); qc.invalidateQueries({ queryKey: ["situation"] }); toast(`${r.prenom} ${r.nom} : cours du soir ${oui ? "ajouté" : "retiré"} à partir de ce mois`); }
+    catch (e) { toast(e.message, "error"); }
+  };
   const remettre = async (r, remis) => {
     try { await api.put(`/inscriptions/${r.inscription_id}/fournitures-remises`, { remis }); qc.invalidateQueries({ queryKey: ["service"] }); toast(remis ? `Kit remis à ${r.prenom} ${r.nom}` : "Remise annulée"); }
     catch (e) { toast(e.message, "error"); }
@@ -43,7 +48,8 @@ export default function Service({ typeFixe, embedded, onVendre }) {
     if (q && !`${r.nom} ${r.prenom} ${r.matricule}`.toLowerCase().includes(q.toLowerCase())) return false;
     if (filtre === "payes") return st === "paye";
     if (filtre === "non_payes") return st === "du" || st === "partiel";
-    if (filtre === "payeurs") return r.paye > 0;
+    if (filtre === "payeurs") return type === "cours_soir" ? r.inscrit_soir && r.soir_dispo : r.paye > 0;
+    if (filtre === "non_inscrits") return !r.inscrit_soir && r.soir_dispo;
     if (filtre === "cantine") return r.cantine || r.paye > 0;
     if (filtre === "a_remettre") return r.paye > 0 && !r.fournitures_remises;
     return true;
@@ -80,6 +86,7 @@ export default function Service({ typeFixe, embedded, onVendre }) {
           <div className="seg">
             {type === "cantine" && <button className={filtre === "cantine" ? "on" : ""} onClick={() => setFiltre("cantine")}>À la cantine</button>}
             {type === "cours_soir" && <button className={filtre === "payeurs" ? "on" : ""} onClick={() => setFiltre("payeurs")}>Inscrits</button>}
+            {type === "cours_soir" && <button className={filtre === "non_inscrits" ? "on" : ""} onClick={() => setFiltre("non_inscrits")}>Non inscrits</button>}
             <button className={filtre === "tous" ? "on" : ""} onClick={() => setFiltre("tous")}>Tous</button>
             {c.attendu && type !== "cantine" && <><button className={filtre === "payes" ? "on" : ""} onClick={() => setFiltre("payes")}>Payé</button><button className={filtre === "non_payes" ? "on" : ""} onClick={() => setFiltre("non_payes")}>Non payé</button></>}
             {type === "cantine" && <button className={filtre === "non_payes" ? "on" : ""} onClick={() => setFiltre("non_payes")}>Non payé</button>}
@@ -91,7 +98,7 @@ export default function Service({ typeFixe, embedded, onVendre }) {
         ) : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Élève</th><th>Classe</th>{type === "uniforme" && <th className="hide-m">Commandé</th>}{type === "cantine" && <th className="hide-m">Demi-pension</th>}{c.attendu && <th className="r hide-m">Attendu</th>}<th className="r">Payé</th>{type === "cours_soir" && <th className="hide-m">Mois payés</th>}<th>État</th>{type === "fournitures" && <th>Kit remis</th>}{type !== "fournitures" && <th className="hide-m">Dernier paiement</th>}<th /></tr></thead>
+              <thead><tr><th>Élève</th><th>Classe</th>{type === "uniforme" && <th className="hide-m">Commandé</th>}{type === "cantine" && <th className="hide-m">Demi-pension</th>}{c.attendu && <th className="r hide-m">Attendu</th>}<th className="r">Payé</th>{type === "cours_soir" && <th>Inscrit</th>}<th>État</th>{type === "fournitures" && <th>Kit remis</th>}{type !== "fournitures" && <th className="hide-m">Dernier paiement</th>}<th /></tr></thead>
               <tbody>
                 {rows.map((r) => {
                   const st = statut(r);
@@ -103,7 +110,7 @@ export default function Service({ typeFixe, embedded, onVendre }) {
                       {type === "cantine" && <td className="hide-m">{r.cantine ? <span className="badge coral"><Utensils size={12} />Oui</span> : <span className="muted">Au jour</span>}</td>}
                       {c.attendu && <td className="r num hide-m">{r.du ? fcfa(r.du) : "—"}</td>}
                       <td className="r amount" style={{ color: r.paye ? "var(--green)" : "var(--muted)" }}>{fcfa(r.paye)}{type === "cantine" && r.paye_jour > 0 && <div className="xs muted">dont {fcfa(r.paye_jour)} au jour</div>}</td>
-                      {type === "cours_soir" && <td className="hide-m"><div className="row" style={{ flexWrap: "wrap", gap: 4 }}>{(r.mois || "").split(",").filter(Boolean).sort().map((m) => <span key={m} className="badge azure" style={{ background: "var(--azure-50)", color: "var(--azure)" }}>{moisAbr(m)}</span>)}</div></td>}
+                      {type === "cours_soir" && <td>{r.soir_dispo ? <label className="check"><input type="checkbox" checked={!!r.inscrit_soir} disabled={!s.peut("eleves.ecrire")} onChange={(e) => basculerSoir(r, e.target.checked)} />{r.inscrit_soir ? "Oui" : "Non"}</label> : <span className="muted small">Pas de cours du soir</span>}</td>}
                       <td>{st === "paye" ? <span className="badge green">Payé</span> : st === "partiel" ? <span className="badge gold">Reste {fcfa(r.du - r.paye)}</span> : st === "du" ? <span className="badge coral">Non payé</span> : <span className="muted small">—</span>}</td>
                       {type === "fournitures" && <td>{r.fournitures_remises
                         ? <button className="badge green" style={{ border: 0, cursor: "pointer" }} title="Cliquer pour annuler" onClick={() => s.peut("finances.encaisser") && remettre(r, false)}><PackageCheck size={12} />Le {date(r.fournitures_remises)}</button>
