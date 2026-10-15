@@ -50,6 +50,49 @@ function Creneau({ c, classe, onClose }) {
   );
 }
 
+const sansAccent = (t) => String(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "").toLowerCase();
+// Emploi du temps en tableau : une ligne par horaire, une colonne par jour (comme la version papier).
+function TableEdt({ data, couleurs, peut, onEdit }) {
+  const jours = Object.entries(JOURS).filter(([j]) => Number(j) <= 5 || data.some((c) => c.jour === Number(j)));
+  const cle = (c) => `${c.heure_debut.slice(0, 5)}-${c.heure_fin.slice(0, 5)}`;
+  const horaires = [...new Set(data.map(cle))].sort();
+  const lignes = [];
+  horaires.forEach((h, i) => {
+    const prev = horaires[i - 1];
+    if (prev && prev.slice(6) < h.slice(0, 5)) lignes.push({ pause: true, de: prev.slice(6), a: h.slice(0, 5) });
+    lignes.push({ h });
+  });
+  const fmt = (t) => t.replace(":", "h").replace(/h00$/, "h");
+  if (!data.length) return null;
+  return (
+    <div className="table-wrap edt-table-wrap">
+      <table className="edt-table">
+        <thead><tr><th className="edt-h">Horaires</th>{jours.map(([j, n]) => <th key={j}>{n}</th>)}</tr></thead>
+        <tbody>{lignes.map((l, i) => l.pause ? (
+          <tr key={i} className="edt-pause"><td className="edt-h">{fmt(l.de)} – {fmt(l.a)}</td><td colSpan={jours.length}>{l.de >= "12:30" ? "Pause" : "Récréation"}</td></tr>
+        ) : (
+          <tr key={i}>
+            <td className="edt-h">{fmt(l.h.slice(0, 5))} – {fmt(l.h.slice(6))}</td>
+            {jours.map(([j]) => {
+              const cs = data.filter((c) => c.jour === Number(j) && cle(c) === l.h);
+              return <td key={j} className={cs.length ? "" : "vide"} onDoubleClick={() => peut && !cs.length && onEdit({ jour: Number(j), heure_debut: l.h.slice(0, 5), heure_fin: l.h.slice(6) })}>
+                {cs.map((c) => (
+                  <button key={c.id} className="edt-cell" style={{ "--c": couleurs[c.matiere || c.libelle] }} onClick={() => peut && onEdit(c)}>
+                    <strong>{c.matiere || c.libelle}</strong>
+                    {c.matiere && c.libelle && !sansAccent(c.matiere).includes(sansAccent(c.libelle)) && !sansAccent(c.libelle).startsWith(sansAccent(c.matiere)) && <span>{c.libelle}</span>}
+                    {c.matiere && c.libelle && sansAccent(c.libelle).startsWith(sansAccent(c.matiere)) && c.libelle.length > c.matiere.length + 3 && <span>{c.libelle.slice(c.matiere.length).replace(/^[\s(/–-]+|\)$/g, "")}</span>}
+                    {c.enseignant && <span className="ens">{c.enseignant}</span>}
+                  </button>
+                ))}
+              </td>;
+            })}
+          </tr>
+        ))}</tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function Emploi() {
   const s = useSession();
   const classes = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }) });
@@ -85,28 +128,7 @@ export default function Emploi() {
       {classes.data && <div className="class-tabs">{classes.data.map((c) => <button key={c.id} className={`class-tab ${c.id === classe?.id ? "on" : ""}`} onClick={() => setClasseId(c.id)}>{c.nom}</button>)}</div>}
       {isLoading || classes.isLoading ? <Spinner /> : error ? <ErrorBox error={error} /> : (
         <div className="card edt-card">
-          <div className="edt" style={{ "--h": `${hauteur}px` }}>
-            <div className="edt-hours">{Array.from({ length: H1 - H0 + 1 }, (_, i) => <span key={i} style={{ top: i * 64 }}>{String(H0 + i).padStart(2, "0")}h</span>)}</div>
-            {Object.entries(JOURS).map(([j, nom]) => (
-              <div key={j} className="edt-day">
-                <div className="edt-dname">{nom}</div>
-                <div className="edt-col" onDoubleClick={(e) => { if (!peut) return; const y = e.nativeEvent.offsetY; const h = H0 + Math.floor(y / 64); setEdit({ jour: Number(j), heure_debut: `${String(h).padStart(2, "0")}:00`, heure_fin: `${String(h + 1).padStart(2, "0")}:00` }); }}>
-                  {Array.from({ length: H1 - H0 }, (_, i) => <i key={i} style={{ top: i * 64 }} />)}
-                  {(data || []).filter((c) => c.jour === Number(j)).map((c) => {
-                    const top = ((min(c.heure_debut) - H0 * 60) / 60) * 64, h = ((min(c.heure_fin) - min(c.heure_debut)) / 60) * 64;
-                    const col = couleurs[c.matiere || c.libelle];
-                    return (
-                      <button key={c.id} className="slot" style={{ top, height: h - 3, "--c": col }} onClick={() => peut && setEdit(c)}>
-                        <strong>{c.matiere || c.libelle}</strong>
-                        <span>{c.heure_debut} – {c.heure_fin}</span>
-                        {h > 60 && c.enseignant && <span>{c.enseignant}</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
+          <TableEdt data={data || []} couleurs={couleurs} peut={peut} onEdit={setEdit} />
           {!data?.length && <p className="muted small" style={{ padding: "0 22px 18px" }}>{peut ? "Double-cliquez sur une case ou utilisez « Ajouter un créneau » pour construire l'emploi du temps." : "Aucun créneau pour cette classe."}</p>}
         </div>
       )}

@@ -1039,3 +1039,19 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .fr-p { margin: 2px 0; padding: 3px 7px; background: #fff8e2; border-left: 3px solid #f6c945; line-height: 1.4; }
 .fr-foot { margin-top: auto; display: flex; justify-content: space-between; border-top: 1px solid #dce5e7; padding-top: 5px; font-size: 9.5px; color: #1d6b78; font-weight: 700; }
 .avec-total tbody tr:last-child td { font-weight: 800; background: #f3f8f9; border-top: 2px solid #123f4a; }
+
+/* Emploi du temps en tableau */
+.edt-table-wrap { padding: 0 18px 18px; }
+.edt-table { width: 100%; border-collapse: separate; border-spacing: 4px; table-layout: fixed; }
+.edt-table th { font-size: 13px; color: var(--ink-2); padding: 6px; text-align: center; }
+.edt-table .edt-h { width: 108px; font-size: 12px; font-weight: 700; color: var(--muted); text-align: center; white-space: nowrap; }
+.edt-table td { vertical-align: stretch; padding: 0; }
+.edt-table td.vide { border: 1px dashed var(--line); border-radius: 8px; }
+.edt-cell { display: flex; flex-direction: column; gap: 2px; width: 100%; height: 100%; min-height: 40px; text-align: left; padding: 6px 8px; border: 0; border-left: 4px solid var(--c, var(--teal)); border-radius: 8px;
+  background: color-mix(in srgb, var(--c, var(--teal)) 13%, var(--surface)); cursor: pointer; font: inherit; color: var(--ink); }
+.edt-cell strong { font-size: 12.5px; line-height: 1.25; }
+.edt-cell span { font-size: 11px; color: var(--muted); line-height: 1.25; }
+.edt-cell .ens { color: var(--teal); }
+.edt-pause td { text-align: center; font-size: 12px; font-weight: 800; letter-spacing: .25em; text-transform: uppercase; color: #a07a0e; background: #fff6dc; border-radius: 8px; padding: 6px; }
+.edt-pause td.edt-h { background: none; letter-spacing: 0; text-transform: none; color: var(--muted); }
+@media print { .edt-table-wrap { padding: 0; } .edt-cell { background: #fff !important; } .edt-table { border-spacing: 2px; } }
