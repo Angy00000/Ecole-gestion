@@ -28,6 +28,7 @@ export function SessionProvider({ children }) {
     user: boot.data?.user,
     etablissement: boot.data?.etablissement,
     typesPaiement: boot.data?.types_paiement || [],
+    roles: boot.data?.roles || {},
     annees,
     annee,
     anneeActive: active,

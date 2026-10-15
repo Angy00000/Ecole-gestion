@@ -91,12 +91,28 @@ const DROITS = {
 };
 const CODES_DROITS = ["eleves.lire", "eleves.ecrire", "eleves.supprimer", "classes.ecrire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire", "enseignants.ecrire",
   "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire", "utilisateurs"];
+const LIBELLES_ROLES = { admin: "Administrateur", direction: "Direction", comptable: "Comptable", secretaire: "Secrétariat", professeur: "Enseignant" };
+// Rôles créés ou modifiés dans Paramètres (table app.roles), rechargés toutes les 30 s.
+let ROLES_PERSO = {}, ROLES_AT = 0;
+const chargerRoles = async (force) => {
+  if (!force && Date.now() - ROLES_AT < 30e3) return;
+  const rows = await q("select code, libelle, droits, classe_seule from app.roles");
+  ROLES_PERSO = Object.fromEntries(rows.map((x) => [x.code, x]));
+  ROLES_AT = Date.now();
+};
+const droitsRole = (role) => (role === "admin" ? ["*"] : ROLES_PERSO[role]?.droits || DROITS[role] || []);
+const tousLesRoles = () => {
+  const out = {};
+  for (const code of Object.keys(DROITS)) out[code] = { code, libelle: ROLES_PERSO[code]?.libelle || LIBELLES_ROLES[code], droits: droitsRole(code), systeme: true, classe_seule: ROLES_PERSO[code]?.classe_seule ?? code === "professeur" };
+  for (const [code, x] of Object.entries(ROLES_PERSO)) if (!out[code]) out[code] = { code, libelle: x.libelle, droits: x.droits, systeme: false, classe_seule: x.classe_seule };
+  return out;
+};
 // Droits effectifs : ceux choisis pour la personne (s'ils existent), sinon ceux de son rôle. L'administrateur a toujours tout.
 const droitsDe = (u) => {
   if (!u) return [];
-  if (typeof u === "string") return DROITS[u] || [];
+  if (typeof u === "string") return droitsRole(u);
   if (u.role === "admin") return ["*"];
-  return Array.isArray(u.droits) ? u.droits : DROITS[u.role] || [];
+  return Array.isArray(u.droits) ? u.droits : droitsRole(u.role);
 };
 const peut = (u, droit) => droitsDe(u).some((d) => d === "*" || d === droit);
 // Pour les comptes sans accès aux finances (secrétaire…) : on retire tous les montants des réponses.
@@ -208,7 +224,8 @@ route("GET", "/bootstrap", async (ctx) => {
   ]);
   const argent = peut(ctx.user, "finances.lire");
   const sansFrais = (a) => argent ? a : Object.fromEntries(Object.entries(a).filter(([k]) => !k.startsWith("frais_")));
-  return { user: ctx.user, etablissement: etab, annees: annees.map(sansFrais), types_paiement: argent ? types : [], droits: droitsDe(ctx.user), classes_autorisees: await classesAutorisees(ctx) };
+  return { user: ctx.user, etablissement: etab, annees: annees.map(sansFrais), types_paiement: argent ? types : [], droits: droitsDe(ctx.user), classes_autorisees: await classesAutorisees(ctx),
+    roles: Object.fromEntries(Object.values(tousLesRoles()).map((x) => [x.code, x.libelle])) };
 });
 
 // ── Établissement ─────────────────────────────────────────────────────────
@@ -298,6 +315,9 @@ route("DELETE", "/classes/:id", async (ctx) => {
 route("GET", "/dashboard", async (ctx) => {
   const annee = await anneeCourante(ctx.query.annee_id);
   const voitFinances = peut(ctx.user, "finances.lire");
+  const okCl = await classesAutorisees(ctx);
+  const filtre = okCl ? ` and i.classe_id = any('{${okCl.join(",") || 0}}'::int[])` : "";
+  const filtreC = okCl ? ` and c.id = any('{${okCl.join(",") || 0}}'::int[])` : "";
   const [[eff], classes, recentes, [fin], paiements, evolution] = await tx([
     [`select count(*) as total,
         count(*) filter (where e.sexe='F') as filles,
@@ -306,13 +326,13 @@ route("GET", "/dashboard", async (ctx) => {
         count(*) filter (where i.type='reinscription') as reinscrits,
         count(*) filter (where i.cantine) as cantine
       from app.inscriptions i join app.eleves e on e.id=i.eleve_id
-      where i.annee_id=$1 and i.statut='active'`, [annee]],
+      where i.annee_id=$1 and i.statut='active'${filtre}`, [annee]],
     [`select c.id, c.nom, c.cycle, c.capacite, count(i.id) as effectif
       from app.classes c left join app.inscriptions i on i.classe_id=c.id and i.statut='active'
-      where c.annee_id=$1 group by c.id order by c.ordre`, [annee]],
+      where c.annee_id=$1${filtreC} group by c.id order by c.ordre`, [annee]],
     [`select e.id, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle, i.date_inscription, i.type
       from app.inscriptions i join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id
-      where i.annee_id=$1 order by i.created_at desc limit 6`, [annee]],
+      where i.annee_id=$1${filtre} order by i.created_at desc limit 6`, [annee]],
     [`select coalesce(sum(r.montant) filter (where r.date_paiement=current_date),0) as jour,
         coalesce(sum(r.montant) filter (where date_trunc('month',r.date_paiement)=date_trunc('month',current_date)),0) as mois,
         coalesce(sum(r.montant),0) as annee,
@@ -1473,7 +1493,46 @@ route("DELETE", "/emploi/:id", async (ctx) => {
 });
 
 // ── Utilisateurs (admin) ──────────────────────────────────────────────────
-route("GET", "/droits", async (ctx) => { exige(ctx, "utilisateurs"); return { codes: CODES_DROITS, roles: DROITS }; });
+route("GET", "/droits", async (ctx) => {
+  exige(ctx, "utilisateurs");
+  const R = tousLesRoles();
+  return { codes: CODES_DROITS, roles: Object.fromEntries(Object.entries(R).map(([k, x]) => [k, x.droits])), liste: Object.values(R),
+    nb: Object.fromEntries((await q("select role, count(*) as n from app.utilisateurs group by role")).map((x) => [x.role, x.n])) };
+});
+const slug = (t) => String(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 30);
+route("POST", "/roles", async (ctx) => {
+  exige(ctx, "utilisateurs");
+  requis(ctx.body, [["libelle", "Le nom du rôle"]]);
+  const code = slug(ctx.body.libelle);
+  if (!code || DROITS[code] || ROLES_PERSO[code]) fail(400, "Un rôle porte déjà ce nom.");
+  await q("insert into app.roles (code, libelle, droits, classe_seule) values ($1,$2,$3::jsonb,$4)", [code, ctx.body.libelle.trim(), droitsValides(ctx.body.droits) || "[]", !!ctx.body.classe_seule]);
+  await chargerRoles(true);
+  await journal(ctx, "creation", "role", null, { code, libelle: ctx.body.libelle });
+  return tousLesRoles()[code];
+});
+route("PUT", "/roles/:code", async (ctx) => {
+  exige(ctx, "utilisateurs");
+  const code = ctx.params.code;
+  if (code === "admin") fail(400, "Le rôle Administrateur a toujours tous les droits.");
+  const R = tousLesRoles()[code];
+  if (!R) fail(404, "Rôle introuvable.");
+  await q(`insert into app.roles (code, libelle, droits, classe_seule) values ($1,$2,$3::jsonb,$4)
+    on conflict (code) do update set libelle=excluded.libelle, droits=excluded.droits, classe_seule=excluded.classe_seule`,
+    [code, (ctx.body.libelle || R.libelle).trim(), droitsValides(ctx.body.droits ?? R.droits), ctx.body.classe_seule ?? R.classe_seule]);
+  await chargerRoles(true);
+  await journal(ctx, "modification", "role", null, { code });
+  return tousLesRoles()[code];
+});
+route("DELETE", "/roles/:code", async (ctx) => {
+  exige(ctx, "utilisateurs");
+  const code = ctx.params.code;
+  const n = await one("select count(*) as n from app.utilisateurs where role=$1", [code]);
+  if (n.n > 0) fail(400, `Ce rôle est utilisé par ${n.n} compte(s). Changez-leur de rôle d'abord.`);
+  await q("delete from app.roles where code=$1", [code]);
+  await chargerRoles(true);
+  await journal(ctx, "suppression", "role", null, { code });
+  return { ok: true, systeme: !!DROITS[code] };
+});
 const droitsValides = (x) => (Array.isArray(x) ? JSON.stringify([...new Set(x.filter((c) => CODES_DROITS.includes(c)))]) : null);
 // Compte enseignant : on choisit directement sa classe ; la fiche enseignant est créée et liée automatiquement.
 const classePourCompte = async (userId, classeId) => {
@@ -1501,6 +1560,7 @@ route("POST", "/utilisateurs", async (ctx) => {
   exige(ctx, "utilisateurs");
   const b = ctx.body;
   requis(b, [["nom", "Le nom"], ["prenom", "Le prénom"], ["email", "L'email"], ["mot_de_passe", "Le mot de passe"], ["role", "Le rôle"]]);
+  if (!tousLesRoles()[b.role]) fail(400, "Rôle inconnu.");
   if (b.mot_de_passe.length < 8) fail(400, "Le mot de passe doit faire au moins 8 caractères.");
   const r = await one(`insert into app.utilisateurs (nom, prenom, email, mot_de_passe, role, droits, classe_seule)
     values ($1,$2,lower($3),crypt($4, gen_salt('bf')),$5,$6::jsonb,$7) returning ${USER_COLS}`, [b.nom.trim(), b.prenom.trim(), b.email.trim(), b.mot_de_passe, b.role, droitsValides(b.droits), !!b.classe_seule]);
@@ -1513,6 +1573,7 @@ route("POST", "/utilisateurs", async (ctx) => {
 route("PUT", "/utilisateurs/:id", async (ctx) => {
   exige(ctx, "utilisateurs");
   const d = pick(ctx.body, ["nom", "prenom", "email", "role", "actif", "classe_seule"]);
+  if (d.role && !tousLesRoles()[d.role]) fail(400, "Rôle inconnu.");
   if ("droits" in ctx.body) d.droits = droitsValides(ctx.body.droits);
   if (Number(ctx.params.id) === ctx.user.id && (d.actif === false || (d.role && d.role !== "admin")))
     fail(400, "Vous ne pouvez pas retirer vos propres droits d'administrateur.");
@@ -1566,6 +1627,7 @@ export default {
           if (!t) fail(401, "Session expirée, reconnectez-vous.");
           ctx.user = await one(`select ${USER_COLS} from app.utilisateurs where id=$1 and actif`, [t.id]);
           if (!ctx.user) fail(401, "Compte désactivé.");
+          await chargerRoles();
           await verifierClasse(ctx, ctx.query.classe_id ?? ctx.body?.classe_id);
         }
         return json(await r.handler(ctx));

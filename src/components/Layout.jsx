@@ -68,7 +68,7 @@ export default function Layout() {
         </nav>
         <div className="side-user">
           <span className="avatar round gold">{initiales(u?.prenom, u?.nom)}</span>
-          <div className="who"><strong>{u?.prenom} {u?.nom}</strong><span>{ROLES[u?.role]}</span></div>
+          <div className="who"><strong>{u?.prenom} {u?.nom}</strong><span>{s.roles?.[u?.role] || ROLES[u?.role] || u?.role}</span></div>
           <button onClick={() => setMdp(true)} title="Changer mon mot de passe" aria-label="Changer mon mot de passe"><KeyRound size={17} /></button>
           <button onClick={s.logout} title="Se déconnecter" aria-label="Se déconnecter"><LogOut size={17} /></button>
         </div>

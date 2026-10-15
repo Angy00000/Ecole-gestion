@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { UserPlus, Users, Wallet, CalendarDays, ArrowUpRight, TrendingUp, Utensils, Sparkles, School, ChevronRight, AlertTriangle } from "lucide-react";
+import { UserPlus, Users, Wallet, CalendarDays, ArrowUpRight, TrendingUp, Utensils, Sparkles, School, ChevronRight, AlertTriangle, PenLine, CalendarCheck } from "lucide-react";
 import { TYPES_COURTS } from "../lib/format";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
@@ -60,7 +60,10 @@ export default function Dashboard() {
           <div className="actions">
             {s.peut("eleves.ecrire") && <Link className="btn gold" to="/eleves?nouveau=1"><UserPlus size={18} />Inscrire un élève</Link>}
             <Link className="btn glass" to="/eleves"><Users size={18} />Voir les élèves</Link>
-            <Link className="btn glass" to="/classes"><School size={18} />Classes et tarifs</Link>
+            {s.peut("pedagogie.ecrire") && !s.peut("finances.lire") ? <>
+              <Link className="btn glass" to="/notes"><PenLine size={18} />Saisir des notes</Link>
+              {s.peut("absences.ecrire") && <Link className="btn glass" to="/absences"><CalendarCheck size={18} />Faire l'appel</Link>}
+            </> : <Link className="btn glass" to="/classes"><School size={18} />{s.peut("finances.lire") ? "Classes et tarifs" : "Classes"}</Link>}
           </div>
         </div>
         <div className="hero-ring">

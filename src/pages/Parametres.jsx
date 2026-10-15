@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, CheckCircle2, Building2, CalendarRange, UsersRound, History, Tags, Trash2, DatabaseBackup, Download, FileJson } from "lucide-react";
+import { Plus, Pencil, CheckCircle2, Building2, CalendarRange, UsersRound, History, Tags, Trash2, DatabaseBackup, Download, FileJson, ShieldCheck } from "lucide-react";
 import { TYPES } from "../lib/format";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { date, dateHeure, ROLES, initiales } from "../lib/format";
-import { Modal, Field, Input, Select, Money, Spinner, ErrorBox, useToast, PageHead } from "../components/ui";
+import { Modal, Field, Input, Select, Money, Spinner, ErrorBox, useToast, PageHead, Confirm } from "../components/ui";
 
 // ── Établissement ──
 function Etablissement() {
@@ -147,6 +147,75 @@ const GROUPES_DROITS = [
   ["Administration", [["etablissement.ecrire", "Paramètres de l'école et sauvegarde"], ["annees.ecrire", "Années scolaires"], ["journal.lire", "Journal des actions"], ["utilisateurs", "Gérer les comptes utilisateurs"]]],
 ];
 
+function Roles() {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [form, setForm] = useState(null);
+  const [del, setDel] = useState(null);
+  const [error, setError] = useState(null);
+  const { data, isLoading, error: loadErr } = useQuery({ queryKey: ["droits"], queryFn: () => api.get("/droits") });
+  const BESOIN = { "eleves.ecrire": "eleves.lire", "eleves.supprimer": "eleves.lire", "pedagogie.ecrire": "pedagogie.lire", "absences.ecrire": "pedagogie.lire", "finances.encaisser": "finances.lire", "finances.annuler": "finances.lire", "depenses.ecrire": "depenses.lire" };
+  const basculer = (code) => setForm((f) => f.droits.includes(code)
+    ? { ...f, droits: f.droits.filter((c) => c !== code && BESOIN[c] !== code) }
+    : { ...f, droits: [...new Set([...f.droits, code, ...(BESOIN[code] ? [BESOIN[code]] : [])])] });
+  const save = async () => {
+    setError(null);
+    try {
+      if (form.code) await api.put(`/roles/${form.code}`, form); else await api.post("/roles", form);
+      toast(form.code ? `Rôle « ${form.libelle} » mis à jour` : `Rôle « ${form.libelle} » créé`);
+      ["droits", "utilisateurs", "bootstrap"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); setForm(null);
+    } catch (e) { setError(e); }
+  };
+  if (isLoading) return <Spinner />;
+  if (loadErr) return <ErrorBox error={loadErr} />;
+  const libelleDroit = Object.fromEntries(GROUPES_DROITS.flatMap(([, items]) => items));
+  return (
+    <div className="card">
+      <div className="card-head" style={{ paddingBottom: 16 }}>
+        <h3>Rôles</h3>
+        <button className="btn primary" onClick={() => { setError(null); setForm({ libelle: "", droits: ["eleves.lire"], classe_seule: false }); }}><Plus size={16} />Créer un rôle</button>
+      </div>
+      <div className="table-wrap">
+        <table className="table">
+          <thead><tr><th>Rôle</th><th>Accès</th><th className="r">Comptes</th><th /></tr></thead>
+          <tbody>{data.liste.map((r) => (
+            <tr key={r.code}>
+              <td><strong>{r.libelle}</strong>{!r.systeme && <span className="badge teal" style={{ marginLeft: 8 }}>Créé</span>}{r.classe_seule && <div className="xs muted">Seulement sa classe</div>}</td>
+              <td className="small muted" style={{ maxWidth: 520 }}>{r.code === "admin" ? "Tout" : r.droits.map((d) => libelleDroit[d] || d).join(" · ") || "Aucun accès"}</td>
+              <td className="r num">{data.nb?.[r.code] || 0}</td>
+              <td className="r" style={{ whiteSpace: "nowrap" }}>
+                {r.code !== "admin" && <button className="btn sm ghost" onClick={() => { setError(null); setForm({ ...r }); }}><Pencil size={14} />Modifier</button>}
+                {!r.systeme && <button className="btn sm ghost icon" onClick={() => setDel(r)} aria-label="Supprimer"><Trash2 size={15} /></button>}
+              </td>
+            </tr>))}</tbody>
+        </table>
+      </div>
+      <div className="card-body small muted" style={{ borderTop: "1px solid var(--line)" }}>Créez autant de rôles que nécessaire (surveillant, caissier, directeur des études…). Les comptes qui ont ce rôle reçoivent ces accès, sauf s'ils ont des accès personnalisés.</div>
+      {form && (
+        <Modal wide title={form.code ? `Rôle « ${form.libelle} »` : "Nouveau rôle"} onClose={() => setForm(null)} footer={<>
+          <button className="btn" onClick={() => setForm(null)}>Annuler</button>
+          <button className="btn primary" onClick={save} disabled={!String(form.libelle || "").trim()}>Enregistrer</button>
+        </>}>
+          <div className="stack" style={{ gap: 14 }}>
+            <ErrorBox error={error} />
+            <Field label="Nom du rôle" required><Input value={form.libelle} onChange={(e) => setForm({ ...form, libelle: e.target.value })} autoFocus placeholder="Surveillant, Caissier, Directeur des études…" /></Field>
+            <div className="droits-grid">
+              {GROUPES_DROITS.map(([g, items]) => (
+                <div key={g} className="droits-grp"><h4>{g}</h4>
+                  {items.map(([code, l]) => <label key={code} className="check"><input type="checkbox" checked={form.droits.includes(code)} onChange={() => basculer(code)} />{l}</label>)}
+                </div>
+              ))}
+            </div>
+            <label className="check"><input type="checkbox" checked={!!form.classe_seule} onChange={(e) => setForm({ ...form, classe_seule: e.target.checked })} /><span><strong>Seulement sa classe</strong> par défaut (pour les enseignants)</span></label>
+          </div>
+        </Modal>
+      )}
+      {del && <Confirm danger title={`Supprimer le rôle « ${del.libelle} » ?`} confirmLabel="Supprimer" message="Le rôle sera supprimé. Il ne doit être utilisé par aucun compte."
+        onConfirm={async () => { try { await api.del(`/roles/${del.code}`); toast("Rôle supprimé"); qc.invalidateQueries({ queryKey: ["droits"] }); } catch (e) { toast(e.message, "error"); } setDel(null); }} onClose={() => setDel(null)} />}
+    </div>
+  );
+}
+
 function Utilisateurs() {
   const s = useSession();
   const toast = useToast();
@@ -157,6 +226,7 @@ function Utilisateurs() {
   const ref = useQuery({ queryKey: ["droits"], queryFn: () => api.get("/droits") });
   const classesQ = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }) });
   const parRole = (role) => ref.data?.roles?.[role] || [];
+  const lib = (code) => ref.data?.liste?.find((x) => x.code === code)?.libelle || ROLES[code] || code;
   const effectifs = (f) => (f.role === "admin" ? ref.data?.codes || [] : Array.isArray(f.droits) ? f.droits : parRole(f.role));
   const perso = (f) => f.role !== "admin" && Array.isArray(f.droits);
   // Faire implique voir : cocher « Encaisser » coche aussi « Voir les paiements », et décocher « Voir » retire ce qui en dépend.
@@ -195,7 +265,7 @@ function Utilisateurs() {
             {data.map((u) => (
               <tr key={u.id}>
                 <td><div className="person"><span className="avatar round">{initiales(u.prenom, u.nom)}</span><div><strong>{u.prenom} {u.nom}</strong><span>{u.email}</span></div></div></td>
-                <td>{ROLES[u.role]} <span className="xs muted">· {nbDroits(u)}{perso(u) ? " (personnalisés)" : ""}</span>
+                <td>{lib(u.role)} <span className="xs muted">· {nbDroits(u)}{perso(u) ? " (personnalisés)" : ""}</span>
                   {u.classe_seule && <div className="xs" style={{ color: "var(--teal)" }}>Seulement sa classe{u.classes ? ` : ${u.classes}` : " (aucune classe liée)"}</div>}</td>
                 <td className="hide-m">{u.dernier_login ? dateHeure(u.dernier_login) : <span className="muted">Jamais</span>}</td>
                 <td>{u.actif ? <span className="badge green">Actif</span> : <span className="badge coral">Désactivé</span>}</td>
@@ -224,8 +294,8 @@ function Utilisateurs() {
                 <Input type="text" value={form.mot_de_passe} onChange={(e) => setForm({ ...form, mot_de_passe: e.target.value })} autoComplete="new-password" />
               </Field>
               <Field label="Rôle" required hint="Le rôle remplit les accès par défaut.">
-                <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value, droits: null, classe_seule: e.target.value === "professeur" ? true : form.classe_seule })}>
-                  {Object.entries(ROLES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                <Select value={form.role} onChange={(e) => { const r = ref.data?.liste?.find((x) => x.code === e.target.value); setForm({ ...form, role: e.target.value, droits: null, classe_seule: !!r?.classe_seule }); }}>
+                  {(ref.data?.liste || Object.entries(ROLES).map(([code, libelle]) => ({ code, libelle }))).map((r) => <option key={r.code} value={r.code}>{r.libelle}</option>)}
                 </Select>
               </Field>
 {(form.role === "professeur" || form.classe_seule) && <Field label="Sa classe" hint="L'enseignant ne verra que cette classe.">
@@ -236,7 +306,7 @@ function Utilisateurs() {
               </Field>}
             </div>
             {form.role === "admin" ? <div className="alert info">L'administrateur a accès à tout.</div> : <>
-              <div className="between"><strong>Accès</strong>{perso(form) && <button type="button" className="btn sm ghost" onClick={() => setForm({ ...form, droits: null })}>Revenir aux accès du rôle « {ROLES[form.role]} »</button>}</div>
+              <div className="between"><strong>Accès</strong>{perso(form) && <button type="button" className="btn sm ghost" onClick={() => setForm({ ...form, droits: null })}>Revenir aux accès du rôle « {lib(form.role)} »</button>}</div>
               <div className="droits-grid">
                 {GROUPES_DROITS.map(([g, items]) => (
                   <div key={g} className="droits-grp"><h4>{g}</h4>
@@ -432,6 +502,7 @@ export default function Parametres() {
     ["annees", "Années scolaires", true, CalendarRange],
     ["types-paiement", "Types de paiement", s.peut("finances.lire"), Tags],
     ["utilisateurs", "Utilisateurs", s.peut("utilisateurs"), UsersRound],
+    ["roles", "Rôles et accès", s.peut("utilisateurs"), ShieldCheck],
     ["sauvegarde", "Sauvegarde", s.peut("etablissement.ecrire"), DatabaseBackup],
     ["journal", "Journal des actions", s.peut("journal.lire"), History],
   ].filter((t) => t[2]);
@@ -449,6 +520,7 @@ export default function Parametres() {
             <Route path="annees" element={<Annees />} />
             <Route path="types-paiement" element={<TypesPaiement />} />
             {s.peut("utilisateurs") && <Route path="utilisateurs" element={<Utilisateurs />} />}
+            {s.peut("utilisateurs") && <Route path="roles" element={<Roles />} />}
             {s.peut("journal.lire") && <Route path="journal" element={<Journal />} />}
             {s.peut("etablissement.ecrire") && <Route path="sauvegarde" element={<Sauvegarde />} />}
           </Routes>
