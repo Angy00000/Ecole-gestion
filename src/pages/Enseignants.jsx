@@ -7,7 +7,9 @@ import { initiales, date, fcfa } from "../lib/format";
 import { Modal, Field, Input, Select, Money, Textarea, Spinner, ErrorBox, Empty, Confirm, PageHead, useToast } from "../components/ui";
 
 function EnseignantForm({ ens, onClose }) {
+  const sess = useSession();
   const toast = useToast();
+  const classes = useQuery({ queryKey: ["classes", sess.annee?.id], queryFn: () => api.get("/classes", { annee_id: sess.annee?.id }) });
   const qc = useQueryClient();
   const [v, setV] = useState({ nom: "", prenom: "", sexe: "", telephone: "", email: "", adresse: "", specialite: "", diplome: "", salaire: null, statut: "actif", observations: "", ...(ens || {}), date_embauche: ens?.date_embauche?.slice(0, 10) || "" });
   const [error, setError] = useState(null);
@@ -15,7 +17,9 @@ function EnseignantForm({ ens, onClose }) {
   const save = async () => {
     setError(null);
     try {
-      const { id, created_at, utilisateur_id, classes_titulaire, matieres, creneaux, ...d } = v;
+      const { id, created_at, utilisateur_id, classes_titulaire, matieres, creneaux, compte, ...d } = v;
+      d.classe_id = d.classe_id ? Number(d.classe_id) : null;
+      if (!sess.peut("finances.lire")) delete d.salaire;
       if (ens) await api.put(`/enseignants/${ens.id}`, d); else await api.post("/enseignants", d);
       toast(ens ? "Fiche mise à jour" : `${v.prenom} ${v.nom} ajouté(e)`);
       qc.invalidateQueries({ queryKey: ["enseignants"] }); onClose();
@@ -41,7 +45,13 @@ function EnseignantForm({ ens, onClose }) {
           <Field label="Spécialité"><Input value={v.specialite || ""} onChange={set("specialite")} placeholder="Instituteur, anglais…" /></Field>
           <Field label="Diplôme"><Input value={v.diplome || ""} onChange={set("diplome")} placeholder="CAP, CEAP, licence…" /></Field>
           <Field label="Date d'embauche"><Input type="date" value={v.date_embauche} onChange={set("date_embauche")} /></Field>
-          <Field label="Salaire mensuel"><Money value={v.salaire} onChange={(x) => setV({ ...v, salaire: x })} /></Field>
+          {sess.peut("finances.lire") && <Field label="Salaire mensuel"><Money value={v.salaire} onChange={(x) => setV({ ...v, salaire: x })} /></Field>}
+          <Field label="Classe (titulaire)" hint="À l'école primaire, chaque classe a son enseignant.">
+            <Select value={v.classe_id || ""} onChange={(e) => setV({ ...v, classe_id: e.target.value })}>
+              <option value="">Aucune classe</option>
+              {classes.data?.map((c) => <option key={c.id} value={c.id}>{c.nom}{c.titulaire && c.id !== Number(v.classe_id) ? ` (actuellement : ${c.titulaire})` : ""}</option>)}
+            </Select>
+          </Field>
           <Field label="Statut"><Select value={v.statut} onChange={set("statut")}><option value="actif">En poste</option><option value="inactif">Parti / inactif</option></Select></Field>
         </div>
         <Field label="Observations"><Textarea value={v.observations || ""} onChange={set("observations")} /></Field>

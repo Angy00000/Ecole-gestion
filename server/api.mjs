@@ -89,12 +89,21 @@ const DROITS = {
   secretaire: ["eleves.lire", "eleves.ecrire", "pedagogie.lire", "absences.ecrire"],
   professeur: ["eleves.lire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire"],
 };
-const peut = (role, droit) => (DROITS[role] || []).some((d) => d === "*" || d === droit);
+const CODES_DROITS = ["eleves.lire", "eleves.ecrire", "eleves.supprimer", "classes.ecrire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire", "enseignants.ecrire",
+  "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire", "utilisateurs"];
+// Droits effectifs : ceux choisis pour la personne (s'ils existent), sinon ceux de son rôle. L'administrateur a toujours tout.
+const droitsDe = (u) => {
+  if (!u) return [];
+  if (typeof u === "string") return DROITS[u] || [];
+  if (u.role === "admin") return ["*"];
+  return Array.isArray(u.droits) ? u.droits : DROITS[u.role] || [];
+};
+const peut = (u, droit) => droitsDe(u).some((d) => d === "*" || d === droit);
 // Pour les comptes sans accès aux finances (secrétaire…) : on retire tous les montants des réponses.
 const ARGENT_CLASSE = ["frais_inscription", "uniforme", "tenue_sport", "cours_soir", "mensualite", "mensualite_jan_fev", "mensualite_cantine", "mensualite_cantine_jan_fev", "frais_cantine", "prix_uniforme", "prix_tenue", "prix_cours_soir"];
 const ARGENT_INSC = ["mensualite_speciale", "reduction_inscription", "frais_reste", "montant_uniforme", "montant_tenue", "montant_frais_cantine", "montant_cantine_mois", "montant_cours_soir"];
 const sansArgent = (ctx, row) => {
-  if (!row || peut(ctx.user.role, "finances.lire")) return row;
+  if (!row || peut(ctx.user, "finances.lire")) return row;
   const o = { ...row };
   if (typeof o.mensualite_cantine === "number") o.cantine_dispo = o.mensualite_cantine > 0;
   if (typeof o.cours_soir === "number") o.cours_soir_dispo = o.cours_soir > 0;
@@ -104,7 +113,24 @@ const sansArgent = (ctx, row) => {
   for (const k of ARGENT_INSC) delete o[k];
   return o;
 };
-const exige = (ctx, droit) => { if (!peut(ctx.user.role, droit)) fail(403, "Vous n'avez pas les droits pour cette action."); };
+// Enseignant limité à sa classe : classes dont il est titulaire (via la fiche enseignant liée à son compte).
+const classesAutorisees = async (ctx) => {
+  if (!ctx.user?.classe_seule || ctx.user.role === "admin") return null;
+  if (ctx._classes) return ctx._classes;
+  const rows = await q("select c.id from app.classes c join app.enseignants e on e.id=c.titulaire_id where e.utilisateur_id=$1", [ctx.user.id]);
+  return (ctx._classes = rows.map((x) => x.id));
+};
+const verifierClasse = async (ctx, classeId) => {
+  const ok = await classesAutorisees(ctx);
+  if (ok && classeId != null && classeId !== "" && !ok.includes(Number(classeId))) fail(403, "Vous n'avez accès qu'à votre classe.");
+};
+const verifierEleve = async (ctx, eleveId) => {
+  const ok = await classesAutorisees(ctx);
+  if (!ok) return;
+  const r = await one("select 1 as ok from app.inscriptions where eleve_id=$1 and classe_id = any($2::int[])", [eleveId, `{${ok.join(",")}}`]);
+  if (!r) fail(403, "Vous n'avez accès qu'aux élèves de votre classe.");
+};
+const exige = (ctx, droit) => { if (!peut(ctx.user, droit)) fail(403, "Vous n'avez pas les droits pour cette action."); };
 
 const journal = (ctx, action, entite, entite_id, details) =>
   q("insert into app.journal (utilisateur_id, action, entite, entite_id, details) values ($1,$2,$3,$4,$5)",
@@ -128,7 +154,7 @@ const updateSql = (table, id, data, extra = "") => {
 const requis = (obj, champs) => {
   for (const [k, label] of champs) if (obj?.[k] == null || String(obj[k]).trim() === "") fail(400, `${label} est obligatoire.`);
 };
-const USER_COLS = "id, nom, prenom, email, role, actif, dernier_login, created_at";
+const USER_COLS = "id, nom, prenom, email, role, actif, dernier_login, created_at, droits, classe_seule";
 const anneeCourante = async (id) => id ? Number(id) : (await one("select id from app.annees where active"))?.id;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -180,9 +206,9 @@ route("GET", "/bootstrap", async (ctx) => {
     ["select * from app.annees order by debut desc"],
     ["select * from app.types_paiement where actif order by libelle"],
   ]);
-  const argent = peut(ctx.user.role, "finances.lire");
+  const argent = peut(ctx.user, "finances.lire");
   const sansFrais = (a) => argent ? a : Object.fromEntries(Object.entries(a).filter(([k]) => !k.startsWith("frais_")));
-  return { user: ctx.user, etablissement: etab, annees: annees.map(sansFrais), types_paiement: argent ? types : [], droits: DROITS[ctx.user.role] };
+  return { user: ctx.user, etablissement: etab, annees: annees.map(sansFrais), types_paiement: argent ? types : [], droits: droitsDe(ctx.user), classes_autorisees: await classesAutorisees(ctx) };
 });
 
 // ── Établissement ─────────────────────────────────────────────────────────
@@ -198,7 +224,7 @@ route("PUT", "/etablissement", async (ctx) => {
 // ── Années scolaires ──────────────────────────────────────────────────────
 route("GET", "/annees", async (ctx) => (await q(
   `select a.*, (select count(*) from app.inscriptions i where i.annee_id=a.id and i.statut='active') as effectif
-   from app.annees a order by debut desc`)).map((a) => peut(ctx.user.role, "finances.lire") ? a : Object.fromEntries(Object.entries(a).filter(([k]) => !k.startsWith("frais_")))));
+   from app.annees a order by debut desc`)).map((a) => peut(ctx.user, "finances.lire") ? a : Object.fromEntries(Object.entries(a).filter(([k]) => !k.startsWith("frais_")))));
 
 route("POST", "/annees", async (ctx) => {
   exige(ctx, "annees.ecrire");
@@ -239,7 +265,7 @@ route("GET", "/classes", async (ctx) => {
       (select count(*) from app.matieres m where m.classe_id=c.id) as nb_matieres,
       (select count(*) from app.inscriptions i where i.classe_id=c.id and i.statut='active') as effectif,
       (select count(*) filter (where e.sexe='F') from app.inscriptions i join app.eleves e on e.id=i.eleve_id where i.classe_id=c.id and i.statut='active') as filles
-    from app.classes c left join app.enseignants t on t.id=c.titulaire_id where c.annee_id=$1 order by c.ordre, c.nom`, [annee]).then((rows) => rows.map((x) => sansArgent(ctx, x)));
+    from app.classes c left join app.enseignants t on t.id=c.titulaire_id where c.annee_id=$1 order by c.ordre, c.nom`, [annee]).then(async (rows) => { const ok = await classesAutorisees(ctx); return rows.filter((x) => !ok || ok.includes(x.id)).map((x) => sansArgent(ctx, x)); });
 });
 
 route("POST", "/classes", async (ctx) => {
@@ -271,7 +297,7 @@ route("DELETE", "/classes/:id", async (ctx) => {
 // ── Tableau de bord ───────────────────────────────────────────────────────
 route("GET", "/dashboard", async (ctx) => {
   const annee = await anneeCourante(ctx.query.annee_id);
-  const voitFinances = peut(ctx.user.role, "finances.lire");
+  const voitFinances = peut(ctx.user, "finances.lire");
   const [[eff], classes, recentes, [fin], paiements, evolution] = await tx([
     [`select count(*) as total,
         count(*) filter (where e.sexe='F') as filles,
@@ -328,6 +354,8 @@ route("GET", "/eleves", async (ctx) => {
   if (inscrits === "oui") where.push("i.id is not null");
   if (inscrits === "non") where.push("i.id is null");
   if (classe_id) { p.push(classe_id); where.push(`i.classe_id=$${p.length}`); }
+  const okCl = await classesAutorisees(ctx);
+  if (okCl) { p.push(`{${okCl.join(",") || 0}}`); where.push(`i.classe_id = any($${p.length}::int[])`); }
   if (sexe) { p.push(sexe); where.push(`e.sexe=$${p.length}`); }
   if (recherche) {
     p.push(`%${recherche.trim().toLowerCase()}%`);
@@ -352,6 +380,7 @@ route("GET", "/eleves", async (ctx) => {
 });
 
 route("GET", "/eleves/:id", async (ctx) => {
+  await verifierEleve(ctx, ctx.params.id);
   exige(ctx, "eleves.lire");
   const id = ctx.params.id;
   const [[eleve], inscriptions, paiements] = await tx([
@@ -360,7 +389,7 @@ route("GET", "/eleves/:id", async (ctx) => {
         c.frais_inscription, c.uniforme as prix_uniforme, c.tenue_sport as prix_tenue, c.mensualite, c.mensualite_jan_fev, c.mensualite_cantine, c.mensualite_cantine_jan_fev, c.frais_cantine, c.cours_soir as prix_cours_soir
       from app.inscriptions i join app.annees a on a.id=i.annee_id join app.classes c on c.id=i.classe_id
       where i.eleve_id=$1 order by a.debut desc`, [id]],
-    peut(ctx.user.role, "finances.lire")
+    peut(ctx.user, "finances.lire")
       ? [`select r.*, a.libelle as annee, i.annee_id, u.prenom || ' ' || u.nom as encaisse_par_nom,
             (select json_agg(json_build_object('type', p.type, 'mois', to_char(p.mois,'YYYY-MM'), 'montant', p.montant, 'libelle', p.libelle) order by p.mois nulls first, p.id) from app.paiements p where p.recu_id=r.id) as lignes
           from app.recus r join app.inscriptions i on i.id=r.inscription_id join app.annees a on a.id=i.annee_id
@@ -369,7 +398,7 @@ route("GET", "/eleves/:id", async (ctx) => {
       : ["select null where false"],
   ]);
   if (!eleve) fail(404, "Élève introuvable.");
-  const absences = peut(ctx.user.role, "pedagogie.lire") ? await q(`select a.id, a.date_absence, a.moment, a.type, a.justifiee, a.motif, i.annee_id
+  const absences = peut(ctx.user, "pedagogie.lire") ? await q(`select a.id, a.date_absence, a.moment, a.type, a.justifiee, a.motif, i.annee_id
     from app.absences a join app.inscriptions i on i.id=a.inscription_id where i.eleve_id=$1 order by a.date_absence desc limit 100`, [id]) : [];
   return { eleve, inscriptions: inscriptions.map((i) => sansArgent(ctx, i)), paiements, absences };
 });
@@ -387,7 +416,7 @@ route("GET", "/eleves-matricule", async (ctx) => ({ matricule: await prochainMat
 // Sans accès aux finances, on ne peut pas toucher à la formule ni aux réductions.
 const FORMULE = ["mensualite_speciale", "gratuit", "inscription_offerte", "reduction_inscription"];
 const sansFormule = (ctx, ins) => {
-  if (!ins || peut(ctx.user.role, "finances.lire")) return ins;
+  if (!ins || peut(ctx.user, "finances.lire")) return ins;
   const o = { ...ins }; for (const k of FORMULE) delete o[k]; return o;
 };
 route("POST", "/eleves", async (ctx) => {
@@ -413,6 +442,7 @@ route("POST", "/eleves", async (ctx) => {
 
 route("PUT", "/eleves/:id", async (ctx) => {
   exige(ctx, "eleves.ecrire");
+  await verifierEleve(ctx, ctx.params.id);
   const d = pick(ctx.body, COLS_ELEVE);
   if (d.nom) d.nom = d.nom.trim().toUpperCase();
   const r = await one(...updateSql("app.eleves", ctx.params.id, d, ", updated_at=now()"));
@@ -687,7 +717,7 @@ route("GET", "/factures", async (ctx) => {
 
 // ── Suppression d'un reçu (erreur à l'encaissement, le jour même uniquement) ──
 const memeJour = (r) => String(r.created_at).slice(0, 10) === new Date().toISOString().slice(0, 10);
-const peutSupprimerRecu = (ctx, r) => memeJour(r) && (peut(ctx.user.role, "finances.annuler") || (peut(ctx.user.role, "finances.encaisser") && r.encaisse_par === ctx.user.id));
+const peutSupprimerRecu = (ctx, r) => memeJour(r) && (peut(ctx.user, "finances.annuler") || (peut(ctx.user, "finances.encaisser") && r.encaisse_par === ctx.user.id));
 route("DELETE", "/recus/:id", async (ctx) => {
   exige(ctx, "finances.encaisser");
   const r = await recuComplet(ctx.params.id);
@@ -703,8 +733,8 @@ route("DELETE", "/recus/:id", async (ctx) => {
 });
 
 // ── Modification d'un reçu (corrections) ──
-const peutModifierRecu = (ctx, r) => peut(ctx.user.role, "finances.annuler")
-  || (peut(ctx.user.role, "finances.encaisser") && r.encaisse_par === ctx.user.id && String(r.created_at).slice(0, 10) === new Date().toISOString().slice(0, 10));
+const peutModifierRecu = (ctx, r) => peut(ctx.user, "finances.annuler")
+  || (peut(ctx.user, "finances.encaisser") && r.encaisse_par === ctx.user.id && String(r.created_at).slice(0, 10) === new Date().toISOString().slice(0, 10));
 route("PUT", "/recus/:id", async (ctx) => {
   exige(ctx, "finances.encaisser");
   const b = ctx.body;
@@ -1103,7 +1133,7 @@ route("GET", "/rapport", async (ctx) => {
   const a = await one("select * from app.annees where id=$1", [annee]);
   const debutAnnee = (await one(`select least($2::date, (select min(r.date_paiement) from app.recus r join app.inscriptions i on i.id=r.inscription_id where i.annee_id=$1))::text as d`, [annee, `${a.debut.slice(0, 4)}-07-01`])).d;
   const du = ctx.query.du || debutAnnee, au = ctx.query.au || new Date().toISOString().slice(0, 10);
-  const voitDepenses = peut(ctx.user.role, "depenses.lire");
+  const voitDepenses = peut(ctx.user, "depenses.lire");
   const [parType, parMode, parMois, recettes, depenses, parClasse, [nb]] = await tx([
     [`select p.type, sum(p.montant) as montant, count(distinct r.id) as recus from app.paiements p join app.recus r on r.id=p.recu_id
       where not r.annule and r.date_paiement between $1 and $2 group by 1 order by 2 desc`, [du, au]],
@@ -1137,15 +1167,24 @@ route("GET", "/enseignants", async (ctx) => {
   return q(`select e.*,
       (select string_agg(c.nom, ', ' order by c.ordre) from app.classes c where c.titulaire_id=e.id and c.annee_id=$1) as classes_titulaire,
       (select string_agg(distinct m.nom, ', ') from app.matieres m join app.classes c on c.id=m.classe_id and c.annee_id=$1 where m.enseignant_id=e.id) as matieres,
-      (select count(*) from app.emploi_temps t join app.classes c on c.id=t.classe_id and c.annee_id=$1 where t.enseignant_id=e.id) as creneaux
-    from app.enseignants e order by e.statut, e.nom, e.prenom`, [annee]);
+      (select count(*) from app.emploi_temps t join app.classes c on c.id=t.classe_id and c.annee_id=$1 where t.enseignant_id=e.id) as creneaux,
+      (select c.id from app.classes c where c.titulaire_id=e.id and c.annee_id=$1 order by c.ordre limit 1) as classe_id,
+      (select u.email from app.utilisateurs u where u.id=e.utilisateur_id) as compte
+    from app.enseignants e order by e.statut, e.nom, e.prenom`, [annee]).then((rows) => peut(ctx.user, "finances.lire") ? rows : rows.map(({ salaire, ...x }) => x));
 });
+// École primaire : un enseignant titulaire par classe.
+const affecterClasse = async (ensId, classeId) => {
+  const annee = await anneeCourante();
+  await q("update app.classes set titulaire_id=null where titulaire_id=$1 and annee_id=$2", [ensId, annee]);
+  if (classeId) await q("update app.classes set titulaire_id=$1 where id=$2", [ensId, classeId]);
+};
 route("POST", "/enseignants", async (ctx) => {
   exige(ctx, "enseignants.ecrire");
   const d = pick(ctx.body, COLS_ENS);
   requis(d, [["nom", "Le nom"], ["prenom", "Le prénom"]]);
   d.nom = d.nom.trim().toUpperCase();
   const r = await one(...insertSql("app.enseignants", d));
+  if ("classe_id" in ctx.body) await affecterClasse(r.id, ctx.body.classe_id);
   await journal(ctx, "creation", "enseignant", r.id, { nom: `${r.prenom} ${r.nom}` });
   return r;
 });
@@ -1153,7 +1192,8 @@ route("PUT", "/enseignants/:id", async (ctx) => {
   exige(ctx, "enseignants.ecrire");
   const d = pick(ctx.body, COLS_ENS);
   if (d.nom) d.nom = d.nom.trim().toUpperCase();
-  const r = await one(...updateSql("app.enseignants", ctx.params.id, d));
+  const r = Object.keys(d).length ? await one(...updateSql("app.enseignants", ctx.params.id, d)) : { id: Number(ctx.params.id) };
+  if ("classe_id" in ctx.body) await affecterClasse(r.id, ctx.body.classe_id);
   await journal(ctx, "modification", "enseignant", r.id);
   return r;
 });
@@ -1173,6 +1213,7 @@ route("DELETE", "/enseignants/:id", async (ctx) => {
 // ── Matières ──
 route("GET", "/classes/:id/matieres", async (ctx) => {
   exige(ctx, "pedagogie.lire");
+  await verifierClasse(ctx, ctx.params.id);
   return q(`select m.*, e.prenom || ' ' || e.nom as enseignant from app.matieres m left join app.enseignants e on e.id=m.enseignant_id
     where m.classe_id=$1 order by m.ordre, m.nom`, [ctx.params.id]);
 });
@@ -1195,6 +1236,16 @@ route("DELETE", "/matieres/:id", async (ctx) => {
 });
 
 // ── Évaluations & notes ──
+const verifierEvaluation = async (ctx, id) => {
+  if (!(await classesAutorisees(ctx))) return;
+  const ev = await one("select classe_id from app.evaluations where id=$1", [id]);
+  if (ev) await verifierClasse(ctx, ev.classe_id);
+};
+const verifierAbsence = async (ctx, id) => {
+  if (!(await classesAutorisees(ctx))) return;
+  const a = await one("select i.classe_id from app.absences a join app.inscriptions i on i.id=a.inscription_id where a.id=$1", [id]);
+  if (a) await verifierClasse(ctx, a.classe_id);
+};
 route("GET", "/evaluations", async (ctx) => {
   exige(ctx, "pedagogie.lire");
   const { classe_id, trimestre } = ctx.query;
@@ -1220,16 +1271,19 @@ route("POST", "/evaluations", async (ctx) => {
 });
 route("PUT", "/evaluations/:id", async (ctx) => {
   exige(ctx, "pedagogie.ecrire");
+  await verifierEvaluation(ctx, ctx.params.id);
   return one(...updateSql("app.evaluations", ctx.params.id, pick(ctx.body, ["matiere_id", "trimestre", "type", "libelle", "date_eval", "bareme"])));
 });
 route("DELETE", "/evaluations/:id", async (ctx) => {
   exige(ctx, "pedagogie.ecrire");
+  await verifierEvaluation(ctx, ctx.params.id);
   await q("delete from app.evaluations where id=$1", [ctx.params.id]);
   await journal(ctx, "suppression", "evaluation", Number(ctx.params.id));
   return { ok: true };
 });
 route("GET", "/evaluations/:id/notes", async (ctx) => {
   exige(ctx, "pedagogie.lire");
+  await verifierEvaluation(ctx, ctx.params.id);
   const [[ev], rows] = await tx([
     [`select ev.*, m.nom as matiere, c.nom as classe from app.evaluations ev join app.matieres m on m.id=ev.matiere_id join app.classes c on c.id=ev.classe_id where ev.id=$1`, [ctx.params.id]],
     [`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, n.note, coalesce(n.absent,false) as absent
@@ -1242,6 +1296,7 @@ route("GET", "/evaluations/:id/notes", async (ctx) => {
 });
 route("PUT", "/evaluations/:id/notes", async (ctx) => {
   exige(ctx, "pedagogie.ecrire");
+  await verifierEvaluation(ctx, ctx.params.id);
   const ev = await one("select bareme from app.evaluations where id=$1", [ctx.params.id]);
   if (!ev) fail(404, "Évaluation introuvable.");
   const list = (ctx.body.notes || []).map((n) => {
@@ -1351,6 +1406,8 @@ route("GET", "/absences", async (ctx) => {
   if (au) { p.push(au); w.push(`a.date_absence <= $${p.length}`); }
   if (classe_id) { p.push(classe_id); w.push(`i.classe_id=$${p.length}`); }
   if (eleve_id) { p.push(eleve_id); w.push(`i.eleve_id=$${p.length}`); }
+  const okCl = await classesAutorisees(ctx);
+  if (okCl) { p.push(`{${okCl.join(",") || 0}}`); w.push(`i.classe_id = any($${p.length}::int[])`); }
   const base = `from app.absences a join app.inscriptions i on i.id=a.inscription_id join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id where ${w.join(" and ")}`;
   const [rows, parEleve, [tot]] = await tx([
     [`select a.*, e.id as eleve_id, e.nom, e.prenom, e.sexe, e.matricule, c.nom as classe, c.cycle ${base} order by a.date_absence desc, e.nom limit 500`, p],
@@ -1364,10 +1421,12 @@ route("GET", "/absences", async (ctx) => {
 });
 route("PUT", "/absences/:id", async (ctx) => {
   exige(ctx, "absences.ecrire");
+  await verifierAbsence(ctx, ctx.params.id);
   return one(...updateSql("app.absences", ctx.params.id, pick(ctx.body, ["justifiee", "motif", "moment"])));
 });
 route("DELETE", "/absences/:id", async (ctx) => {
   exige(ctx, "absences.ecrire");
+  await verifierAbsence(ctx, ctx.params.id);
   await q("delete from app.absences where id=$1", [ctx.params.id]);
   return { ok: true };
 });
@@ -1378,6 +1437,8 @@ route("GET", "/emploi", async (ctx) => {
   const annee = await anneeCourante(ctx.query.annee_id);
   const p = [annee]; let w = "c.annee_id=$1";
   if (ctx.query.classe_id) { p.push(ctx.query.classe_id); w += ` and t.classe_id=$${p.length}`; }
+  const okCl = await classesAutorisees(ctx);
+  if (okCl) { p.push(`{${okCl.join(",") || 0}}`); w += ` and t.classe_id = any($${p.length}::int[])`; }
   if (ctx.query.enseignant_id) { p.push(ctx.query.enseignant_id); w += ` and t.enseignant_id=$${p.length}`; }
   return q(`select t.id, t.classe_id, t.jour, to_char(t.heure_debut,'HH24:MI') as heure_debut, to_char(t.heure_fin,'HH24:MI') as heure_fin,
       t.matiere_id, t.libelle, t.enseignant_id, t.salle, m.nom as matiere, c.nom as classe, e.prenom || ' ' || e.nom as enseignant
@@ -1412,22 +1473,35 @@ route("DELETE", "/emploi/:id", async (ctx) => {
 });
 
 // ── Utilisateurs (admin) ──────────────────────────────────────────────────
-route("GET", "/utilisateurs", async (ctx) => { exige(ctx, "utilisateurs"); return q(`select ${USER_COLS} from app.utilisateurs order by nom, prenom`); });
+route("GET", "/droits", async (ctx) => { exige(ctx, "utilisateurs"); return { codes: CODES_DROITS, roles: DROITS }; });
+const droitsValides = (x) => (Array.isArray(x) ? JSON.stringify([...new Set(x.filter((c) => CODES_DROITS.includes(c)))]) : null);
+const lierEnseignant = async (userId, ensId) => {
+  await q("update app.enseignants set utilisateur_id=null where utilisateur_id=$1", [userId]);
+  if (ensId) await q("update app.enseignants set utilisateur_id=$1 where id=$2", [userId, ensId]);
+};
+route("GET", "/utilisateurs", async (ctx) => {
+  exige(ctx, "utilisateurs");
+  return q(`select ${USER_COLS.split(", ").map((c) => "u." + c).join(", ")}, e.id as enseignant_id, e.prenom || ' ' || e.nom as enseignant,
+      (select string_agg(c.nom, ', ' order by c.ordre) from app.classes c join app.annees a on a.id=c.annee_id and a.active where c.titulaire_id=e.id) as classes
+    from app.utilisateurs u left join app.enseignants e on e.utilisateur_id=u.id order by u.nom, u.prenom`);
+});
 
 route("POST", "/utilisateurs", async (ctx) => {
   exige(ctx, "utilisateurs");
   const b = ctx.body;
   requis(b, [["nom", "Le nom"], ["prenom", "Le prénom"], ["email", "L'email"], ["mot_de_passe", "Le mot de passe"], ["role", "Le rôle"]]);
   if (b.mot_de_passe.length < 8) fail(400, "Le mot de passe doit faire au moins 8 caractères.");
-  const r = await one(`insert into app.utilisateurs (nom, prenom, email, mot_de_passe, role)
-    values ($1,$2,lower($3),crypt($4, gen_salt('bf')),$5) returning ${USER_COLS}`, [b.nom.trim(), b.prenom.trim(), b.email.trim(), b.mot_de_passe, b.role]);
+  const r = await one(`insert into app.utilisateurs (nom, prenom, email, mot_de_passe, role, droits, classe_seule)
+    values ($1,$2,lower($3),crypt($4, gen_salt('bf')),$5,$6::jsonb,$7) returning ${USER_COLS}`, [b.nom.trim(), b.prenom.trim(), b.email.trim(), b.mot_de_passe, b.role, droitsValides(b.droits), !!b.classe_seule]);
+  await lierEnseignant(r.id, b.enseignant_id);
   await journal(ctx, "creation", "utilisateur", r.id, { email: r.email, role: r.role });
   return r;
 });
 
 route("PUT", "/utilisateurs/:id", async (ctx) => {
   exige(ctx, "utilisateurs");
-  const d = pick(ctx.body, ["nom", "prenom", "email", "role", "actif"]);
+  const d = pick(ctx.body, ["nom", "prenom", "email", "role", "actif", "classe_seule"]);
+  if ("droits" in ctx.body) d.droits = droitsValides(ctx.body.droits);
   if (Number(ctx.params.id) === ctx.user.id && (d.actif === false || (d.role && d.role !== "admin")))
     fail(400, "Vous ne pouvez pas retirer vos propres droits d'administrateur.");
   const list = [];
@@ -1437,6 +1511,7 @@ route("PUT", "/utilisateurs/:id", async (ctx) => {
     list.push(["update app.utilisateurs set mot_de_passe=crypt($1, gen_salt('bf')) where id=$2", [ctx.body.mot_de_passe, ctx.params.id]]);
   }
   if (list.length) await tx(list);
+  if ("enseignant_id" in ctx.body) await lierEnseignant(Number(ctx.params.id), ctx.body.enseignant_id);
   await journal(ctx, "modification", "utilisateur", Number(ctx.params.id), { ...d, mot_de_passe: ctx.body.mot_de_passe ? "réinitialisé" : undefined });
   return one(`select ${USER_COLS} from app.utilisateurs where id=$1`, [ctx.params.id]);
 });
@@ -1478,6 +1553,7 @@ export default {
           if (!t) fail(401, "Session expirée, reconnectez-vous.");
           ctx.user = await one(`select ${USER_COLS} from app.utilisateurs where id=$1 and actif`, [t.id]);
           if (!ctx.user) fail(401, "Compte désactivé.");
+          await verifierClasse(ctx, ctx.query.classe_id ?? ctx.body?.classe_id);
         }
         return json(await r.handler(ctx));
       }

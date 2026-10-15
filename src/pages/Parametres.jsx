@@ -140,6 +140,13 @@ function Annees() {
 }
 
 // ── Utilisateurs ──
+const GROUPES_DROITS = [
+  ["Élèves", [["eleves.lire", "Voir les élèves"], ["eleves.ecrire", "Inscrire et modifier les élèves"], ["eleves.supprimer", "Supprimer / archiver un élève"], ["classes.ecrire", "Gérer les classes et matières"]]],
+  ["Pédagogie", [["pedagogie.lire", "Voir notes, bulletins, emploi du temps"], ["pedagogie.ecrire", "Saisir les notes et appréciations"], ["absences.ecrire", "Faire l'appel / absences"], ["enseignants.ecrire", "Gérer les enseignants"]]],
+  ["Argent", [["finances.lire", "Voir les paiements, factures, impayés, tarifs"], ["finances.encaisser", "Encaisser / vendre"], ["finances.annuler", "Annuler et corriger les reçus des autres"], ["depenses.lire", "Voir dépenses et recettes"], ["depenses.ecrire", "Saisir dépenses, recettes et stock"]]],
+  ["Administration", [["etablissement.ecrire", "Paramètres de l'école et sauvegarde"], ["annees.ecrire", "Années scolaires"], ["journal.lire", "Journal des actions"], ["utilisateurs", "Gérer les comptes utilisateurs"]]],
+];
+
 function Utilisateurs() {
   const s = useSession();
   const toast = useToast();
@@ -147,48 +154,63 @@ function Utilisateurs() {
   const [form, setForm] = useState(null);
   const [error, setError] = useState(null);
   const { data, isLoading, error: loadErr } = useQuery({ queryKey: ["utilisateurs"], queryFn: () => api.get("/utilisateurs") });
+  const ref = useQuery({ queryKey: ["droits"], queryFn: () => api.get("/droits") });
+  const ens = useQuery({ queryKey: ["enseignants"], queryFn: () => api.get("/enseignants") });
+  const parRole = (role) => ref.data?.roles?.[role] || [];
+  const effectifs = (f) => (f.role === "admin" ? ref.data?.codes || [] : Array.isArray(f.droits) ? f.droits : parRole(f.role));
+  const perso = (f) => f.role !== "admin" && Array.isArray(f.droits);
+  // Faire implique voir : cocher « Encaisser » coche aussi « Voir les paiements », et décocher « Voir » retire ce qui en dépend.
+  const BESOIN = { "eleves.ecrire": "eleves.lire", "eleves.supprimer": "eleves.lire", "pedagogie.ecrire": "pedagogie.lire", "absences.ecrire": "pedagogie.lire", "finances.encaisser": "finances.lire", "finances.annuler": "finances.lire", "depenses.ecrire": "depenses.lire" };
+  const basculer = (code) => setForm((f) => {
+    const cur = effectifs(f);
+    if (cur.includes(code)) return { ...f, droits: cur.filter((c) => c !== code && BESOIN[c] !== code) };
+    return { ...f, droits: [...new Set([...cur, code, ...(BESOIN[code] ? [BESOIN[code]] : [])])] };
+  });
 
   const save = async () => {
     setError(null);
     try {
-      const { id, dernier_login, created_at, ...d } = form;
+      const { id, dernier_login, created_at, enseignant, classes, ...d } = form;
       if (!d.mot_de_passe) delete d.mot_de_passe;
+      d.enseignant_id = d.enseignant_id ? Number(d.enseignant_id) : null;
       if (id) await api.put(`/utilisateurs/${id}`, d); else await api.post("/utilisateurs", d);
       toast(id ? "Compte mis à jour" : `Compte créé pour ${d.prenom}`);
-      qc.invalidateQueries({ queryKey: ["utilisateurs"] }); setForm(null);
+      ["utilisateurs", "enseignants"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); setForm(null);
     } catch (e) { setError(e); }
   };
 
   if (isLoading) return <Spinner />;
   if (loadErr) return <ErrorBox error={loadErr} />;
+  const nbDroits = (u) => (u.role === "admin" ? "Tout" : `${effectifs(u).length} accès`);
   return (
     <div className="card">
       <div className="card-head" style={{ paddingBottom: 16 }}>
         <h3>Comptes utilisateurs</h3>
-        <button className="btn primary" onClick={() => { setError(null); setForm({ nom: "", prenom: "", email: "", role: "secretaire", mot_de_passe: "", actif: true }); }}><Plus size={16} />Créer un compte</button>
+        <button className="btn primary" onClick={() => { setError(null); setForm({ nom: "", prenom: "", email: "", role: "secretaire", mot_de_passe: "", actif: true, droits: null, classe_seule: false, enseignant_id: "" }); }}><Plus size={16} />Créer un compte</button>
       </div>
       <div className="table-wrap">
         <table className="table">
-          <thead><tr><th>Personne</th><th>Rôle</th><th className="hide-m">Dernière connexion</th><th>État</th><th /></tr></thead>
+          <thead><tr><th>Personne</th><th>Rôle et accès</th><th className="hide-m">Dernière connexion</th><th>État</th><th /></tr></thead>
           <tbody>
             {data.map((u) => (
               <tr key={u.id}>
                 <td><div className="person"><span className="avatar round">{initiales(u.prenom, u.nom)}</span><div><strong>{u.prenom} {u.nom}</strong><span>{u.email}</span></div></div></td>
-                <td>{ROLES[u.role]}</td>
+                <td>{ROLES[u.role]} <span className="xs muted">· {nbDroits(u)}{perso(u) ? " (personnalisés)" : ""}</span>
+                  {u.classe_seule && <div className="xs" style={{ color: "var(--teal)" }}>Seulement sa classe{u.classes ? ` : ${u.classes}` : " (aucune classe liée)"}</div>}</td>
                 <td className="hide-m">{u.dernier_login ? dateHeure(u.dernier_login) : <span className="muted">Jamais</span>}</td>
                 <td>{u.actif ? <span className="badge green">Actif</span> : <span className="badge coral">Désactivé</span>}</td>
-                <td className="r"><button className="btn sm ghost" onClick={() => { setError(null); setForm({ ...u, mot_de_passe: "" }); }}><Pencil size={14} />Modifier</button></td>
+                <td className="r"><button className="btn sm ghost" onClick={() => { setError(null); setForm({ ...u, mot_de_passe: "", enseignant_id: u.enseignant_id || "" }); }}><Pencil size={14} />Modifier</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <div className="card-body small muted" style={{ borderTop: "1px solid var(--line)" }}>
-        <strong style={{ color: "var(--ink)" }}>Ce que chaque rôle peut faire.</strong> Administrateur : tout. Direction : tout sauf gérer les comptes.
-        Secrétariat : inscrire et modifier les élèves, consulter les paiements. Comptable : consulter élèves et finances. Enseignant : consulter les élèves.
+        Chaque rôle donne des accès par défaut. En modifiant un compte, vous pouvez cocher ou décocher précisément ce que la personne peut voir et faire.
+        Pour un enseignant, liez son compte à sa fiche enseignant et cochez « Seulement sa classe » : il ne verra que les élèves, notes et absences de sa classe.
       </div>
       {form && (
-        <Modal title={form.id ? `${form.prenom} ${form.nom}` : "Nouveau compte"} onClose={() => setForm(null)} footer={<>
+        <Modal wide title={form.id ? `${form.prenom} ${form.nom}` : "Nouveau compte"} onClose={() => setForm(null)} footer={<>
           <button className="btn" onClick={() => setForm(null)}>Annuler</button>
           <button className="btn primary" onClick={save}>Enregistrer</button>
         </>}>
@@ -197,16 +219,34 @@ function Utilisateurs() {
             <div className="grid g2">
               <Field label="Prénom" required><Input value={form.prenom} onChange={(e) => setForm({ ...form, prenom: e.target.value })} autoFocus /></Field>
               <Field label="Nom" required><Input value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} /></Field>
+              <Field label="Email de connexion" required><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
+              <Field label={form.id ? "Nouveau mot de passe" : "Mot de passe"} required={!form.id} hint={form.id ? "Laisser vide pour ne pas le changer. 8 caractères minimum." : "8 caractères minimum."}>
+                <Input type="text" value={form.mot_de_passe} onChange={(e) => setForm({ ...form, mot_de_passe: e.target.value })} autoComplete="new-password" />
+              </Field>
+              <Field label="Rôle" required hint="Le rôle remplit les accès par défaut.">
+                <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value, droits: null, classe_seule: e.target.value === "professeur" ? true : form.classe_seule })}>
+                  {Object.entries(ROLES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </Select>
+              </Field>
+              <Field label="Fiche enseignant liée" hint="Pour un enseignant : sa classe vient de sa fiche (Enseignants).">
+                <Select value={form.enseignant_id || ""} onChange={(e) => setForm({ ...form, enseignant_id: e.target.value })}>
+                  <option value="">Aucune</option>
+                  {ens.data?.filter((x) => !x.utilisateur_id || x.utilisateur_id === form.id).map((x) => <option key={x.id} value={x.id}>{x.prenom} {x.nom}{x.classes_titulaire ? ` — ${x.classes_titulaire}` : ""}</option>)}
+                </Select>
+              </Field>
             </div>
-            <Field label="Email de connexion" required><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-            <Field label="Rôle" required>
-              <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {Object.entries(ROLES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-              </Select>
-            </Field>
-            <Field label={form.id ? "Nouveau mot de passe" : "Mot de passe"} required={!form.id} hint={form.id ? "Laisser vide pour ne pas le changer. 8 caractères minimum." : "8 caractères minimum. Communiquez-le à la personne."}>
-              <Input type="text" value={form.mot_de_passe} onChange={(e) => setForm({ ...form, mot_de_passe: e.target.value })} autoComplete="new-password" />
-            </Field>
+            {form.role === "admin" ? <div className="alert info">L'administrateur a accès à tout.</div> : <>
+              <div className="between"><strong>Accès</strong>{perso(form) && <button type="button" className="btn sm ghost" onClick={() => setForm({ ...form, droits: null })}>Revenir aux accès du rôle « {ROLES[form.role]} »</button>}</div>
+              <div className="droits-grid">
+                {GROUPES_DROITS.map(([g, items]) => (
+                  <div key={g} className="droits-grp"><h4>{g}</h4>
+                    {items.map(([code, l]) => <label key={code} className="check"><input type="checkbox" checked={effectifs(form).includes(code)} onChange={() => basculer(code)} />{l}</label>)}
+                  </div>
+                ))}
+              </div>
+              <label className="check"><input type="checkbox" checked={!!form.classe_seule} onChange={(e) => setForm({ ...form, classe_seule: e.target.checked })} /><span><strong>Seulement sa classe</strong> — ne voit que les élèves, notes, absences et emploi du temps de la classe dont il est titulaire</span></label>
+              {form.classe_seule && !form.enseignant_id && <p className="xs" style={{ color: "var(--coral)" }}>Liez une fiche enseignant ci-dessus, sinon la personne ne verra aucune classe.</p>}
+            </>}
             {form.id && <label className="check"><input type="checkbox" checked={form.actif} onChange={(e) => setForm({ ...form, actif: e.target.checked })} />Compte actif</label>}
           </div>
         </Modal>

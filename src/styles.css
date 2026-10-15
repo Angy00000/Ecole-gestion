@@ -1007,3 +1007,7 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .dense .v-mal { gap: 2px 6px; }
 .dense .b-sigs .b-box { min-height: 46px; }
 .dense > p.xs { line-height: 1.45; }
+.droits-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.droits-grp { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; }
+.droits-grp h4 { font-size: 13px; margin: 0 0 2px; }
+@media (max-width: 700px) { .droits-grid { grid-template-columns: 1fr; } }
