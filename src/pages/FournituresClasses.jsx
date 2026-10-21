@@ -151,7 +151,8 @@ export function ListeFournituresImpression() {
               <thead><tr><th>N°</th><th>Fourniture</th><th>Quantité</th><th>Remarque</th><th>Reçu ✓</th></tr></thead>
               <tbody>{g.rows.map((f, i) => <tr key={f.id}><td>{i + 1}</td><td><strong>{f.libelle}</strong></td><td style={{ textAlign: "center" }}>{f.quantite}</td><td>{f.remarque || ""}</td><td /></tr>)}</tbody>
             </table>
-            <p className="xs" style={{ marginTop: 12 }}>Les fournitures doivent être marquées au nom de l'enfant et apportées dès la rentrée. Merci de votre collaboration.</p>
+            <p style={{ marginTop: 12, fontWeight: 700 }}>🛒 Toutes les fournitures scolaires sont disponibles à l'école.</p>
+            <p className="xs" style={{ marginTop: 6 }}><strong>NB :</strong> Les fournitures doivent être complètes dès la rentrée. Éviter les articles de mauvaise qualité. Tout le matériel doit être marqué au nom de l'enfant. Merci pour votre collaboration.</p>
             <div className="d-sign" style={{ marginTop: "auto" }}><p>Fait à {etab.ville || "Malika"}, le {date(new Date().toISOString())}</p><p className="d-sign-t">La Direction</p></div>
           </article>
         ))}
