@@ -1089,3 +1089,8 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .mc-retirer { font-size: 11.5px; color: var(--muted); justify-content: flex-start; padding-left: 0; }
 .mc-retirer:hover { color: var(--coral); }
 .mc-retirer { white-space: normal; height: auto; }
+
+.seg button { display: inline-flex; align-items: center; gap: 6px; }
+.fc-table .input { height: 36px; }
+.fc-table td { vertical-align: middle; }
+.fc-print td, .fc-print th { padding: 7px 8px; }

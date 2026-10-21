@@ -1091,6 +1091,27 @@ route("DELETE", "/mouvements/:id", async (ctx) => {
   return { ok: true, depense_id: m.depense_id };
 });
 
+// Liste des fournitures demandées par classe (pour les parents) et besoins pour les kits.
+route("GET", "/fournitures-classes", async (ctx) => {
+  exige(ctx, "eleves.lire");
+  const annee = await anneeCourante(ctx.query.annee_id);
+  return q(`select f.*, c.nom as classe, c.ordre as classe_ordre, a.nom as article, a.unite, a.prix_vente,
+      ${SQL_STOCK.replace(/a\.id/g, "f.article_id")} as stock,
+      (select count(*) from app.inscriptions i where i.classe_id=c.id and i.statut='active') as effectif
+    from app.fournitures_classe f join app.classes c on c.id=f.classe_id and c.annee_id=$1 left join app.articles a on a.id=f.article_id
+    order by c.ordre, f.ordre, f.id`, [annee]);
+});
+route("PUT", "/classes/:id/fournitures", async (ctx) => {
+  exige(ctx, "classes.ecrire");
+  const items = (ctx.body.items || []).filter((x) => String(x.libelle || "").trim());
+  const list = [["delete from app.fournitures_classe where classe_id=$1", [ctx.params.id]]];
+  items.forEach((x, i) => list.push(["insert into app.fournitures_classe (classe_id, article_id, libelle, quantite, remarque, ordre) values ($1,$2,$3,$4,$5,$6)",
+    [ctx.params.id, x.article_id || null, String(x.libelle).trim(), Math.max(1, Number(x.quantite) || 1), x.remarque || null, i + 1]]));
+  await tx(list);
+  await journal(ctx, "modification", "fournitures_classe", Number(ctx.params.id), { articles: items.length });
+  return { ok: true, nombre: items.length };
+});
+
 route("POST", "/ventes", async (ctx) => {
   exige(ctx, "finances.encaisser");
   const b = ctx.body;

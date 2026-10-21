@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ListesParClasse } from "./FournituresClasses";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Package, Plus, ArrowDownToLine, ArrowUpFromLine, Pencil, ShoppingCart, AlertTriangle, Trash2, Search, History, Users, X, Boxes } from "lucide-react";
+import { Package, Plus, ArrowDownToLine, ArrowUpFromLine, Pencil, ShoppingCart, AlertTriangle, Trash2, Search, History, Users, X, Boxes, ClipboardList } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, nombre, initiales, MODES, today } from "../lib/format";
@@ -298,10 +299,11 @@ function Mouvements({ sensFixe }) {
 
 export default function Fournitures() {
   const s = useSession();
-  const [tab, setTab] = useState("stock");
+  const [sp] = useSearchParams();
+  const [tab, setTab] = useState(sp.get("tab") || "stock");
   const [vente, setVente] = useState(false);
   const TABS = useMemo(() => [
-    ["stock", "Stock", Package], ["eleves", "Fournitures des élèves", Users], ["ventes", "Ventes", ShoppingCart], ["mouvements", "Historique", History],
+    ["stock", "Stock", Package], ["classes", "Listes par classe", ClipboardList], ["eleves", "Fournitures des élèves", Users], ["ventes", "Ventes", ShoppingCart], ["mouvements", "Historique", History],
   ], []);
   return (
     <>
@@ -312,6 +314,7 @@ export default function Fournitures() {
         {TABS.map(([k, l, I]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}><I size={16} />{l}</button>)}
       </div>
       {tab === "stock" && <Stock />}
+      {tab === "classes" && <ListesParClasse />}
       {tab === "eleves" && <Service typeFixe="fournitures" embedded onVendre={(r) => setVente({ ...r, classe: r.classe })} />}
       {tab === "ventes" && <Mouvements key="v" sensFixe="vente" />}
       {tab === "mouvements" && <Mouvements key="m" />}

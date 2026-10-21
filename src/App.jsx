@@ -21,6 +21,7 @@ import Recettes from "./pages/Recettes";
 import Rapports from "./pages/Rapports";
 import Service from "./pages/Service";
 import Fournitures from "./pages/Fournitures";
+import { ListeFournituresImpression } from "./pages/FournituresClasses";
 import Vierges, { ViergesImpression } from "./pages/Vierges";
 import Listes, { ListeImpression } from "./pages/Listes";
 import MiseAJour from "./components/MiseAJour";
@@ -40,6 +41,7 @@ export default function App() {
       <Route path="documents" element={<Documents />} />
       <Route path="imprimes/imprimer" element={<ViergesImpression />} />
       <Route path="listes/imprimer" element={<ListeImpression />} />
+      <Route path="fournitures/liste" element={<ListeFournituresImpression />} />
       {s.peut("finances.lire") && <Route path="factures/imprimer" element={<FacturesImpression />} />}
       {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}
       <Route element={<Layout />}>
