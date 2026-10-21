@@ -1068,3 +1068,4 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .doc-texte .fr-bloc { margin-bottom: 3px; }
 .doc-texte .b-sigs .b-box { min-height: 52px; }
 .doc-texte .v-fait { margin: 6px 0; }
+.tl-click { cursor: pointer; } .tl-click:hover { outline: 2px solid var(--teal); outline-offset: 1px; }

@@ -12,7 +12,23 @@ import TarifScolarite, { BadgeFormule, ReductionInscription } from "../component
 import { moisNom, moisLong, libelleLigne, TYPES_COURTS } from "../lib/format";
 
 function Situation({ inscription, peutEncaisser, onEncaisser }) {
+  const s = useSession();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [choix, setChoix] = useState(null);
+  const [motif, setMotif] = useState("");
   const { data, isLoading, error } = useQuery({ queryKey: ["situation", inscription.id], queryFn: () => api.get(`/inscriptions/${inscription.id}/situation`) });
+  const retires = data?.inscription?.mois_retires || [];
+  const peutRetirer = s.peut("finances.annuler");
+  const valider = async () => {
+    const retirer = !retires.includes(choix.mois);
+    try {
+      await api.put(`/inscriptions/${inscription.id}/mois-retires`, { mois: choix.mois, retirer, motif });
+      toast(retirer ? `${moisLong(choix.mois)} retiré : plus rien à payer pour ce mois` : `${moisLong(choix.mois)} rétabli`);
+      ["situation", "eleve", "impayes", "factures", "dashboard", "service"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      setChoix(null); setMotif("");
+    } catch (e) { toast(e.message, "error"); }
+  };
   if (isLoading) return <Spinner />;
   if (error) return <ErrorBox error={error} />;
   const cur = new Date().toISOString().slice(0, 7);
@@ -47,17 +63,31 @@ function Situation({ inscription, peutEncaisser, onEncaisser }) {
         <h4 className="enc-h">Mensualités</h4>
         {inscription.gratuit ? <p className="small muted">Mensualités offertes pour cette année : aucun suivi mensuel.</p> : <div className="timeline">
           {mois.map((l) => {
-            const st = l.du === 0 ? "free" : l.paye >= l.du ? "paid" : l.paye ? "partial" : l.mois <= cur ? "late" : "upcoming";
+            const retire = retires.includes(l.mois);
+            const st = retire ? "free" : l.du === 0 ? "free" : l.paye >= l.du ? "paid" : l.paye ? "partial" : l.mois <= cur ? "late" : "upcoming";
+            const cliquable = peutRetirer && (retire || (l.du > 0 && !l.paye));
             return (
-              <div key={l.mois} className={`tl ${st}`} title={moisLong(l.mois)}>
+              <div key={l.mois} className={`tl ${st} ${cliquable ? "tl-click" : ""}`} title={cliquable ? (retire ? "Cliquer pour rétablir ce mois" : "Cliquer pour retirer ce mois") : moisLong(l.mois)} onClick={() => cliquable && setChoix(l)}>
                 <div className="mn">{moisNom(l.mois)}</div>
                 <div className="mv">{l.du ? fcfa(l.du) : "—"}</div>
-                <span className="ms">{st === "paid" ? <><Check size={12} />Payé</> : st === "partial" ? `Reste ${fcfa(l.du - l.paye)}` : st === "late" ? "En retard" : st === "free" ? (inscription.gratuit ? "Offert" : "Réparti jan./fév.") : "À venir"}</span>
+                <span className="ms">{st === "paid" ? <><Check size={12} />Payé</> : st === "partial" ? `Reste ${fcfa(l.du - l.paye)}` : st === "late" ? "En retard" : st === "free" ? (retire ? "Retiré" : inscription.gratuit ? "Offert" : "Réparti jan./fév.") : "À venir"}</span>
               </div>
             );
           })}
         </div>}
+        {peutRetirer && !inscription.gratuit && <p className="xs muted" style={{ marginTop: 8 }}>Cliquez sur un mois non payé pour le retirer de la scolarité de l'élève (il ne sera plus dû ni en arriéré).</p>}
       </div>
+      {choix && (
+        <Modal title={retires.includes(choix.mois) ? `Rétablir ${moisLong(choix.mois)} ?` : `Retirer ${moisLong(choix.mois)} ?`} onClose={() => setChoix(null)} footer={<>
+          <button className="btn" onClick={() => setChoix(null)}>Annuler</button>
+          <button className={`btn ${retires.includes(choix.mois) ? "primary" : "danger"}`} onClick={valider}>{retires.includes(choix.mois) ? "Rétablir le mois" : "Retirer le mois"}</button>
+        </>}>
+          <div className="stack" style={{ gap: 12 }}>
+            <p>{retires.includes(choix.mois) ? `${moisLong(choix.mois)} redeviendra à payer.` : `${moisLong(choix.mois)} (${fcfa(choix.du)}) ne sera plus dû : il disparaît des arriérés, des impayés et des factures. L'action est gardée dans le journal.`}</p>
+            <Field label="Motif"><Input value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Arrivé en cours d'année, maladie, décision de la direction…" autoFocus /></Field>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

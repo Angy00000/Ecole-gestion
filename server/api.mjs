@@ -574,6 +574,25 @@ const situation = async (inscriptionId, exclure = 0) => {
   return { inscription: ins, lignes, total_du: totalDu, total_paye: totalPaye, reste_annee: Math.max(totalDu - totalPaye, 0), reste_echu: echu };
 };
 
+// Retirer (ou rétablir) un mois de la scolarité d'un élève : il n'est plus dû, donc plus d'arriéré.
+route("PUT", "/inscriptions/:id/mois-retires", async (ctx) => {
+  exige(ctx, "finances.annuler");
+  const { mois, retirer, motif } = ctx.body || {};
+  if (!/^\d{4}-\d{2}$/.test(mois || "")) fail(400, "Mois invalide.");
+  if (retirer) {
+    const p = await one(`select coalesce(sum(pa.montant),0) as m from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule
+      where pa.inscription_id=$1 and pa.type='mensualite' and pa.mois=$2::date`, [ctx.params.id, `${mois}-01`]);
+    if (p.m > 0) fail(400, "Ce mois a déjà été payé (en partie ou en totalité) : retirez d'abord la ligne du reçu.");
+  }
+  const r = await one(`update app.inscriptions set mois_retires = case when $3::boolean
+      then (select coalesce(jsonb_agg(distinct v), '[]') from jsonb_array_elements_text(mois_retires || to_jsonb($2::text)) v)
+      else coalesce((select jsonb_agg(v) from jsonb_array_elements_text(mois_retires) v where v <> $2), '[]') end
+    where id=$1 returning id, mois_retires`, [ctx.params.id, mois, !!retirer]);
+  if (!r) fail(404, "Inscription introuvable.");
+  await journal(ctx, retirer ? "mois_retire" : "mois_retabli", "inscription", r.id, { mois, motif: motif || null });
+  return r;
+});
+
 route("GET", "/inscriptions/:id/situation", async (ctx) => { exige(ctx, "finances.lire"); return situation(ctx.params.id, Number(ctx.query.exclure_recu) || 0); });
 
 const recuComplet = async (id) => {
