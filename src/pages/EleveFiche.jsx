@@ -60,22 +60,33 @@ function Situation({ inscription, peutEncaisser, onEncaisser }) {
           </div>
         </>}
 
-        <h4 className="enc-h">Mensualités</h4>
-        {inscription.gratuit ? <p className="small muted">Mensualités offertes pour cette année : aucun suivi mensuel.</p> : <div className="timeline">
-          {mois.map((l) => {
-            const retire = retires.includes(l.mois);
-            const st = retire ? "free" : l.du === 0 ? "free" : l.paye >= l.du ? "paid" : l.paye ? "partial" : l.mois <= cur ? "late" : "upcoming";
-            const cliquable = peutRetirer && (retire || (l.du > 0 && !l.paye));
-            return (
-              <div key={l.mois} className={`tl ${st} ${cliquable ? "tl-click" : ""}`} title={cliquable ? (retire ? "Cliquer pour rétablir ce mois" : "Cliquer pour retirer ce mois") : moisLong(l.mois)} onClick={() => cliquable && setChoix(l)}>
-                <div className="mn">{moisNom(l.mois)}</div>
-                <div className="mv">{l.du ? fcfa(l.du) : "—"}</div>
-                <span className="ms">{st === "paid" ? <><Check size={12} />Payé</> : st === "partial" ? `Reste ${fcfa(l.du - l.paye)}` : st === "late" ? "En retard" : st === "free" ? (retire ? "Retiré" : inscription.gratuit ? "Offert" : "Réparti jan./fév.") : "À venir"}</span>
-              </div>
-            );
-          })}
-        </div>}
-        {peutRetirer && !inscription.gratuit && <p className="xs muted" style={{ marginTop: 8 }}>Cliquez sur un mois non payé pour le retirer de la scolarité de l'élève (il ne sera plus dû ni en arriéré).</p>}
+        <h4 className="enc-h">Mensualités {inscription.annee} — détail mois par mois</h4>
+        {inscription.gratuit ? <p className="small muted">Mensualités offertes pour cette année : aucun mois à payer.</p> : <>
+          <div className="mois-legende">
+            <span><i className="paid" />Payé</span><span><i className="partial" />Payé en partie</span><span><i className="late" />En retard (mois passé non payé)</span>
+            <span><i className="upcoming" />À venir</span><span><i className="free" />Retiré / rien à payer</span>
+          </div>
+          <div className="mois-grid">
+            {mois.map((l) => {
+              const retire = retires.includes(l.mois);
+              const st = retire ? "free" : l.du === 0 ? "free" : l.paye >= l.du ? "paid" : l.paye ? "partial" : l.mois <= cur ? "late" : "upcoming";
+              const reste = Math.max(l.du - l.paye, 0);
+              const etat = { paid: "Payé", partial: "Payé en partie", late: "En retard", upcoming: "À venir", free: retire ? "Retiré de la scolarité" : l.mois.endsWith("-06") ? "Juin : réparti sur janvier et février" : "Rien à payer" }[st];
+              return (
+                <div key={l.mois} className={`mois-carte ${st}`}>
+                  <div className="mc-head"><strong>{moisLong(l.mois)}</strong><span className="mc-etat">{st === "paid" && <Check size={12} />}{etat}</span></div>
+                  {st !== "free" && <dl className="mc-chiffres">
+                    <div><dt>Montant du mois</dt><dd>{fcfa(l.du)}</dd></div>
+                    <div><dt>Déjà payé</dt><dd className="ok">{fcfa(Math.min(l.paye, l.du))}</dd></div>
+                    <div><dt>Reste à payer</dt><dd className={reste ? "due" : "ok"}>{reste ? fcfa(reste) : "0 F"}</dd></div>
+                  </dl>}
+                  {peutRetirer && retire && <button className="btn sm" onClick={() => setChoix(l)}>Rétablir ce mois</button>}
+                  {peutRetirer && !retire && l.du > 0 && !l.paye && <button className="btn sm ghost mc-retirer" title="Ne plus faire payer ce mois à l'élève" onClick={() => setChoix(l)}>Retirer ce mois</button>}
+                </div>
+              );
+            })}
+          </div>
+        </>}
       </div>
       {choix && (
         <Modal title={retires.includes(choix.mois) ? `Rétablir ${moisLong(choix.mois)} ?` : `Retirer ${moisLong(choix.mois)} ?`} onClose={() => setChoix(null)} footer={<>
