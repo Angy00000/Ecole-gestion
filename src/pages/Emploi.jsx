@@ -69,7 +69,7 @@ function TableEdt({ data, couleurs, peut, onEdit }) {
       <table className="edt-table">
         <thead><tr><th className="edt-h">Horaires</th>{jours.map(([j, n]) => <th key={j}>{n}</th>)}</tr></thead>
         <tbody>{lignes.map((l, i) => l.pause ? (
-          <tr key={i} className="edt-pause"><td className="edt-h">{fmt(l.de)} – {fmt(l.a)}</td><td colSpan={jours.length}>{l.de >= "12:30" ? "Pause" : "Récréation"}</td></tr>
+          <tr key={i} className="edt-pause"><td className="edt-h">{fmt(l.de)} – {fmt(l.a)}</td><td colSpan={jours.length}>{l.de >= "11:45" ? "Pause" : "Récréation"}</td></tr>
         ) : (
           <tr key={i}>
             <td className="edt-h">{fmt(l.h.slice(0, 5))} – {fmt(l.h.slice(6))}</td>
@@ -120,7 +120,7 @@ export default function Emploi() {
   const hauteur = (H1 - H0) * 64;
   return (
     <>
-      <PageHead title="Emploi du temps" sub={classe ? `${classe.nom}${classe.titulaire ? ` · titulaire ${classe.titulaire}` : ""}` : ""}>
+      <PageHead title="Emploi du temps" sub={classe ? `${classe.nom}${classe.titulaire ? ` · titulaire ${classe.titulaire}` : ""} · Année scolaire ${s.annee?.libelle || ""}` : ""}>
         <button className="btn" onClick={() => window.print()}><Printer size={17} /><span className="hide-m">Imprimer</span></button>
         {peut && <button className="btn" onClick={importer} disabled={imp}><Download size={17} /><span className="hide-m">{imp ? "Import…" : "Importer l'emploi du temps officiel"}</span></button>}
         {peut && classe && <button className="btn primary" onClick={() => setEdit({})}><Plus size={17} />Ajouter un créneau</button>}
