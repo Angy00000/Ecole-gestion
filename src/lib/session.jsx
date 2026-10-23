@@ -34,6 +34,7 @@ export function SessionProvider({ children }) {
     anneeActive: active,
     ready: !token || boot.isSuccess,
     bootError: boot.error,
+    espaceProf: !!boot.data?.user?.classe_seule && boot.data?.user?.role !== "admin",
     peut: (droit) => (boot.data?.droits || []).some((d) => d === "*" || d === droit),
     login: (t) => { setToken(t); setTok(t); },
     logout: () => { setToken(null); setTok(null); qc.clear(); },

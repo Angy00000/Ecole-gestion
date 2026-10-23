@@ -314,7 +314,7 @@ export default function EleveFiche() {
             </div>
           </div>
           <div className="actions">
-            <div className={`doc-menu ${docs ? "open" : ""}`}>
+            {!s.espaceProf && <div className={`doc-menu ${docs ? "open" : ""}`}>
               <button className="btn" onClick={() => setDocs(!docs)} aria-expanded={docs}><Printer size={17} /><span className="hide-m">Documents</span></button>
               {docs && <div className="doc-menu-close" onClick={() => setDocs(false)} />}
               <div className="dropdown">
@@ -324,7 +324,7 @@ export default function EleveFiche() {
                 {courante && s.peut("finances.lire") && <button onClick={() => nav(`/factures/imprimer?mois=${new Date().toISOString().slice(0, 7)}&eleve=${e.id}`)}>Facture du mois</button>}
                 {courante && s.peut("pedagogie.lire") && <button onClick={() => nav(`/bulletins/imprimer?classe=${courante.classe_id}&trimestre=1&eleve=${e.id}`)}>Bulletin du 1er trimestre</button>}
               </div>
-            </div>
+            </div>}
             {s.peut("eleves.ecrire") && courante && <button className="btn" onClick={() => setChClasse(true)}><ArrowRightLeft size={17} />Changer de classe</button>}
             {s.peut("eleves.ecrire") && courante && <button className="btn" onClick={() => setInsc(courante)}><PlusCircle size={17} />Cantine, uniforme…</button>}
             {s.peut("eleves.ecrire") && !courante && <button className="btn primary" onClick={() => setInsc("new")}><RefreshCcw size={17} />Réinscrire</button>}

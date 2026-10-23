@@ -21,6 +21,7 @@ import Recettes from "./pages/Recettes";
 import Rapports from "./pages/Rapports";
 import Service from "./pages/Service";
 import Fournitures from "./pages/Fournitures";
+import EspaceProf from "./pages/EspaceProf";
 import { ListeFournituresImpression } from "./pages/FournituresClasses";
 import Vierges, { ViergesImpression } from "./pages/Vierges";
 import Listes, { ListeImpression } from "./pages/Listes";
@@ -36,38 +37,54 @@ export default function App() {
   return (
     <>
     <MiseAJour />
+    {s.espaceProf ? (
     <Routes>
-      <Route path="recus/:id" element={<Recu />} />
-      <Route path="documents" element={<Documents />} />
-      <Route path="imprimes/imprimer" element={<ViergesImpression />} />
-      <Route path="listes/imprimer" element={<ListeImpression />} />
-      <Route path="fournitures/liste" element={<ListeFournituresImpression />} />
-      {s.peut("pedagogie.lire") && <Route path="emploi/imprimer" element={<EmploiImpression />} />}
-      {s.peut("finances.lire") && <Route path="factures/imprimer" element={<FacturesImpression />} />}
-      {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}
+      <Route path="emploi/imprimer" element={<EmploiImpression />} />
+      <Route path="bulletins/imprimer" element={<Bulletins />} />
       <Route element={<Layout />}>
-        <Route index element={<Dashboard />} />
+        <Route index element={<EspaceProf />} />
         <Route path="eleves" element={<Eleves />} />
         <Route path="eleves/:id" element={<EleveFiche />} />
-        <Route path="classes" element={<Classes />} />
-        <Route path="imprimes" element={<Vierges />} />
-        <Route path="listes" element={<Listes />} />
-        <Route path="parametres/*" element={<Parametres />} />
-        {s.peut("finances.lire") && <Route path="paiements" element={<Encaissements />} />}
-        {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
-        {s.peut("finances.lire") && <Route path="factures" element={<Factures />} />}
-        {s.peut("depenses.lire") && <Route path="depenses" element={<Depenses />} />}
-        {s.peut("depenses.lire") && <Route path="recettes" element={<Recettes />} />}
-        {s.peut("finances.lire") && <Route path="rapports" element={<Rapports />} />}
-        {s.peut("finances.lire") && <Route path="services/:type" element={<Service />} />}
-        {s.peut("finances.lire") && <Route path="fournitures" element={<Fournitures />} />}
-        {s.peut("pedagogie.lire") && <Route path="notes" element={<Notes />} />}
-        {s.peut("pedagogie.lire") && <Route path="absences" element={<Absences />} />}
-        {s.peut("pedagogie.lire") && <Route path="enseignants" element={<Enseignants />} />}
-        {s.peut("pedagogie.lire") && <Route path="emploi" element={<Emploi />} />}
+        <Route path="notes" element={<Notes />} />
+        <Route path="absences" element={<Absences />} />
+        <Route path="emploi" element={<Emploi />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    ) : (
+    <Routes>
+        <Route path="recus/:id" element={<Recu />} />
+        <Route path="documents" element={<Documents />} />
+        <Route path="imprimes/imprimer" element={<ViergesImpression />} />
+        <Route path="listes/imprimer" element={<ListeImpression />} />
+        <Route path="fournitures/liste" element={<ListeFournituresImpression />} />
+        {s.peut("pedagogie.lire") && <Route path="emploi/imprimer" element={<EmploiImpression />} />}
+        {s.peut("finances.lire") && <Route path="factures/imprimer" element={<FacturesImpression />} />}
+        {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}
+        <Route element={<Layout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="eleves" element={<Eleves />} />
+          <Route path="eleves/:id" element={<EleveFiche />} />
+          <Route path="classes" element={<Classes />} />
+          <Route path="imprimes" element={<Vierges />} />
+          <Route path="listes" element={<Listes />} />
+          <Route path="parametres/*" element={<Parametres />} />
+          {s.peut("finances.lire") && <Route path="paiements" element={<Encaissements />} />}
+          {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
+          {s.peut("finances.lire") && <Route path="factures" element={<Factures />} />}
+          {s.peut("depenses.lire") && <Route path="depenses" element={<Depenses />} />}
+          {s.peut("depenses.lire") && <Route path="recettes" element={<Recettes />} />}
+          {s.peut("finances.lire") && <Route path="rapports" element={<Rapports />} />}
+          {s.peut("finances.lire") && <Route path="services/:type" element={<Service />} />}
+          {s.peut("finances.lire") && <Route path="fournitures" element={<Fournitures />} />}
+          {s.peut("pedagogie.lire") && <Route path="notes" element={<Notes />} />}
+          {s.peut("pedagogie.lire") && <Route path="absences" element={<Absences />} />}
+          {s.peut("pedagogie.lire") && <Route path="enseignants" element={<Enseignants />} />}
+          {s.peut("pedagogie.lire") && <Route path="emploi" element={<Emploi />} />}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    )}
     </>
   );
 }

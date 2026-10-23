@@ -37,6 +37,16 @@ const NAV = [
   { to: "/parametres", label: "Paramètres", icon: Settings },
 ];
 
+// Espace enseignant : seulement sa classe — élèves, notes, absences, emploi du temps.
+const NAV_PROF = [
+  { to: "/", label: "Mon espace", icon: LayoutDashboard, end: true },
+  { group: "Ma classe" },
+  { to: "/eleves", label: "Mes élèves", icon: Users },
+  { to: "/notes", label: "Notes et bulletins", icon: BookOpen },
+  { to: "/absences", label: "Absences et appel", icon: CalendarCheck },
+  { to: "/emploi", label: "Emploi du temps", icon: CalendarClock },
+];
+
 export default function Layout() {
   const s = useSession();
   const loc = useLocation();
@@ -64,7 +74,7 @@ export default function Layout() {
           <div><strong>ESJBM</strong><span>Saint Jean Baptiste<br />de Malika</span></div>
         </div>
         <nav className="nav" aria-label="Navigation principale">
-          {NAV.filter((n) => !n.droit || s.peut(n.droit)).filter((n, i, arr) => !n.group || (arr[i + 1] && !arr[i + 1].group)).map((n, i) => n.group
+          {(s.espaceProf ? NAV_PROF : NAV).filter((n) => !n.droit || s.peut(n.droit)).filter((n, i, arr) => !n.group || (arr[i + 1] && !arr[i + 1].group)).map((n, i) => n.group
             ? <div key={i} className="nav-group">{n.group}</div>
             : <NavLink key={n.to} to={n.to} end={n.end} className={n.soon ? "soon" : undefined}><n.icon size={19} />{n.to === "/classes" && !s.peut("finances.lire") ? "Classes" : n.label}</NavLink>)}
         </nav>

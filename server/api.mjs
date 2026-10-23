@@ -146,6 +146,12 @@ const verifierEleve = async (ctx, eleveId) => {
   const r = await one("select 1 as ok from app.inscriptions where eleve_id=$1 and classe_id = any($2::int[])", [eleveId, `{${ok.join(",")}}`]);
   if (!r) fail(403, "Vous n'avez accès qu'aux élèves de votre classe.");
 };
+// Espace enseignant : un compte limité à sa classe n'a accès qu'à ses élèves, ses notes, ses absences et son emploi du temps.
+const ESPACE_PROF = new Set(["GET /auth/me", "POST /auth/password", "GET /bootstrap", "GET /annees", "GET /classes", "GET /dashboard",
+  "GET /eleves", "GET /eleves/:id", "GET /classes/:id/matieres", "GET /evaluations", "POST /evaluations", "PUT /evaluations/:id", "DELETE /evaluations/:id",
+  "GET /evaluations/:id/notes", "PUT /evaluations/:id/notes", "GET /bulletins", "PUT /appreciations", "GET /appel", "PUT /appel",
+  "GET /absences", "PUT /absences/:id", "DELETE /absences/:id", "GET /emploi"]);
+const espaceProf = (u) => !!u?.classe_seule && u.role !== "admin";
 const exige = (ctx, droit) => { if (!peut(ctx.user, droit)) fail(403, "Vous n'avez pas les droits pour cette action."); };
 
 const journal = (ctx, action, entite, entite_id, details) =>
@@ -180,7 +186,7 @@ const routes = [];
 const route = (method, pattern, handler, { public: pub = false } = {}) => {
   const keys = [];
   const re = new RegExp("^" + pattern.replace(/:(\w+)/g, (_, k) => (keys.push(k), "([^/]+)")) + "/?$");
-  routes.push({ method, re, keys, handler, pub });
+  routes.push({ method, re, keys, handler, pub, pattern });
 };
 
 // ── Authentification ──────────────────────────────────────────────────────
@@ -1710,6 +1716,7 @@ export default {
           ctx.user = await one(`select ${USER_COLS} from app.utilisateurs where id=$1 and actif`, [t.id]);
           if (!ctx.user) fail(401, "Compte désactivé.");
           await chargerRoles();
+          if (espaceProf(ctx.user) && !ESPACE_PROF.has(`${r.method} ${r.pattern}`)) fail(403, "L'espace enseignant donne accès seulement à votre classe : élèves, notes, absences et emploi du temps.");
           await verifierClasse(ctx, ctx.query.classe_id ?? ctx.body?.classe_id);
         }
         return json(await r.handler(ctx));

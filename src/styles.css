@@ -1175,3 +1175,18 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .edt-doc .edt-pause td { padding: 2px; font-size: 10px; height: 20px; }
 .edt-doc .edt-table td.vide { border-style: solid; }
 @media print { .doc.a4l { width: 297mm; height: 210mm; } }
+
+/* Espace enseignant */
+.prof-tuiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 16px 0; }
+.prof-tuile { display: flex; align-items: center; gap: 12px; padding: 16px; text-decoration: none; color: inherit; transition: transform .15s; }
+.prof-tuile:hover { transform: translateY(-2px); }
+.prof-tuile div { flex: 1; display: flex; flex-direction: column; }
+.prof-tuile div span { font-size: 12.5px; color: var(--muted); }
+.prof-cols { display: grid; grid-template-columns: 1fr 1.4fr; gap: 14px; }
+@media (max-width: 860px) { .prof-cols { grid-template-columns: 1fr; } }
+.prof-jour, .prof-eleves { list-style: none; margin: 0; padding: 0; }
+.prof-jour li { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.prof-jour .h { font-weight: 800; color: var(--teal); min-width: 110px; font-size: 13px; }
+.prof-eleves { columns: 2; column-gap: 16px; }
+.prof-eleves li { break-inside: avoid; }
+.prof-eleves a { display: flex; align-items: center; gap: 8px; padding: 5px 0; text-decoration: none; color: inherit; font-size: 13.5px; }
