@@ -1133,3 +1133,13 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 @media print { .edt-page .edt-cell { height: auto; margin-bottom: 2px; } .edt-page .edt-table td { vertical-align: middle; } }
 .edt-mesure .edt-cell { height: auto; margin-bottom: 2px; }
 @media print { .edt-page .edt-table tbody td:not(.edt-h) { border: 1px solid #d5dde0; border-radius: 4px; } .edt-page .edt-pause td { border: 0 !important; } }
+
+/* Éditeur de texte visuel (imprimés vierges) */
+.editeur { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.editeur-barre { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 8px; background: var(--surface-2); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 1; }
+.editeur-barre .btn { display: inline-flex; gap: 5px; align-items: center; }
+.editeur-zone { min-height: 380px; max-height: 60vh; overflow: auto; padding: 14px 18px; background: #fff; color: #1d2b30; font-size: 14px; line-height: 1.5; outline: none; }
+.editeur-zone h4 { font-size: 14px; color: #123f4a; border-bottom: 1px solid #f2c14e; padding-bottom: 2px; margin: 12px 0 4px; }
+.editeur-zone p { margin: 3px 0; }
+.editeur-zone p.ed-li { padding-left: 16px; position: relative; }
+.editeur-zone p.ed-li::before { content: "●"; position: absolute; left: 2px; color: #1d6b78; font-size: 9px; top: 4px; }

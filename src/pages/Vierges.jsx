@@ -9,6 +9,7 @@ import { Spinner, ErrorBox, PageHead, Modal, useToast } from "../components/ui";
 import Partager from "../components/Partager";
 import { EnTete } from "./Documents";
 import { TEXTES } from "../lib/textesEcole";
+import EditeurTexte from "../components/EditeurTexte";
 
 // Champ à remplir à la main
 const C = ({ l, w }) => <div className="v-f" style={w ? { flex: w } : undefined}><span>{l}</span><i /></div>;
@@ -395,8 +396,8 @@ export function ViergesImpression() {
           <button className="btn" onClick={() => setEditInfos(null)}>Annuler</button>
           <button className="btn primary" onClick={async () => { try { await api.put("/etablissement", { nom: etab.nom, ...(doc === "tarifs" ? { fiche_infos: editInfos } : { textes: { ...(etab.textes || {}), [doc]: editInfos } }) }); toast("Texte enregistré"); s.refresh(); setEditInfos(null); } catch (e) { toast(e.message, "error"); } }}>Enregistrer</button>
         </>}>
-          <p className="small muted" style={{ marginBottom: 8 }}>Une ligne qui commence par <b>##</b> = un titre · par <b>-</b> = une puce · les autres lignes = un paragraphe. {doc === "tarifs" ? "Les tarifs, eux, viennent automatiquement de « Classes et tarifs »." : "Adaptez les articles à votre école ; le texte sera gardé pour les prochaines impressions."}</p>
-          <textarea className="textarea" style={{ width: "100%", minHeight: 380, fontFamily: "inherit", fontSize: 13 }} value={editInfos} onChange={(e) => setEditInfos(e.target.value)} />
+          <p className="small muted" style={{ marginBottom: 8 }}>Modifiez le texte directement, comme dans Word. {doc === "tarifs" ? "Les tarifs, eux, viennent automatiquement de « Classes et tarifs »." : "Le texte sera gardé pour les prochaines impressions."}</p>
+          <EditeurTexte value={editInfos} onChange={setEditInfos} />
         </Modal>
       )}
       <div className="tickets">{Array.from({ length: copies }, (_, i) => <Comp key={i} etab={etab} annee={annee} classes={classes.data || []} />)}</div>
