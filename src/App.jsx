@@ -22,6 +22,7 @@ import Rapports from "./pages/Rapports";
 import Service from "./pages/Service";
 import Fournitures from "./pages/Fournitures";
 import EspaceProf from "./pages/EspaceProf";
+import Gardien from "./pages/Gardien";
 import { ListeFournituresImpression } from "./pages/FournituresClasses";
 import Vierges, { ViergesImpression } from "./pages/Vierges";
 import Listes, { ListeImpression } from "./pages/Listes";
@@ -69,6 +70,7 @@ export default function App() {
           <Route path="imprimes" element={<Vierges />} />
           <Route path="listes" element={<Listes />} />
           <Route path="parametres/*" element={<Parametres />} />
+          {s.gardien && <Route path="gardien" element={<Gardien />} />}
           {s.peut("finances.lire") && <Route path="paiements" element={<Encaissements />} />}
           {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
           {s.peut("finances.lire") && <Route path="factures" element={<Factures />} />}

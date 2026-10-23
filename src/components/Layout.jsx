@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, School, Wallet, Receipt, AlertTriangle, BookOpen, CalendarCheck,
-  GraduationCap, CalendarClock, HandCoins, FileBarChart, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, FileText, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange, FileStack, ListChecks } from "lucide-react";
+  GraduationCap, CalendarClock, HandCoins, FileBarChart, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, FileText, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange, FileStack, ListChecks, ShieldCheck } from "lucide-react";
 import { useSession } from "../lib/session";
 import { ROLES, initiales } from "../lib/format";
 import MotDePasse from "../pages/MotDePasse";
 import SearchPalette from "./SearchPalette";
+import Cloche from "./Cloche";
 
 const NAV = [
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, end: true },
@@ -34,6 +35,7 @@ const NAV = [
   { to: "/emploi", label: "Emploi du temps", icon: CalendarClock, droit: "pedagogie.lire" },
   { to: "/enseignants", label: "Enseignants", icon: GraduationCap, droit: "pedagogie.lire" },
   { group: "Administration" },
+  { to: "/gardien", label: "Le Gardien", icon: ShieldCheck, gardien: true },
   { to: "/parametres", label: "Paramètres", icon: Settings },
 ];
 
@@ -74,7 +76,7 @@ export default function Layout() {
           <div><strong>ESJBM</strong><span>Saint Jean Baptiste<br />de Malika</span></div>
         </div>
         <nav className="nav" aria-label="Navigation principale">
-          {(s.espaceProf ? NAV_PROF : NAV).filter((n) => !n.droit || s.peut(n.droit)).filter((n, i, arr) => !n.group || (arr[i + 1] && !arr[i + 1].group)).map((n, i) => n.group
+          {(s.espaceProf ? NAV_PROF : NAV).filter((n) => (!n.droit || s.peut(n.droit)) && (!n.gardien || s.gardien)).filter((n, i, arr) => !n.group || (arr[i + 1] && !arr[i + 1].group)).map((n, i) => n.group
             ? <div key={i} className="nav-group">{n.group}</div>
             : <NavLink key={n.to} to={n.to} end={n.end} className={n.soon ? "soon" : undefined}><n.icon size={19} />{n.to === "/classes" && !s.peut("finances.lire") ? "Classes" : n.label}</NavLink>)}
         </nav>
@@ -99,6 +101,7 @@ export default function Layout() {
               {s.annees.map((a) => <option key={a.id} value={a.id}>{a.libelle}{a.active ? "" : " (archive)"}</option>)}
             </select>
           </label>
+          {s.gardien && <Cloche />}
           <button className="icon-btn" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Mode clair" : "Mode sombre"}>
             {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
           </button>

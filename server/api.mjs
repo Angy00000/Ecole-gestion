@@ -154,9 +154,104 @@ const ESPACE_PROF = new Set(["GET /auth/me", "POST /auth/password", "GET /bootst
 const espaceProf = (u) => !!u?.classe_seule && u.role !== "admin";
 const exige = (ctx, droit) => { if (!peut(ctx.user, droit)) fail(403, "Vous n'avez pas les droits pour cette action."); };
 
-const journal = (ctx, action, entite, entite_id, details) =>
-  q("insert into app.journal (utilisateur_id, action, entite, entite_id, details) values ($1,$2,$3,$4,$5)",
+const journal = async (ctx, action, entite, entite_id, details) => {
+  await q("insert into app.journal (utilisateur_id, action, entite, entite_id, details) values ($1,$2,$3,$4,$5)",
     [ctx.user?.id, action, entite, entite_id, details || null]).catch(() => {});
+  await gardien(ctx, action, entite, entite_id, details || {}).catch((e) => console.error("gardien", e));
+};
+
+// ── Le Gardien : prévient la direction des opérations sensibles (comme dans AngyOS) ──
+const F = (n) => `${Math.round(Number(n) || 0).toLocaleString("fr-FR").replace(/\u202f|\u00a0/g, " ")} F`;
+const MOIS_G = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const moisG = (m) => { if (!m) return ""; const [y, mo] = String(m).slice(0, 7).split("-"); return `${MOIS_G[Number(mo) - 1]} ${y}`; };
+const voitGardien = (u) => !!u && (u.role === "admin" || u.role === "direction" || peut(u, "journal.lire"));
+const alerter = (ctx, kind, niveau, titre, message, lien, cle) =>
+  q("insert into app.alertes (kind, niveau, titre, message, lien, auteur_id, auteur, cle) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (cle) do nothing",
+    [kind, niveau, titre.slice(0, 120), message.slice(0, 600), lien || null, ctx.user?.id || null, ctx.user ? `${ctx.user.prenom} ${ctx.user.nom}`.trim() : null, cle || null]);
+const eleveDeRecu = (id) => one("select e.id, e.prenom, e.nom, c.nom as classe from app.recus r join app.inscriptions i on i.id=r.inscription_id join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id where r.id=$1", [id]);
+const eleveDeInsc = (id) => one("select e.id, e.prenom, e.nom, c.nom as classe from app.inscriptions i join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id where i.id=$1", [id]);
+const nomEl = (e) => e ? `${e.prenom} ${e.nom} (${e.classe})` : "un élève";
+async function gardien(ctx, action, entite, id, d) {
+  const qui = ctx.user ? `${ctx.user.prenom} ${ctx.user.nom}`.trim() : "quelqu'un";
+  const k = `${action}:${entite}`;
+  if (k === "annulation:recu") {
+    const e = await eleveDeRecu(id);
+    return alerter(ctx, "recu_annule", "grave", "Reçu annulé", `Le reçu n° ${d.numero} de ${F(d.montant)} pour ${nomEl(e)} a été annulé par ${qui}. Motif : ${d.motif || "—"}.`, `/recus/${id}`);
+  }
+  if (k === "suppression:recu")
+    return alerter(ctx, "recu_supprime", "grave", "Reçu supprimé", `Le reçu n° ${d.numero} de ${F(d.montant)} (${d.eleve}) a été supprimé par ${qui}. Détail : ${d.detail || "—"}.`, null);
+  if (k === "modification:recu") {
+    const e = await eleveDeRecu(id);
+    if (d.ligne_retiree) return alerter(ctx, "recu_modifie", "attention", "Ligne retirée d'un reçu",
+      `${qui} a retiré « ${d.ligne_retiree}${d.mois ? " " + moisG(d.mois) : ""} » (${F(d.montant)}) du reçu n° ${d.numero} de ${nomEl(e)}. Motif : ${d.motif || "—"}.`, `/recus/${id}`);
+    const baisse = Number(d.apres) < Number(d.avant);
+    return alerter(ctx, "recu_modifie", baisse ? "grave" : "attention", baisse ? "Reçu modifié à la baisse" : "Reçu modifié",
+      `${qui} a modifié le reçu n° ${d.numero} de ${nomEl(e)} : ${F(d.avant)} → ${F(d.apres)}. Motif : ${d.motif || "—"}.`, `/recus/${id}`);
+  }
+  if (k === "encaissement:recu") {
+    const r = await one(`select r.inscription_id, r.montant, r.date_paiement, (current_date - r.date_paiement) as retard,
+        (select count(*) from app.recus x where x.inscription_id=r.inscription_id and x.id<>r.id and not x.annule and x.montant=r.montant and x.created_at > now() - interval '15 minutes') as doublons
+      from app.recus r where r.id=$1`, [id]);
+    if (!r) return;
+    const e = await eleveDeRecu(id);
+    if (Number(r.doublons) > 0) await alerter(ctx, "doublon", "attention", "Encaissement en double ?", `${qui} a enregistré deux fois ${F(r.montant)} pour ${nomEl(e)} en moins de 15 minutes (reçu n° ${d.numero}). Vérifiez qu'il ne s'agit pas d'une erreur.`, `/recus/${id}`);
+    if (Number(r.retard) > 7) await alerter(ctx, "antidate", "attention", "Paiement antidaté", `Le reçu n° ${d.numero} de ${F(r.montant)} pour ${nomEl(e)} a été daté de ${r.retard} jours en arrière par ${qui}.`, `/recus/${id}`);
+    return;
+  }
+  if (k === "suppression:depense" && d.montant != null)
+    return alerter(ctx, "depense_supprimee", "attention", "Dépense supprimée", `${qui} a supprimé la dépense « ${d.libelle} » de ${F(d.montant)}.`, "/depenses");
+  if (k === "modification:depense" && d.avant != null && Number(d.avant) !== Number(d.montant))
+    return alerter(ctx, "depense_modifiee", "attention", "Dépense modifiée", `${qui} a modifié la dépense « ${d.libelle} » : ${F(d.avant)} → ${F(d.montant)}.`, "/depenses");
+  if (k === "suppression:recette" && d.montant != null)
+    return alerter(ctx, "recette_supprimee", "grave", "Recette supprimée", `${qui} a supprimé la recette « ${d.libelle} » de ${F(d.montant)}.`, "/recettes");
+  if (k === "modification:recette" && d.avant != null && Number(d.montant) < Number(d.avant))
+    return alerter(ctx, "recette_modifiee", "grave", "Recette modifiée à la baisse", `${qui} a modifié la recette « ${d.libelle} » : ${F(d.avant)} → ${F(d.montant)}.`, "/recettes");
+  if (k === "suppression:eleve" || k === "sortie:eleve")
+    return alerter(ctx, "eleve_retire", "attention", k === "sortie:eleve" ? "Élève sorti de l'école" : "Élève supprimé",
+      `${qui} a ${k === "sortie:eleve" ? "marqué comme sorti" : "supprimé"} ${d.nom || "un élève"}.`, k === "sortie:eleve" ? `/eleves/${id}` : null);
+  if ((action === "mois_retire") && entite === "inscription") {
+    const e = await eleveDeInsc(id);
+    return alerter(ctx, "mois_retire", "attention", "Mois retiré de la scolarité", `${qui} a retiré ${moisG(d.mois)} de la scolarité de ${nomEl(e)} (plus rien à payer pour ce mois). Motif : ${d.motif || "—"}.`, e ? `/eleves/${e.id}` : null);
+  }
+  if (k === "modification:inscription") {
+    if (!d.faveurs) return;
+    d = d.faveurs;
+    const faveurs = [];
+    if (d.gratuit === true) faveurs.push("scolarité gratuite");
+    if (d.inscription_offerte === true) faveurs.push("inscription offerte");
+    if (Number(d.reduction_inscription) > 0) faveurs.push(`réduction de ${F(d.reduction_inscription)} sur l'inscription`);
+    if (Number(d.mensualite_speciale) > 0) faveurs.push(`mensualité spéciale de ${F(d.mensualite_speciale)}`);
+    if (!faveurs.length) return;
+    const e = await eleveDeInsc(id);
+    return alerter(ctx, "faveur", "attention", "Réduction accordée", `${qui} a accordé à ${nomEl(e)} : ${faveurs.join(", ")}.`, e ? `/eleves/${e.id}` : null);
+  }
+  if (k === "creation:mouvement_stock" && (d.sens === "sortie" || (d.sens === "ajustement" && Number(d.quantite) < 0)))
+    return alerter(ctx, "retrait_stock", "attention", "Stock retiré à la main", `${qui} a retiré ${Math.abs(d.quantite)} × ${d.article} du stock (${d.sens === "sortie" ? "sortie" : "ajustement"}).`, "/fournitures");
+  if (k === "suppression:mouvement_stock")
+    return alerter(ctx, "retrait_stock", "attention", "Mouvement de stock supprimé", `${qui} a supprimé un mouvement de stock (${d.sens}, ${d.quantite}).`, "/fournitures");
+  if (k === "suppression:evaluation")
+    return alerter(ctx, "notes_supprimees", "attention", "Évaluation supprimée", `${qui} a supprimé une évaluation${d.libelle ? ` « ${d.libelle} »` : ""} et toutes ses notes.`, "/notes");
+  if (entite === "utilisateur" && (action === "creation" || action === "modification"))
+    return alerter(ctx, "acces", "info", action === "creation" ? "Nouveau compte créé" : "Compte modifié", `${qui} a ${action === "creation" ? "créé le compte" : "modifié le compte"} ${d.email || ""}${d.role ? ` (rôle : ${d.role})` : ""}${d.droits ? " — accès changés" : ""}${d.mot_de_passe ? " — mot de passe réinitialisé" : ""}${d.actif === false ? " — compte désactivé" : ""}.`, "/parametres/utilisateurs");
+  if (entite === "role" && action !== "creation")
+    return alerter(ctx, "acces", "info", "Rôle modifié", `${qui} a ${action === "suppression" ? "supprimé" : "modifié"} le rôle « ${d.code} ».`, "/parametres/roles");
+}
+
+// Bilan du jour : créé à la première consultation du lendemain.
+async function bilanVeille() {
+  const r = await one(`select (current_date - 1)::text as jour,
+      (select coalesce(sum(montant),0) from app.recus where not annule and created_at::date = current_date - 1) as encaisse,
+      (select count(*) from app.recus where not annule and created_at::date = current_date - 1) as nb,
+      (select coalesce(sum(montant),0) from app.depenses where created_at::date = current_date - 1) as depenses,
+      (select count(*) from app.inscriptions where created_at::date = current_date - 1) as inscriptions,
+      (select count(*) from app.alertes where kind<>'resume' and created_at::date = current_date - 1) as alertes,
+      exists (select 1 from app.alertes where cle = 'resume-' || (current_date - 1)::text) as deja`);
+  if (!r || r.deja || (Number(r.nb) === 0 && Number(r.depenses) === 0 && Number(r.alertes) === 0)) return;
+  const [y, m, j] = r.jour.split("-");
+  const msg = `Encaissé : ${F(r.encaisse)} (${r.nb} reçu${r.nb > 1 ? "s" : ""}) · Dépenses : ${F(r.depenses)} · Nouvelles inscriptions : ${r.inscriptions}` +
+    (Number(r.alertes) ? ` · ${r.alertes} alerte${r.alertes > 1 ? "s" : ""} du Gardien ce jour-là.` : " · Aucune opération suspecte.");
+  await alerter({}, "resume", "info", `Bilan du ${Number(j)} ${MOIS_G[Number(m) - 1]}`, msg, "/rapports", `resume-${r.jour}`);
+}
 
 // ── Validation ────────────────────────────────────────────────────────────
 const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in obj).map((k) => [k, obj[k] === "" ? null : obj[k]]));
@@ -230,7 +325,7 @@ route("GET", "/bootstrap", async (ctx) => {
   ]);
   const argent = peut(ctx.user, "finances.lire");
   const sansFrais = (a) => argent ? a : Object.fromEntries(Object.entries(a).filter(([k]) => !k.startsWith("frais_")));
-  return { user: ctx.user, etablissement: etab, annees: annees.map(sansFrais), types_paiement: argent ? types : [], droits: droitsDe(ctx.user), classes_autorisees: await classesAutorisees(ctx),
+  return { user: ctx.user, etablissement: etab, annees: annees.map(sansFrais), types_paiement: argent ? types : [], droits: droitsDe(ctx.user), gardien: voitGardien(ctx.user), classes_autorisees: await classesAutorisees(ctx),
     roles: Object.fromEntries(Object.values(tousLesRoles()).map((x) => [x.code, x.libelle])) };
 });
 
@@ -482,6 +577,8 @@ route("PUT", "/eleves/:id", async (ctx) => {
 
 route("DELETE", "/eleves/:id", async (ctx) => {
   exige(ctx, "eleves.supprimer");
+  const el = await one("select prenom, nom from app.eleves where id=$1", [ctx.params.id]);
+  const nomE = el ? `${el.prenom} ${el.nom}` : null;
   const n = await one(`select count(*) as n from app.recus r join app.inscriptions i on i.id=r.inscription_id where i.eleve_id=$1`, [ctx.params.id]);
   if (n.n > 0) {
     await tx([
@@ -489,11 +586,11 @@ route("DELETE", "/eleves/:id", async (ctx) => {
       // L'élève sorti ne compte plus dans les effectifs, les impayés ni les factures de l'année en cours.
       ["update app.inscriptions set statut='abandon' where eleve_id=$1 and statut='active' and annee_id=(select id from app.annees where active)", [ctx.params.id]],
     ]);
-    await journal(ctx, "sortie", "eleve", Number(ctx.params.id));
+    await journal(ctx, "sortie", "eleve", Number(ctx.params.id), { nom: nomE });
     return { ok: true, archive: true };
   }
   await q("delete from app.eleves where id=$1", [ctx.params.id]);
-  await journal(ctx, "suppression", "eleve", Number(ctx.params.id));
+  await journal(ctx, "suppression", "eleve", Number(ctx.params.id), { nom: nomE });
   return { ok: true, archive: false };
 });
 
@@ -519,8 +616,15 @@ route("PUT", "/inscriptions/:id", async (ctx) => {
     const ok = await one("select 1 as ok from app.classes c join app.inscriptions i on i.annee_id=c.annee_id where c.id=$1 and i.id=$2", [ctx.body.classe_id, ctx.params.id]);
     if (!ok) fail(400, "Cette classe n'appartient pas à la même année scolaire.");
   }
+  const av = await one("select gratuit, inscription_offerte, reduction_inscription, mensualite_speciale from app.inscriptions where id=$1", [ctx.params.id]);
   const r = await one(...updateSql("app.inscriptions", ctx.params.id, pick(sansFormule(ctx, ctx.body), COLS_INSC)));
-  await journal(ctx, "modification", "inscription", r.id, pick(ctx.body, COLS_INSC));
+  // Pour le Gardien : seulement les avantages qui viennent d'être accordés
+  const nouv = {};
+  if (r.gratuit && !av?.gratuit) nouv.gratuit = true;
+  if (r.inscription_offerte && !av?.inscription_offerte) nouv.inscription_offerte = true;
+  if (Number(r.reduction_inscription) > Number(av?.reduction_inscription || 0)) nouv.reduction_inscription = r.reduction_inscription;
+  if (r.mensualite_speciale && Number(r.mensualite_speciale) !== Number(av?.mensualite_speciale || 0)) nouv.mensualite_speciale = r.mensualite_speciale;
+  await journal(ctx, "modification", "inscription", r.id, { ...pick(ctx.body, COLS_INSC), faveurs: nouv });
   return r;
 });
 
@@ -916,8 +1020,9 @@ route("POST", "/depenses", async (ctx) => {
 });
 route("PUT", "/depenses/:id", async (ctx) => {
   exige(ctx, "depenses.ecrire");
+  const av = await one("select montant from app.depenses where id=$1", [ctx.params.id]);
   const r = await one(...updateSql("app.depenses", ctx.params.id, pick(ctx.body, COLS_DEP)));
-  await journal(ctx, "modification", "depense", r.id, { libelle: r.libelle, montant: r.montant });
+  await journal(ctx, "modification", "depense", r.id, { libelle: r.libelle, montant: r.montant, avant: av?.montant });
   return r;
 });
 route("DELETE", "/depenses/:id", async (ctx) => {
@@ -1193,8 +1298,9 @@ route("POST", "/recettes", async (ctx) => {
 });
 route("PUT", "/recettes/:id", async (ctx) => {
   exige(ctx, "depenses.ecrire");
+  const av = await one("select montant from app.recettes where id=$1", [ctx.params.id]);
   const r = await one(...updateSql("app.recettes", ctx.params.id, pick(ctx.body, COLS_REC)));
-  await journal(ctx, "modification", "recette", r.id, { libelle: r.libelle, montant: r.montant });
+  await journal(ctx, "modification", "recette", r.id, { libelle: r.libelle, montant: r.montant, avant: av?.montant });
   return r;
 });
 route("DELETE", "/recettes/:id", async (ctx) => {
@@ -1355,8 +1461,9 @@ route("PUT", "/evaluations/:id", async (ctx) => {
 route("DELETE", "/evaluations/:id", async (ctx) => {
   exige(ctx, "pedagogie.ecrire");
   await verifierEvaluation(ctx, ctx.params.id);
+  const ev = await one("select e.libelle, c.nom as classe from app.evaluations e left join app.classes c on c.id=e.classe_id where e.id=$1", [ctx.params.id]).catch(() => null);
   await q("delete from app.evaluations where id=$1", [ctx.params.id]);
-  await journal(ctx, "suppression", "evaluation", Number(ctx.params.id));
+  await journal(ctx, "suppression", "evaluation", Number(ctx.params.id), ev ? { libelle: `${ev.libelle}${ev.classe ? " (" + ev.classe + ")" : ""}` } : null);
   return { ok: true };
 });
 route("GET", "/evaluations/:id/notes", async (ctx) => {
@@ -1674,11 +1781,29 @@ route("PUT", "/utilisateurs/:id", async (ctx) => {
   if (list.length) await tx(list);
   if ("enseignant_id" in ctx.body) await lierEnseignant(Number(ctx.params.id), ctx.body.enseignant_id);
   if ("classe_id" in ctx.body) await classePourCompte(Number(ctx.params.id), ctx.body.classe_id);
-  await journal(ctx, "modification", "utilisateur", Number(ctx.params.id), { ...d, mot_de_passe: ctx.body.mot_de_passe ? "réinitialisé" : undefined });
+  const cible = await one("select email from app.utilisateurs where id=$1", [ctx.params.id]);
+  await journal(ctx, "modification", "utilisateur", Number(ctx.params.id), { ...d, email: cible?.email, droits: "droits" in ctx.body ? true : undefined, mot_de_passe: ctx.body.mot_de_passe ? "réinitialisé" : undefined });
   return one(`select ${USER_COLS} from app.utilisateurs where id=$1`, [ctx.params.id]);
 });
 
 // ── Journal ───────────────────────────────────────────────────────────────
+route("GET", "/alertes", async (ctx) => {
+  if (!voitGardien(ctx.user)) fail(403, "Le Gardien est réservé à la direction.");
+  await bilanVeille().catch(() => {});
+  const lim = Math.min(Number(ctx.query.limit) || 50, 200);
+  const [rows, [vu]] = await tx([
+    ["select a.*, (a.auteur_id = $2) as moi from app.alertes a order by a.created_at desc limit $1", [lim, ctx.user.id]],
+    ["select vu_jusqua from app.alertes_vues where utilisateur_id=$1", [ctx.user.id]],
+  ]);
+  const depuis = vu?.vu_jusqua || "1970-01-01";
+  const n = await one("select count(*) as n from app.alertes where created_at > $1 and coalesce(auteur_id,0) <> $2", [depuis, ctx.user.id]);
+  return { rows, non_lues: Number(n.n), vu_jusqua: vu?.vu_jusqua || null };
+});
+route("POST", "/alertes/vues", async (ctx) => {
+  if (!voitGardien(ctx.user)) fail(403, "Le Gardien est réservé à la direction.");
+  await q("insert into app.alertes_vues (utilisateur_id, vu_jusqua) values ($1, now()) on conflict (utilisateur_id) do update set vu_jusqua=now()", [ctx.user.id]);
+  return { ok: true };
+});
 route("GET", "/journal", async (ctx) => {
   exige(ctx, "journal.lire");
   return q(`select j.*, u.prenom || ' ' || u.nom as utilisateur from app.journal j

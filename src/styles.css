@@ -1190,3 +1190,19 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .prof-eleves { columns: 2; column-gap: 16px; }
 .prof-eleves li { break-inside: avoid; }
 .prof-eleves a { display: flex; align-items: center; gap: 8px; padding: 5px 0; text-decoration: none; color: inherit; font-size: 13.5px; }
+
+/* Le Gardien */
+.cloche { position: relative; }
+.cloche .icon-btn { position: relative; }
+.cloche-n { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--coral); color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; }
+.cloche-panel { position: absolute; right: 0; top: calc(100% + 8px); width: min(380px, 92vw); max-height: 70vh; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-2); z-index: 61; }
+.cloche-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
+.cloche-panel ul { list-style: none; margin: 0; padding: 0; }
+.cloche-panel li, .g-item { display: flex; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.cloche-panel li.lien, .g-item.lien { cursor: pointer; }
+.cloche-panel li.lien:hover, .g-item.lien:hover { background: var(--surface-2); }
+.cloche-panel li .ic, .g-item .ic { flex: none; width: 32px; height: 32px; }
+.cloche-panel li p, .g-item p { margin: 2px 0; font-size: 13px; line-height: 1.35; color: var(--ink-2); }
+.cloche-panel li strong { font-size: 13.5px; }
+.gardien-liste { padding: 0; overflow: hidden; }
+.g-item .grow { min-width: 0; }
