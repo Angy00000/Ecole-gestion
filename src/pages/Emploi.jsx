@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Printer, CalendarClock, Trash2, Download } from "lucide-react";
 import { api } from "../lib/api";
@@ -118,8 +118,25 @@ export default function Emploi() {
   const couleurs = {};
   (data || []).forEach((c) => { const k = c.matiere || c.libelle; if (!(k in couleurs)) couleurs[k] = TEINTES[Object.keys(couleurs).length % TEINTES.length]; });
   const hauteur = (H1 - H0) * 64;
+  // Impression : A4 paysage, et réduction automatique pour que tout tienne sur une page.
+  useEffect(() => {
+    const avant = () => {
+      const el = document.querySelector(".edt-print");
+      if (!el) return;
+      el.style.zoom = "";
+      el.classList.add("edt-mesure");
+      const dispo = 700; // hauteur utile d'une page A4 paysage (px à 96 dpi, marges comprises)
+      const h = el.scrollHeight;
+      el.classList.remove("edt-mesure");
+      if (h > dispo) el.style.zoom = String(Math.max(0.5, dispo / h));
+    };
+    const apres = () => { const el = document.querySelector(".edt-print"); if (el) el.style.zoom = ""; };
+    window.addEventListener("beforeprint", avant); window.addEventListener("afterprint", apres);
+    return () => { window.removeEventListener("beforeprint", avant); window.removeEventListener("afterprint", apres); };
+  }, []);
   return (
-    <>
+    <div className="edt-page">
+      <style>{"@media print { @page { size: A4 landscape; margin: 8mm; } }"}</style>
       <PageHead title="Emploi du temps" sub={classe ? `${classe.nom}${classe.titulaire ? ` · titulaire ${classe.titulaire}` : ""} · Année scolaire ${s.annee?.libelle || ""}` : ""}>
         <button className="btn" onClick={() => window.print()}><Printer size={17} /><span className="hide-m">Imprimer</span></button>
         {peut && <button className="btn" onClick={importer} disabled={imp}><Download size={17} /><span className="hide-m">{imp ? "Import…" : "Importer l'emploi du temps officiel"}</span></button>}
@@ -127,12 +144,19 @@ export default function Emploi() {
       </PageHead>
       {classes.data && <div className="class-tabs">{classes.data.map((c) => <button key={c.id} className={`class-tab ${c.id === classe?.id ? "on" : ""}`} onClick={() => setClasseId(c.id)}>{c.nom}</button>)}</div>}
       {isLoading || classes.isLoading ? <Spinner /> : error ? <ErrorBox error={error} /> : (
+        <div className="edt-print">
+        <div className="print-only edt-print-head">
+          <div><strong>{s.etablissement?.nom}</strong><span>Année scolaire {s.annee?.libelle}</span></div>
+          <h1>Emploi du temps — {classe?.nom}</h1>
+          <div className="r">{classe?.titulaire && <span>Titulaire : <strong>{classe.titulaire}</strong></span>}</div>
+        </div>
         <div className="card edt-card">
           <TableEdt data={data || []} couleurs={couleurs} peut={peut} onEdit={setEdit} />
           {!data?.length && <p className="muted small" style={{ padding: "0 22px 18px" }}>{peut ? "Double-cliquez sur une case ou utilisez « Ajouter un créneau » pour construire l'emploi du temps." : "Aucun créneau pour cette classe."}</p>}
         </div>
+        </div>
       )}
       {edit && classe && <Creneau c={edit} classe={classe} onClose={() => setEdit(null)} />}
-    </>
+    </div>
   );
 }
