@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Printer, FileText, ClipboardList, Award, ShieldCheck, IdCard, ListOrdered, Receipt, BadgeDollarSign, Pencil, Scale, BookOpenCheck, Handshake, Mail, TriangleAlert, FileCheck2, DoorOpen } from "lucide-react";
@@ -361,6 +361,13 @@ export default function Vierges() {
   );
 }
 
+// Modification « sur la feuille » des imprimés qui n'ont pas de texte simple (fiche, autorisation, certificat…) :
+// on clique dans le document et on tape. La version modifiée est gardée (l'année est remise à jour automatiquement).
+const nettoyer = (html) => html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/\son\w+="[^"]*"/gi, "").replace(/\scontenteditable="[^"]*"/gi, "");
+function PagesModifiees({ pages, annee }) {
+  return pages.map((pg, i) => <article key={i} className={pg.cls} dangerouslySetInnerHTML={{ __html: pg.html.split("{{annee}}").join(annee) }} />);
+}
+
 export function ViergesImpression() {
   const s = useSession();
   const nav = useNavigate();
@@ -371,12 +378,30 @@ export function ViergesImpression() {
   const etab = s.etablissement, annee = s.annee?.libelle || "";
   const d = DOCS[doc];
   const [editInfos, setEditInfos] = useState(null);
+  const [surPage, setSurPage] = useState(false);
+  const zone = useRef(null);
   const toast = useToast();
   if (!d) return <div style={{ padding: 32 }}><ErrorBox error={new Error("Document inconnu.")} /></div>;
   if (doc === "tarifs" && classes.isLoading) return <Spinner />;
   if (doc === "tarifs" && classes.error) return <div style={{ padding: 32 }}><ErrorBox error={classes.error} /></div>;
   const Comp = d.C;
-  const copies = doc === "tarifs" ? 1 : nb;
+  const copies = doc === "tarifs" || surPage ? 1 : nb;
+  const texteSimple = doc === "tarifs" || !!TEXTES[doc];
+  const cleHtml = `html_${doc}`;
+  const sauvees = etab.textes?.[cleHtml];
+  const enregistrerPage = async (pages) => {
+    try {
+      const textes = { ...(etab.textes || {}) };
+      if (pages) textes[cleHtml] = pages; else delete textes[cleHtml];
+      await api.put("/etablissement", { nom: etab.nom, textes });
+      toast(pages ? "Document enregistré" : "Modèle d'origine rétabli"); s.refresh(); setSurPage(false);
+    } catch (e) { toast(e.message, "error"); }
+  };
+  const lirePages = () => [...zone.current.querySelectorAll(":scope > article")].map((a) => ({
+    cls: String(a.className).replace(/\s*en-edition/g, ""),
+    html: nettoyer(a.innerHTML).split(annee).join("{{annee}}"),
+  }));
+  const basculer = (on) => { setSurPage(on); setTimeout(() => zone.current?.querySelectorAll(":scope > article").forEach((a) => { a.contentEditable = on ? "true" : "false"; a.classList.toggle("en-edition", on); }), 50); };
   return (
     <div className="print-page">
       <style>{`@page { size: ${d.format} portrait; margin: 0; }`}</style>
@@ -385,9 +410,15 @@ export function ViergesImpression() {
         <span className="grow"><strong>{d.titre}</strong> (vierge)</span>
         {doc !== "tarifs" && <label className="small row" style={{ gap: 6, alignItems: "center" }}>Exemplaires
           <input className="input" type="number" min={1} max={30} value={nb} onChange={(e) => setP({ doc, n: e.target.value })} style={{ width: 70, height: 38 }} /></label>}
-        {(doc === "tarifs" || TEXTES[doc]) && s.peut("etablissement.ecrire") && <button className="btn" onClick={() => setEditInfos(doc === "tarifs" ? etab.fiche_infos || INFOS_DEFAUT : etab.textes?.[doc] || TEXTES[doc].texte)}><Pencil size={17} />Modifier le texte</button>}
-        <Partager format={d.format} nom={`${d.titre}-vierge`} message={`${d.titre} — ${etab.nom}`} />
-        <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
+        {!texteSimple && s.peut("etablissement.ecrire") && !surPage && <button className="btn" onClick={() => basculer(true)}><Pencil size={17} />Modifier le document</button>}
+        {surPage && <>
+          {sauvees && <button className="btn" onClick={() => window.confirm("Revenir au modèle d'origine ? Vos modifications seront effacées.") && enregistrerPage(null)}>Modèle d'origine</button>}
+          <button className="btn" onClick={() => { basculer(false); s.refresh(); setP({ doc, n: String(nb) }); window.location.reload(); }}>Annuler</button>
+          <button className="btn primary" onClick={() => enregistrerPage(lirePages())}>Enregistrer</button>
+        </>}
+        {texteSimple && s.peut("etablissement.ecrire") && <button className="btn" onClick={() => setEditInfos(doc === "tarifs" ? etab.fiche_infos || INFOS_DEFAUT : etab.textes?.[doc] || TEXTES[doc].texte)}><Pencil size={17} />Modifier le texte</button>}
+        {!surPage && <Partager format={d.format} nom={`${d.titre}-vierge`} message={`${d.titre} — ${etab.nom}`} />}
+        {!surPage && <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>}
       </div>
       {editInfos != null && (
         <Modal wide title={`Texte — ${d.titre}`} onClose={() => setEditInfos(null)} footer={<>
@@ -400,7 +431,8 @@ export function ViergesImpression() {
           <EditeurTexte value={editInfos} onChange={setEditInfos} />
         </Modal>
       )}
-      <div className="tickets">{Array.from({ length: copies }, (_, i) => <Comp key={i} etab={etab} annee={annee} classes={classes.data || []} />)}</div>
+      {surPage && <div className="edition-aide">✏️ Cliquez n'importe où dans le document et modifiez le texte comme dans Word, puis cliquez sur « Enregistrer » en haut.</div>}
+      <div className="tickets" ref={zone}>{Array.from({ length: copies }, (_, i) => !texteSimple && sauvees ? <PagesModifiees key={i} pages={sauvees} annee={annee} /> : <Comp key={i} etab={etab} annee={annee} classes={classes.data || []} />)}</div>
     </div>
   );
 }

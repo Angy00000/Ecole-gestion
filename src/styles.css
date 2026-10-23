@@ -1143,3 +1143,8 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .editeur-zone p { margin: 3px 0; }
 .editeur-zone p.ed-li { padding-left: 16px; position: relative; }
 .editeur-zone p.ed-li::before { content: "●"; position: absolute; left: 2px; color: #1d6b78; font-size: 9px; top: 4px; }
+
+.edition-aide { max-width: 210mm; margin: 0 auto 12px; padding: 10px 14px; border-radius: 10px; background: #fff6dc; border: 1px solid #f2c14e; font-size: 14px; color: #5a4300; }
+.doc.en-edition { outline: 3px dashed #f2c14e; outline-offset: 4px; cursor: text; }
+.doc.en-edition:focus { outline-color: #1d6b78; }
+@media print { .edition-aide { display: none; } }
