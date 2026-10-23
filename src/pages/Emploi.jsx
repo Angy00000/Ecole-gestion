@@ -50,7 +50,13 @@ function Creneau({ c, classe, onClose }) {
   );
 }
 
-const sansAccent = (t) => String(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "").toLowerCase();
+// On affiche le nom de l'activité tel qu'il est sur l'emploi du temps papier (la matière sert seulement à la couleur).
+const titreCase = (c) => {
+  let t = (c.libelle || c.matiere || "").trim(), d = "";
+  const p = t.match(/^(.*?)\s*\((.*)\)$/); if (p) { t = p[1]; d = p[2]; }
+  const i = t.indexOf(" – "); if (i > 0) { d = t.slice(i + 3) + (d ? ` · ${d}` : ""); t = t.slice(0, i); }
+  return [t.charAt(0).toUpperCase() + t.slice(1), d];
+};
 // Emploi du temps en tableau : une ligne par horaire, une colonne par jour (comme la version papier).
 function TableEdt({ data, couleurs, peut, onEdit }) {
   const jours = Object.entries(JOURS).filter(([j]) => Number(j) <= 5 || data.some((c) => c.jour === Number(j)));
@@ -78,9 +84,7 @@ function TableEdt({ data, couleurs, peut, onEdit }) {
               return <td key={j} className={cs.length ? "" : "vide"} onDoubleClick={() => peut && !cs.length && onEdit({ jour: Number(j), heure_debut: l.h.slice(0, 5), heure_fin: l.h.slice(6) })}>
                 {cs.map((c) => (
                   <button key={c.id} className="edt-cell" style={{ "--c": couleurs[c.matiere || c.libelle] }} onClick={() => peut && onEdit(c)}>
-                    <strong>{c.matiere || c.libelle}</strong>
-                    {c.matiere && c.libelle && !sansAccent(c.matiere).includes(sansAccent(c.libelle)) && !sansAccent(c.libelle).startsWith(sansAccent(c.matiere)) && <span>{c.libelle}</span>}
-                    {c.matiere && c.libelle && sansAccent(c.libelle).startsWith(sansAccent(c.matiere)) && c.libelle.length > c.matiere.length + 3 && <span>{c.libelle.slice(c.matiere.length).replace(/^[\s(/–-]+|\)$/g, "")}</span>}
+                    {(() => { const [t, d] = titreCase(c); return <><strong>{t}</strong>{d && <span>{d}</span>}</>; })()}
                   </button>
                 ))}
               </td>;
