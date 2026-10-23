@@ -10,7 +10,6 @@ import { Select, Spinner, ErrorBox, Empty, PageHead } from "../components/ui";
 import Partager from "../components/Partager";
 
 const moisDe = (a) => { const out = []; if (!a) return out; const d = new Date(a.debut); d.setDate(1); const f = new Date(a.fin); while (d <= f) { out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); d.setMonth(d.getMonth() + 1); } return out; };
-const moisSuivant = () => { const n = new Date(); const d = n.getDate() >= 20 ? new Date(n.getFullYear(), n.getMonth() + 1, 1) : new Date(n.getFullYear(), n.getMonth(), 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 
 export const messageFacture = (r, etab, mois) => {
   const L = [];
@@ -24,7 +23,10 @@ export default function Factures() {
   const s = useSession();
   const nav = useNavigate();
   const mois = moisDe(s.annee);
-  const def = mois.includes(moisSuivant()) ? moisSuivant() : mois.find((m) => m >= new Date().toISOString().slice(0, 7)) || mois[0];
+  // On ne facture que les mois déjà commencés : jamais un mois à venir.
+  const ceMois = new Date().toISOString().slice(0, 7);
+  const moisOk = mois.filter((x) => x <= ceMois);
+  const def = moisOk[moisOk.length - 1] || mois[0];
   const [m, setM] = useState(def);
   const [classe, setClasse] = useState("");
   const [tous, setTous] = useState(false);
@@ -36,7 +38,7 @@ export default function Factures() {
 
   return (
     <>
-      <PageHead title="Factures mensuelles" sub={`À remettre aux élèves en fin de mois — ${moisLong(m)}`}>
+      <PageHead title="Factures mensuelles" sub={`Mois en cours et mois passés uniquement — ${moisLong(m)}`}>
         {rows.length > 0 && <button className="btn primary" onClick={() => imprimer()}><Printer size={17} />Imprimer {rows.length} facture{rows.length > 1 ? "s" : ""}</button>}
       </PageHead>
       {data && (
@@ -47,7 +49,7 @@ export default function Factures() {
       )}
       <div className="card">
         <div className="toolbar">
-          <Select value={m} onChange={(e) => setM(e.target.value)} aria-label="Mois">{mois.map((x) => <option key={x} value={x}>Facture de {moisLong(x)}</option>)}</Select>
+          <Select value={m} onChange={(e) => setM(e.target.value)} aria-label="Mois">{(moisOk.length ? moisOk : mois.slice(0, 1)).map((x) => <option key={x} value={x}>Facture de {moisLong(x)}</option>)}</Select>
           <Select value={classe} onChange={(e) => setClasse(e.target.value)} aria-label="Classe"><option value="">Toutes les classes</option>{classes.data?.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}</Select>
           <div className="with-icon"><Search size={18} /><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un élève…" /></div>
           <span className="spacer" />

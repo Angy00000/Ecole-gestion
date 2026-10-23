@@ -708,6 +708,7 @@ route("GET", "/factures", async (ctx) => {
   exige(ctx, "finances.lire");
   const annee = await anneeCourante(ctx.query.annee_id);
   if (!/^\d{4}-\d{2}$/.test(ctx.query.mois || "")) fail(400, "Choisissez le mois de la facture.");
+  if (ctx.query.mois > new Date().toISOString().slice(0, 7)) fail(400, "Ce mois n'a pas encore commencé : on ne peut pas encore le facturer.");
   const m1 = `${ctx.query.mois}-01`;
   const p = [annee, m1]; const w = ["1=1"];
   if (ctx.query.classe_id) { p.push(ctx.query.classe_id); w.push(`x.classe_id=$${p.length}`); }
