@@ -1515,7 +1515,7 @@ route("GET", "/emploi", async (ctx) => {
   return q(`select t.id, t.classe_id, t.jour, to_char(t.heure_debut,'HH24:MI') as heure_debut, to_char(t.heure_fin,'HH24:MI') as heure_fin,
       t.matiere_id, t.libelle, t.enseignant_id, t.salle, m.nom as matiere, c.nom as classe, e.prenom || ' ' || e.nom as enseignant
     from app.emploi_temps t join app.classes c on c.id=t.classe_id left join app.matieres m on m.id=t.matiere_id left join app.enseignants e on e.id=t.enseignant_id
-    where ${w} order by t.jour, t.heure_debut`, p);
+    where ${w} order by t.jour, t.heure_debut, t.id`, p);
 });
 // Import des emplois du temps officiels : remplace matières (sans évaluation) et créneaux des classes concernées.
 route("POST", "/emploi/importer", async (ctx) => {

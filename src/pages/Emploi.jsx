@@ -142,7 +142,6 @@ export default function Emploi() {
       <style>{"@media print { @page { size: A4 landscape; margin: 8mm; } }"}</style>
       <PageHead title="Emploi du temps" sub={classe ? `${classe.nom}${classe.titulaire ? ` · titulaire ${classe.titulaire}` : ""} · Année scolaire ${s.annee?.libelle || ""}` : ""}>
         <button className="btn" onClick={() => window.print()}><Printer size={17} /><span className="hide-m">Imprimer</span></button>
-        {peut && <button className="btn" onClick={importer} disabled={imp}><Download size={17} /><span className="hide-m">{imp ? "Import…" : "Importer l'emploi du temps officiel"}</span></button>}
         {peut && classe && <button className="btn primary" onClick={() => setEdit({})}><Plus size={17} />Ajouter un créneau</button>}
       </PageHead>
       {classes.data && <div className="class-tabs">{classes.data.map((c) => <button key={c.id} className={`class-tab ${c.id === classe?.id ? "on" : ""}`} onClick={() => setClasseId(c.id)}>{c.nom}</button>)}</div>}
