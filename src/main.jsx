@@ -16,6 +16,18 @@ import "./styles.css";
 
 document.documentElement.dataset.theme = localStorage.getItem("eg2_theme") || "light";
 
+// Après une mise à jour du logiciel, une page restée ouverte cherche d'anciens fichiers (PDF, Excel…) qui n'existent plus :
+// on recharge la page une fois pour prendre la nouvelle version, puis l'action fonctionne.
+window.addEventListener("vite:preloadError", (e) => {
+  if (!navigator.onLine) return;
+  const k = "eg2_rechargement_maj";
+  const dernier = Number(sessionStorage.getItem(k) || 0);
+  if (Date.now() - dernier < 30e3) return;
+  e.preventDefault();
+  sessionStorage.setItem(k, String(Date.now()));
+  window.location.reload();
+});
+
 const qc = new QueryClient({
   defaultOptions: {
     // networkMode « always » : sans internet, les requêtes passent quand même par la copie gardée sur l'appareil.

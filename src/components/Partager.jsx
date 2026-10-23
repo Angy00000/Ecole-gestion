@@ -54,7 +54,12 @@ export default function Partager({ format = "A4", nom, telephone, message = "" }
       const url = `https://wa.me/${telephone ? telWa(telephone) : ""}?text=${encodeURIComponent(message)}`;
       if (onglet) onglet.location.href = url; else window.open(url, "_blank");
       toast("PDF téléchargé : dans WhatsApp, cliquez sur le trombone 📎 puis choisissez le fichier dans « Téléchargements ».");
-    } catch (e) { onglet?.close(); toast(e.message || "Export impossible", "error"); }
+    } catch (e) {
+      onglet?.close();
+      const maj = /dynamically imported module|Importing a module script failed|Loading chunk/i.test(e?.message || "");
+      toast(maj ? (navigator.onLine ? "Le logiciel vient d'être mis à jour : la page se recharge, puis recommencez." : "Le PDF a besoin d'internet la première fois sur cet appareil.") : e.message || "Export impossible", "error");
+      if (maj && navigator.onLine) setTimeout(() => window.location.reload(), 1500);
+    }
     finally { setBusy(null); }
   };
   const peutPartager = typeof navigator !== "undefined" && !!navigator.share;
