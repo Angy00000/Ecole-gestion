@@ -237,20 +237,27 @@ async function gardien(ctx, action, entite, id, d) {
     return alerter(ctx, "acces", "info", "Rôle modifié", `${qui} a ${action === "suppression" ? "supprimé" : "modifié"} le rôle « ${d.code} ».`, "/parametres/roles");
 }
 
-// Bilan du jour : créé à la première consultation du lendemain.
-async function bilanVeille() {
-  const r = await one(`select (current_date - 1)::text as jour,
-      (select coalesce(sum(montant),0) from app.recus where not annule and created_at::date = current_date - 1) as encaisse,
-      (select count(*) from app.recus where not annule and created_at::date = current_date - 1) as nb,
-      (select coalesce(sum(montant),0) from app.depenses where created_at::date = current_date - 1) as depenses,
-      (select count(*) from app.inscriptions where created_at::date = current_date - 1) as inscriptions,
-      (select count(*) from app.alertes where kind<>'resume' and created_at::date = current_date - 1) as alertes,
-      exists (select 1 from app.alertes where cle = 'resume-' || (current_date - 1)::text) as deja`);
+// Bilan de la journée : envoyé à partir de 18 h (heure de Dakar) à la première consultation ;
+// si personne n'a ouvert le logiciel le soir, il arrive le lendemain matin (bilan de la veille).
+async function bilanJour(decalage) {
+  const r = await one(`select (current_date - $1::int)::text as jour,
+      (select coalesce(sum(montant),0) from app.recus where not annule and created_at::date = current_date - $1::int) as encaisse,
+      (select count(*) from app.recus where not annule and created_at::date = current_date - $1::int) as nb,
+      (select coalesce(sum(montant),0) from app.depenses where created_at::date = current_date - $1::int) as depenses,
+      (select count(*) from app.inscriptions where created_at::date = current_date - $1::int) as inscriptions,
+      (select count(*) from app.absences where date_absence = current_date - $1::int) as absences,
+      (select count(*) from app.alertes where kind<>'resume' and created_at::date = current_date - $1::int) as alertes,
+      exists (select 1 from app.alertes where cle = 'resume-' || (current_date - $1::int)::text) as deja`, [decalage]).catch(() => null);
   if (!r || r.deja || (Number(r.nb) === 0 && Number(r.depenses) === 0 && Number(r.alertes) === 0)) return;
-  const [y, m, j] = r.jour.split("-");
-  const msg = `Encaissé : ${F(r.encaisse)} (${r.nb} reçu${r.nb > 1 ? "s" : ""}) · Dépenses : ${F(r.depenses)} · Nouvelles inscriptions : ${r.inscriptions}` +
-    (Number(r.alertes) ? ` · ${r.alertes} alerte${r.alertes > 1 ? "s" : ""} du Gardien ce jour-là.` : " · Aucune opération suspecte.");
-  await alerter({}, "resume", "info", `Bilan du ${Number(j)} ${MOIS_G[Number(m) - 1]}`, msg, "/rapports", `resume-${r.jour}`);
+  const [, m, j] = r.jour.split("-");
+  const msg = `Encaissé : ${F(r.encaisse)} (${r.nb} reçu${r.nb > 1 ? "s" : ""}) · Dépenses : ${F(r.depenses)} · Reste en caisse du jour : ${F(r.encaisse - r.depenses)} · Nouvelles inscriptions : ${r.inscriptions}` +
+    (Number(r.absences) ? ` · Absences : ${r.absences}` : "") +
+    (Number(r.alertes) ? ` · ${r.alertes} alerte${r.alertes > 1 ? "s" : ""} du Gardien.` : " · Aucune opération suspecte.");
+  await alerter({}, "resume", "info", `${decalage ? "Bilan du" : "Bilan de la journée —"} ${Number(j)} ${MOIS_G[Number(m) - 1]}`, msg, "/rapports", `resume-${r.jour}`);
+}
+async function bilanVeille() {
+  if (new Date().getUTCHours() >= 18) await bilanJour(0);
+  await bilanJour(1);
 }
 
 // ── Validation ────────────────────────────────────────────────────────────
