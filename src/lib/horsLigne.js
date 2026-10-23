@@ -60,6 +60,19 @@ export const relire = async (url) => {
       return { date: u.searchParams.get("date") || c.data.date, rows: c.data.rows.map((r) => ({ ...r, marques: null })) };
     }
   }
+  // Sinon : la dernière version gardée de la même page (autre période, autre page de la liste…),
+  // mais jamais celle d'une autre classe, d'un autre élève ou d'une autre année.
+  const IDENT = ["classe_id", "eleve_id", "inscription_id", "evaluation_id", "annee_id", "type", "trimestre"];
+  const cles = await op("cache", "readonly", (s) => s.getAllKeys()).catch(() => []);
+  let best = null;
+  for (const k of cles) {
+    if (typeof k !== "string" || !k.startsWith(u.pathname)) continue;
+    const v = new URL(k, "http://x");
+    if (v.pathname !== u.pathname || IDENT.some((x) => (v.searchParams.get(x) || "") !== (u.searchParams.get(x) || ""))) continue;
+    const c = await op("cache", "readonly", (s) => s.get(k)).catch(() => null);
+    if (c && (!best || c.le > best.le)) best = c;
+  }
+  if (best) { etat.copieDu = Math.max(etat.copieDu || 0, best.le); publier(); return best.data; }
   return undefined;
 };
 // La situation d'un élève tient compte des encaissements en attente (pas de double encaissement hors ligne).
@@ -80,7 +93,7 @@ async function ajuster(url, data) {
 const MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 const quand = (d) => `${d.getDate()} ${MOIS[d.getMonth()]} à ${String(d.getHours()).padStart(2, "0")}h${String(d.getMinutes()).padStart(2, "0")}`;
 export const ACCEPTE = (method, path) =>
-  (method === "POST" && path === "/recus") || (method === "PUT" && path === "/appel") || (method === "PUT" && /^\/evaluations\/\d+\/notes$/.test(path));
+  (method === "POST" && ["/recus", "/depenses", "/recettes"].includes(path)) || (method === "PUT" && path === "/appel") || (method === "PUT" && /^\/evaluations\/\d+\/notes$/.test(path));
 export async function mettreEnAttente(method, path, body, apercu) {
   const now = new Date();
   const item = { method, path, body: { ...body }, apercu: apercu || null, cree_le: now.toISOString(), statut: "attente" };

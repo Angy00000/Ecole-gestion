@@ -55,7 +55,7 @@ async function request(method, path, body, apercu) {
     throw new ApiError("Hors ligne : ces informations n'ont pas encore été ouvertes sur cet appareil. Elles seront disponibles au retour d'internet.", 0);
   }
   if (ACCEPTE(method, path)) return mettreEnAttente(method, path, body, apercu);
-  throw new ApiError("Hors ligne : cette action a besoin d'internet. Seuls l'encaissement, l'appel et la saisie des notes fonctionnent sans connexion.", 0);
+  throw new ApiError("Hors ligne : cette action a besoin d'internet. Sans connexion, on peut encaisser, faire l'appel, saisir des notes et enregistrer des dépenses ou recettes ; le reste attend le retour d'internet.", 0);
 }
 
 const qs = (params) => {

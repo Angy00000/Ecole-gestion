@@ -17,8 +17,11 @@ async function preparer(s) {
   const tous = await api.get("/eleves", { annee_id: a, limit: 500, page: 1 });
   await garder("@eleves-tout", tous);
   const taches = [];
+  [["/dashboard", { annee_id: a }], ["/enseignants", {}], ["/enseignants", { annee_id: a }]].forEach(([u, p]) => taches.push(() => api.get(u, p)));
+  if (s.peut("finances.lire")) taches.push(() => api.get("/impayes", { annee_id: a }));
   classes.forEach((c) => {
     taches.push(() => api.get("/emploi", { classe_id: c.id }));
+    if (s.peut("pedagogie.lire")) [1, 2, 3].forEach((t) => { taches.push(() => api.get("/evaluations", { classe_id: c.id, trimestre: t })); taches.push(() => api.get("/bulletins", { classe_id: c.id, trimestre: t })); });
     if (s.peut("pedagogie.lire")) taches.push(() => api.get("/appel", { classe_id: c.id, date: new Date().toISOString().slice(0, 10) }));
   });
   tous.rows.forEach((e) => {
@@ -33,7 +36,9 @@ async function preparer(s) {
 }
 
 const libelle = (x) => x.path === "/recus" ? `Encaissement ${x.provisoire || ""} — ${x.apercu?.eleve || "élève"} — ${fcfa(x.body.lignes.reduce((t, l) => t + Number(l.montant || 0), 0))}`
-  : x.path === "/appel" ? `Appel du ${x.body.date} — ${x.apercu?.classe || "classe"}` : `Notes — ${x.apercu?.evaluation || "évaluation"}`;
+  : x.path === "/appel" ? `Appel du ${x.body.date} — ${x.apercu?.classe || "classe"}`
+  : x.path === "/depenses" ? `Dépense — ${x.body.libelle || ""} — ${fcfa(x.body.montant)}`
+  : x.path === "/recettes" ? `Recette — ${x.body.libelle || ""} — ${fcfa(x.body.montant)}` : `Notes — ${x.apercu?.evaluation || "évaluation"}`;
 
 /** Bandeau en haut : hors ligne, saisies en attente, envois refusés. */
 export default function BandeauHorsLigne() {
@@ -57,7 +62,7 @@ export default function BandeauHorsLigne() {
       <div className={`hl-bandeau ${refus.length ? "refus" : !e.enLigne ? "off" : "att"}`}>
         {!e.enLigne ? <WifiOff size={17} /> : refus.length ? <AlertTriangle size={17} /> : <CloudUpload size={17} />}
         <span className="grow">
-          {!e.enLigne && <><strong>Hors ligne</strong> — vous voyez les données gardées sur cet appareil{heure ? ` (${heure})` : ""}. L'encaissement, l'appel et les notes restent possibles. </>}
+          {!e.enLigne && <><strong>Hors ligne</strong> — vous voyez les données gardées sur cet appareil{heure ? ` (${heure})` : ""}. Encaissements, appel, notes, dépenses et recettes restent possibles. </>}
           {att.length > 0 && <><strong>{att.length} saisie{att.length > 1 ? "s" : ""} en attente</strong>{e.enLigne ? (e.sync ? " — envoi en cours…" : "") : " — envoi automatique au retour d'internet."} </>}
           {refus.length > 0 && <><strong>{refus.length} saisie{refus.length > 1 ? "s" : ""} refusée{refus.length > 1 ? "s" : ""}</strong> par le serveur — à vérifier.</>}
         </span>
