@@ -81,7 +81,6 @@ function TableEdt({ data, couleurs, peut, onEdit }) {
                     <strong>{c.matiere || c.libelle}</strong>
                     {c.matiere && c.libelle && !sansAccent(c.matiere).includes(sansAccent(c.libelle)) && !sansAccent(c.libelle).startsWith(sansAccent(c.matiere)) && <span>{c.libelle}</span>}
                     {c.matiere && c.libelle && sansAccent(c.libelle).startsWith(sansAccent(c.matiere)) && c.libelle.length > c.matiere.length + 3 && <span>{c.libelle.slice(c.matiere.length).replace(/^[\s(/–-]+|\)$/g, "")}</span>}
-                    {c.enseignant && <span className="ens">{c.enseignant}</span>}
                   </button>
                 ))}
               </td>;
