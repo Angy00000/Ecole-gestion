@@ -232,7 +232,7 @@ route("GET", "/bootstrap", async (ctx) => {
 route("PUT", "/etablissement", async (ctx) => {
   exige(ctx, "etablissement.ecrire");
   const d = pick(ctx.body, COLS_ETAB);
-  requis(d, [["nom", "Le nom de l'école"]]);
+  if ("nom" in d) requis(d, [["nom", "Le nom de l'école"]]);
   const r = await one(...updateSql("app.etablissement", 1, d, ", updated_at=now()"));
   await journal(ctx, "modification", "etablissement", 1);
   return r;

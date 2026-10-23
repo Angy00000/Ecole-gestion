@@ -393,7 +393,7 @@ export function ViergesImpression() {
           <button className="btn" onClick={() => setEditInfos(doc === "tarifs" ? INFOS_DEFAUT : TEXTES[doc].texte)}>Texte par défaut</button>
           <span className="grow" />
           <button className="btn" onClick={() => setEditInfos(null)}>Annuler</button>
-          <button className="btn primary" onClick={async () => { try { await api.put("/etablissement", doc === "tarifs" ? { fiche_infos: editInfos } : { textes: { ...(etab.textes || {}), [doc]: editInfos } }); toast("Texte enregistré"); s.refresh(); setEditInfos(null); } catch (e) { toast(e.message, "error"); } }}>Enregistrer</button>
+          <button className="btn primary" onClick={async () => { try { await api.put("/etablissement", { nom: etab.nom, ...(doc === "tarifs" ? { fiche_infos: editInfos } : { textes: { ...(etab.textes || {}), [doc]: editInfos } }) }); toast("Texte enregistré"); s.refresh(); setEditInfos(null); } catch (e) { toast(e.message, "error"); } }}>Enregistrer</button>
         </>}>
           <p className="small muted" style={{ marginBottom: 8 }}>Une ligne qui commence par <b>##</b> = un titre · par <b>-</b> = une puce · les autres lignes = un paragraphe. {doc === "tarifs" ? "Les tarifs, eux, viennent automatiquement de « Classes et tarifs »." : "Adaptez les articles à votre école ; le texte sera gardé pour les prochaines impressions."}</p>
           <textarea className="textarea" style={{ width: "100%", minHeight: 380, fontFamily: "inherit", fontSize: 13 }} value={editInfos} onChange={(e) => setEditInfos(e.target.value)} />
