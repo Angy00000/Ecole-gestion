@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
+import Partager from "../components/Partager";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Printer, CalendarClock, Trash2, Download } from "lucide-react";
 import { api } from "../lib/api";
@@ -58,7 +61,7 @@ const titreCase = (c) => {
   return [t.charAt(0).toUpperCase() + t.slice(1), d];
 };
 // Emploi du temps en tableau : une ligne par horaire, une colonne par jour (comme la version papier).
-function TableEdt({ data, couleurs, peut, onEdit }) {
+export function TableEdt({ data, couleurs, peut, onEdit }) {
   const jours = Object.entries(JOURS).filter(([j]) => Number(j) <= 5 || data.some((c) => c.jour === Number(j)));
   const cle = (c) => `${c.heure_debut.slice(0, 5)}-${c.heure_fin.slice(0, 5)}`;
   const horaires = [...new Set(data.map(cle))].sort();
@@ -96,7 +99,58 @@ function TableEdt({ data, couleurs, peut, onEdit }) {
   );
 }
 
+const couleursDe = (data) => { const c = {}; (data || []).forEach((x) => { const k = x.matiere || x.libelle; if (!(k in c)) c[k] = TEINTES[Object.keys(c).length % TEINTES.length]; }); return c; };
+
+// Une page A4 paysage par classe ; le tableau est réduit automatiquement s'il est trop grand pour la page.
+function PageEdt({ classe, data, etab, annee }) {
+  const corps = useRef(null);
+  useLayoutEffect(() => {
+    const el = corps.current; if (!el) return;
+    el.style.zoom = "";
+    const dispo = el.parentElement.clientHeight - el.offsetTop - 4, h = el.scrollHeight;
+    if (h > dispo) el.style.zoom = String(Math.max(0.45, dispo / h));
+  }, [data]);
+  return (
+    <article className="doc a4l edt-doc">
+      <header className="edt-doc-head">
+        <div className="g"><img src="/logo.png" alt="" /><div><strong>{etab.nom}</strong><span>{etab.adresse}{etab.telephones ? ` · Tél. ${etab.telephones}` : ""}</span></div></div>
+        <div className="c"><h1>Emploi du temps — {classe.nom}</h1><span>Année scolaire {annee}</span></div>
+        <div className="d">{classe.titulaire ? <>Titulaire<strong>{classe.titulaire}</strong></> : null}</div>
+      </header>
+      <div ref={corps} className="edt-doc-corps">
+        {data.length ? <TableEdt data={data} couleurs={couleursDe(data)} peut={false} onEdit={() => {}} /> : <p className="muted" style={{ padding: 30, textAlign: "center" }}>Aucun créneau pour cette classe.</p>}
+      </div>
+    </article>
+  );
+}
+
+export function EmploiImpression() {
+  const s = useSession();
+  const nav = useNavigate();
+  const [p] = useSearchParams();
+  const classeId = Number(p.get("classe")) || null;
+  const classes = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }) });
+  const edt = useQuery({ queryKey: ["emploi-tout", classeId, s.annee?.id], queryFn: () => api.get("/emploi", classeId ? { classe_id: classeId } : {}) });
+  if (classes.isLoading || edt.isLoading) return <Spinner />;
+  const err = classes.error || edt.error; if (err) return <div style={{ padding: 32 }}><ErrorBox error={err} /></div>;
+  const liste = classes.data.filter((c) => !classeId || c.id === classeId).filter((c) => classeId || edt.data.some((x) => x.classe_id === c.id));
+  const titre = classeId && liste[0] ? `Emploi du temps ${liste[0].nom}` : "Emplois du temps";
+  return (
+    <div className="print-page">
+      <style>{"@page { size: A4 landscape; margin: 0; }"}</style>
+      <div className="print-bar">
+        <button className="btn" onClick={() => nav("/emploi")}><ArrowLeft size={17} />Retour</button>
+        <span className="grow"><strong>{titre}</strong> — {liste.length} page{liste.length > 1 ? "s" : ""}</span>
+        <Partager format="A4L" nom={`${titre}-${s.annee?.libelle || ""}`} message={`${titre} — ${s.etablissement?.nom}`} />
+        <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
+      </div>
+      <div className="tickets">{liste.map((c) => <PageEdt key={c.id} classe={c} data={edt.data.filter((x) => x.classe_id === c.id)} etab={s.etablissement} annee={s.annee?.libelle} />)}</div>
+    </div>
+  );
+}
+
 export default function Emploi() {
+  const nav = useNavigate();
   const s = useSession();
   const classes = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }) });
   const [classeId, setClasseId] = useState(null);
@@ -141,7 +195,8 @@ export default function Emploi() {
     <div className="edt-page">
       <style>{"@media print { @page { size: A4 landscape; margin: 8mm; } }"}</style>
       <PageHead title="Emploi du temps" sub={classe ? `${classe.nom}${classe.titulaire ? ` · titulaire ${classe.titulaire}` : ""} · Année scolaire ${s.annee?.libelle || ""}` : ""}>
-        <button className="btn" onClick={() => window.print()}><Printer size={17} /><span className="hide-m">Imprimer</span></button>
+        <button className="btn" onClick={() => nav("/emploi/imprimer")}><Printer size={17} /><span className="hide-m">Toutes les classes</span></button>
+        {classe && <button className="btn" onClick={() => nav(`/emploi/imprimer?classe=${classe.id}`)}><Printer size={17} />Voir et imprimer</button>}
         {peut && classe && <button className="btn primary" onClick={() => setEdit({})}><Plus size={17} />Ajouter un créneau</button>}
       </PageHead>
       {classes.data && <div className="class-tabs">{classes.data.map((c) => <button key={c.id} className={`class-tab ${c.id === classe?.id ? "on" : ""}`} onClick={() => setClasseId(c.id)}>{c.nom}</button>)}</div>}

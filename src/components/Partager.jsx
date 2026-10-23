@@ -3,7 +3,7 @@ import { MessageCircle, FileDown, Share2 } from "lucide-react";
 import { telWa } from "../lib/format";
 import { useToast } from "./ui";
 
-const TAILLES = { A4: [210, 297], A5: [148, 210] };
+const TAILLES = { A4: [210, 297], A5: [148, 210], A4L: [297, 210] };
 
 // Transforme les documents affichés (.tickets > article) en un PDF, une page par document.
 async function fabriquerPdf(format, nom) {
@@ -11,7 +11,8 @@ async function fabriquerPdf(format, nom) {
   const pages = [...document.querySelectorAll(".print-page .tickets > *")].filter((el) => el.offsetHeight > 0);
   if (!pages.length) throw new Error("Aucun document à exporter.");
   const [w, h] = TAILLES[format] || TAILLES.A4;
-  const pdf = new jsPDF({ unit: "mm", format: [w, h], orientation: "portrait", compress: true });
+  const ori = w > h ? "landscape" : "portrait";
+  const pdf = new jsPDF({ unit: "mm", format: [w, h], orientation: ori, compress: true });
   document.body.classList.add("export-pdf");
   try {
     for (let i = 0; i < pages.length; i++) {
@@ -19,7 +20,7 @@ async function fabriquerPdf(format, nom) {
       const ratio = canvas.width / canvas.height;
       let iw = w, ih = w / ratio;
       if (ih > h) { ih = h; iw = h * ratio; }
-      if (i > 0) pdf.addPage([w, h], "portrait");
+      if (i > 0) pdf.addPage([w, h], ori);
       pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", (w - iw) / 2, 0, iw, ih);
     }
   } finally { document.body.classList.remove("export-pdf"); }

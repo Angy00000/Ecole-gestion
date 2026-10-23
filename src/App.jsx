@@ -16,7 +16,7 @@ import Enseignants from "./pages/Enseignants";
 import Notes from "./pages/Notes";
 import Bulletins from "./pages/Bulletins";
 import Absences from "./pages/Absences";
-import Emploi from "./pages/Emploi";
+import Emploi, { EmploiImpression } from "./pages/Emploi";
 import Recettes from "./pages/Recettes";
 import Rapports from "./pages/Rapports";
 import Service from "./pages/Service";
@@ -42,6 +42,7 @@ export default function App() {
       <Route path="imprimes/imprimer" element={<ViergesImpression />} />
       <Route path="listes/imprimer" element={<ListeImpression />} />
       <Route path="fournitures/liste" element={<ListeFournituresImpression />} />
+      {s.peut("pedagogie.lire") && <Route path="emploi/imprimer" element={<EmploiImpression />} />}
       {s.peut("finances.lire") && <Route path="factures/imprimer" element={<FacturesImpression />} />}
       {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}
       <Route element={<Layout />}>
