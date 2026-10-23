@@ -12,7 +12,11 @@ export class ApiError extends Error {
   constructor(message, status) { super(message); this.status = status; }
 }
 
-async function request(method, path, body) {
+import { garder, relire, ACCEPTE, mettreEnAttente, marquerHorsLigne, brancher } from "./horsLigne";
+
+const HORS_LIGNE = "Pas de connexion internet. Vérifiez le réseau puis réessayez.";
+// Requête directe au serveur (utilisée aussi pour envoyer les saisies faites hors ligne).
+async function direct(method, path, body) {
   let res;
   try {
     res = await fetch(BASE + path, {
@@ -21,12 +25,37 @@ async function request(method, path, body) {
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new ApiError("Pas de connexion internet. Vérifiez le réseau puis réessayez.", 0);
+    throw new ApiError(HORS_LIGNE, 0);
   }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && path !== "/auth/login") { setToken(null); onExpire(); }
   if (!res.ok) throw new ApiError(data.error || `Erreur ${res.status}`, res.status);
   return data;
+}
+brancher(direct);
+
+// Avec repli hors ligne : lectures servies depuis la copie de l'appareil, saisies autorisées mises en attente.
+async function request(method, path, body, apercu) {
+  const coupe = typeof navigator !== "undefined" && navigator.onLine === false;
+  if (!coupe) {
+    try {
+      const data = await direct(method, path, body);
+      marquerHorsLigne(false);
+      if (method === "GET" && getToken()) garder(path, data);
+      return data;
+    } catch (e) {
+      if (e.status !== 0) throw e;
+    }
+  }
+  if (path === "/auth/login") throw new ApiError(HORS_LIGNE, 0);
+  marquerHorsLigne(true);
+  if (method === "GET") {
+    const c = await relire(path);
+    if (c !== undefined) return c;
+    throw new ApiError("Hors ligne : ces informations n'ont pas encore été ouvertes sur cet appareil. Elles seront disponibles au retour d'internet.", 0);
+  }
+  if (ACCEPTE(method, path)) return mettreEnAttente(method, path, body, apercu);
+  throw new ApiError("Hors ligne : cette action a besoin d'internet. Seuls l'encaissement, l'appel et la saisie des notes fonctionnent sans connexion.", 0);
 }
 
 const qs = (params) => {
@@ -36,7 +65,7 @@ const qs = (params) => {
 
 export const api = {
   get: (path, params) => request("GET", path + qs(params)),
-  post: (path, body) => request("POST", path, body || {}),
-  put: (path, body) => request("PUT", path, body || {}),
+  post: (path, body, apercu) => request("POST", path, body || {}, apercu),
+  put: (path, body, apercu) => request("PUT", path, body || {}, apercu),
   del: (path) => request("DELETE", path),
 };

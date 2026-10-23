@@ -38,7 +38,13 @@ export function SessionProvider({ children }) {
     espaceProf: !!boot.data?.user?.classe_seule && boot.data?.user?.role !== "admin",
     peut: (droit) => (boot.data?.droits || []).some((d) => d === "*" || d === droit),
     login: (t) => { setToken(t); setTok(t); },
-    logout: () => { setToken(null); setTok(null); qc.clear(); },
+    logout: async () => {
+      const { etatHorsLigne, viderCopie } = await import("./horsLigne");
+      const n = etatHorsLigne().attente.length;
+      if (n && !window.confirm(`${n} saisie(s) faite(s) hors ligne n'ont pas encore été envoyées. Restez connecté jusqu'au retour d'internet. (Si vous vous déconnectez, elles seront envoyées quand vous vous reconnecterez sur cet appareil.) Se déconnecter quand même ?`)) return;
+      if (!n) await viderCopie();
+      setToken(null); setTok(null); qc.clear();
+    },
     setAnnee: (id) => { localStorage.setItem(ANNEE, id); setAnneeIdState(Number(id)); },
     refresh: () => qc.invalidateQueries({ queryKey: ["bootstrap"] }),
   }), [token, boot.data, boot.isSuccess, boot.error, anneeId, qc]);

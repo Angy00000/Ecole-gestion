@@ -65,7 +65,8 @@ function Saisie({ evaluationId, onClose }) {
   const save = async () => {
     setBusy(true);
     try {
-      await api.put(`/evaluations/${evaluationId}/notes`, { notes: data.notes.map((n) => ({ inscription_id: n.inscription_id, note: vals[n.inscription_id]?.absent ? null : vals[n.inscription_id]?.note, absent: vals[n.inscription_id]?.absent })) });
+      const rn = await api.put(`/evaluations/${evaluationId}/notes`, { notes: data.notes.map((n) => ({ inscription_id: n.inscription_id, note: vals[n.inscription_id]?.absent ? null : vals[n.inscription_id]?.note, absent: vals[n.inscription_id]?.absent })) });
+      if (rn?.hors_ligne) { toast("Hors ligne : notes gardées sur l'appareil, elles seront envoyées au retour d'internet"); setBusy(false); onClose(); return; }
       toast(`${saisies} note${saisies > 1 ? "s" : ""} enregistrée${saisies > 1 ? "s" : ""}`);
       ["evaluations", "notes", "bulletins"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); onClose();
     } catch (e) { toast(e.message, "error"); }

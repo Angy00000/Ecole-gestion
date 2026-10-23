@@ -126,8 +126,9 @@ export default function Encaissement({ inscriptionId: initIns, eleve: initEleve,
         inscription_id: insId, mode, date_paiement: date, reference,
         lignes: lignes.map(({ type, mois, montant, libelle }) => ({ type, mois, montant, libelle })),
         note: [note, ...lignes.filter((l) => l.type === "cantine_jour").map((l) => `Cantine : ${l.jours} jour(s)`)].filter(Boolean).join(" · "),
-      });
-      toast(`Reçu ${r.numero} enregistré — ${fcfa(r.montant)}`);
+      }, { eleve: eleve ? `${eleve.prenom} ${eleve.nom}` : "", matricule: eleve?.matricule, classe: eleve?.classe || sit.data?.inscription?.classe, sexe: eleve?.sexe,
+        lignes: lignes.map((l) => ({ libelle: libelleLigne(l), montant: Number(l.montant) })) });
+      toast(r.hors_ligne ? `Hors ligne : reçu provisoire ${r.numero} enregistré — il sera envoyé au retour d'internet` : `Reçu ${r.numero} enregistré — ${fcfa(r.montant)}`);
       ["situation", "eleve", "dashboard", "recus", "impayes", "caisse"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       onSaved?.(r);
     } catch (e) { setError(e); }

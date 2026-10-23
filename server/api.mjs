@@ -799,18 +799,23 @@ route("POST", "/recus", async (ctx) => {
   exige(ctx, "finances.encaisser");
   const b = ctx.body;
   requis(b, [["inscription_id", "L'élève"]]);
+  // Encaissement fait hors ligne et renvoyé deux fois (coupure pendant l'envoi) : on renvoie le reçu déjà créé.
+  if (b.cle_client) {
+    const deja = await one("select id, numero, montant from app.recus where cle_client=$1", [String(b.cle_client)]);
+    if (deja) return { ...deja, deja: true };
+  }
   const lignes = lignesValides(b);
   const ins = await one("select i.id, a.libelle from app.inscriptions i join app.annees a on a.id=i.annee_id where i.id=$1", [b.inscription_id]);
   if (!ins) fail(404, "Inscription introuvable.");
   await verifierDejaPaye(b.inscription_id, lignes);
   const prefixe = "R" + ins.libelle.replace(/^\d{2}(\d{2})-\d{2}(\d{2})$/, "$1$2");
   const total = lignes.reduce((t, l) => t + Number(l.montant), 0);
-  const params = [b.inscription_id, b.date_paiement || null, b.mode || "especes", total, b.reference || null, b.note || null, ctx.user.id, prefixe];
+  const params = [b.inscription_id, b.date_paiement || null, b.mode || "especes", total, b.reference || null, b.note || null, ctx.user.id, prefixe, b.cle_client ? String(b.cle_client).slice(0, 80) : null];
   const values = valeursLignes(lignes, params);
   const r = await one(
     `with r as (
-       insert into app.recus (numero, inscription_id, date_paiement, mode, montant, reference, note, encaisse_par)
-       values ($8::text || '-' || lpad(nextval('app.recu_seq')::text, 5, '0'), $1::int, coalesce($2::date, current_date), $3::text, $4::int, $5::text, $6::text, $7::int) returning *),
+       insert into app.recus (numero, inscription_id, date_paiement, mode, montant, reference, note, encaisse_par, cle_client)
+       values ($8::text || '-' || lpad(nextval('app.recu_seq')::text, 5, '0'), $1::int, coalesce($2::date, current_date), $3::text, $4::int, $5::text, $6::text, $7::int, $9::text) returning *),
      l as (insert into app.paiements (recu_id, inscription_id, type, mois, montant, libelle)
        select r.id, r.inscription_id, v.type, v.mois, v.montant, v.libelle from r, (values ${values.join(",")}) v(type, mois, montant, libelle) returning id)
      select r.id, r.numero, r.montant, (select count(*) from l) as lignes from r`, params);

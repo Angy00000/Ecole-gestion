@@ -30,6 +30,7 @@ function Appel({ classes }) {
     setBusy(true);
     try {
       const r = await api.put("/appel", { classe_id: classeId, date: jour, items: Object.entries(items).map(([k, v]) => ({ inscription_id: Number(k), ...v })) });
+      if (r.hors_ligne) { toast("Hors ligne : appel gardé sur l'appareil, il sera envoyé au retour d'internet"); setBusy(false); return; }
       toast(r.marques ? `Appel enregistré : ${r.marques} absence(s) ou retard(s)` : "Appel enregistré : tout le monde est présent");
       ["appel", "absences", "bulletins", "eleve"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
     } catch (e) { toast(e.message, "error"); }

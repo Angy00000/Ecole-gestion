@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Printer, Ban, MessageCircle, Pencil, History, Trash2, MinusCircle } from "lucide-react";
@@ -117,6 +117,54 @@ function Ticket({ r, etab, sit, copie, rectifie }) {
 
 export default function Recu() {
   const { id } = useParams();
+  if (String(id).startsWith("h-")) return <RecuProvisoire qid={String(id).slice(2)} />;
+  return <RecuServeur id={id} />;
+}
+
+// Reçu fait hors ligne : affiché depuis l'appareil, avec un numéro provisoire, jusqu'à l'envoi au serveur.
+function RecuProvisoire({ qid }) {
+  const s = useSession();
+  const nav = useNavigate();
+  const [it, setIt] = useState(undefined);
+  useEffect(() => {
+    let vivant = true;
+    const charger = () => import("../lib/horsLigne").then(({ elementFile }) => elementFile(qid)).then((x) => {
+      if (!vivant) return;
+      if (x?.statut === "envoye" && x.resultat?.id) nav(`/recus/${x.resultat.id}`, { replace: true }); else setIt(x || null);
+    });
+    charger(); const t = setInterval(charger, 5000);
+    return () => { vivant = false; clearInterval(t); };
+  }, [qid, nav]);
+  if (it === undefined) return <Spinner />;
+  if (!it) return <div style={{ padding: 32 }}><ErrorBox error={new Error("Reçu provisoire introuvable sur cet appareil.")} /></div>;
+  const etab = s.etablissement, a = it.apercu || {}, total = it.body.lignes.reduce((t, l) => t + Number(l.montant || 0), 0);
+  return (
+    <div className="print-page">
+      <style>{"@page { size: A5 portrait; margin: 0; }"}</style>
+      <div className="print-bar">
+        <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
+        <span className="grow"><strong>Reçu provisoire {it.provisoire}</strong> — {it.statut === "refuse" ? "refusé par le serveur" : "en attente d'envoi"}</span>
+        <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
+      </div>
+      <div className="tickets">
+        <article className="ticket">
+          <header className="t-head"><img src="/logo.png" alt="" /><div className="t-school"><strong>{etab.nom}</strong><span>{etab.adresse}</span><span>Tél. {etab.telephones}</span></div></header>
+          <div className="t-prov">REÇU PROVISOIRE N° {it.provisoire} — saisi hors ligne le {new Date(it.cree_le).toLocaleString("fr-FR")}</div>
+          <p><strong>Élève :</strong> {a.eleve || "—"}{a.matricule ? ` · ${a.matricule}` : ""}{a.classe ? ` · ${a.classe}` : ""}</p>
+          <table className="t-table" style={{ width: "100%" }}><tbody>
+            {(a.lignes || it.body.lignes).map((l, i) => <tr key={i}><td>{l.libelle || l.type}</td><td style={{ textAlign: "right" }}>{fcfa(l.montant)}</td></tr>)}
+            <tr><td><strong>Total versé</strong></td><td style={{ textAlign: "right" }}><strong>{fcfa(total)}</strong></td></tr>
+          </tbody></table>
+          <p className="xs" style={{ marginTop: 6 }}>Montant en lettres : {enLettres(total)} francs CFA · Mode : {MODES[it.body.mode] || it.body.mode} · Date : {date(it.body.date_paiement || it.cree_le)}</p>
+          <p className="xs muted" style={{ marginTop: 6 }}>Le reçu définitif (avec son numéro officiel) sera disponible dès le retour d'internet.</p>
+          <footer className="t-foot"><div><span>Encaissé par</span><strong>{s.user?.prenom} {s.user?.nom}</strong></div><div className="t-sign"><span>Signature et cachet</span></div></footer>
+        </article>
+      </div>
+    </div>
+  );
+}
+
+function RecuServeur({ id }) {
   const s = useSession();
   const nav = useNavigate();
   const toast = useToast();

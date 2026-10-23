@@ -18,7 +18,9 @@ document.documentElement.dataset.theme = localStorage.getItem("eg2_theme") || "l
 
 const qc = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 30e3, retry: (n, e) => e?.status !== 401 && e?.status !== 403 && n < 2, refetchOnWindowFocus: true },
+    // networkMode « always » : sans internet, les requêtes passent quand même par la copie gardée sur l'appareil.
+    queries: { staleTime: 30e3, networkMode: "always", retry: (n, e) => e?.status !== 401 && e?.status !== 403 && e?.status !== 0 && n < 2, refetchOnWindowFocus: true },
+    mutations: { networkMode: "always" },
   },
 });
 

@@ -8,6 +8,7 @@ import { ROLES, initiales } from "../lib/format";
 import MotDePasse from "../pages/MotDePasse";
 import SearchPalette from "./SearchPalette";
 import Cloche from "./Cloche";
+import BandeauHorsLigne from "./HorsLigne";
 
 const NAV = [
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, end: true },
@@ -106,6 +107,7 @@ export default function Layout() {
             {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
           </button>
         </header>
+        <BandeauHorsLigne />
         <main className="content"><Outlet /></main>
       </div>
 
