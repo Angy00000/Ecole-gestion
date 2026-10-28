@@ -6,10 +6,14 @@ import { useToast } from "./ui";
 const TAILLES = { A4: [210, 297], A5: [148, 210], A4L: [297, 210] };
 
 // Transforme les documents affichés (.tickets > article) en un PDF, une page par document.
-async function fabriquerPdf(format, nom) {
+export async function fabriquerPdf(format, nom) {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
   const pages = [...document.querySelectorAll(".print-page .tickets > *")].filter((el) => el.offsetHeight > 0);
   if (!pages.length) throw new Error("Aucun document à exporter.");
+  if (format === "auto") { // d'après la taille de la feuille affichée
+    const mm = pages[0].offsetWidth * 25.4 / 96;
+    format = pages[0].offsetWidth > pages[0].offsetHeight * 1.1 ? "A4L" : mm < 170 ? "A5" : "A4";
+  }
   const [w, h] = TAILLES[format] || TAILLES.A4;
   const ori = w > h ? "landscape" : "portrait";
   const pdf = new jsPDF({ unit: "mm", format: [w, h], orientation: ori, compress: true });

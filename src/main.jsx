@@ -28,6 +28,23 @@ window.addEventListener("vite:preloadError", (e) => {
   window.location.reload();
 });
 
+// Logiciel installé (fenêtre d'application) : la fenêtre d'impression de Windows n'a pas d'aperçu et peut bloquer.
+// « Imprimer » fabrique alors un PDF et l'ouvre dans la visionneuse PDF, qui a son propre bouton d'impression avec aperçu.
+const installe = window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone;
+if (installe) {
+  const imprimerNatif = window.print.bind(window);
+  window.print = async () => {
+    if (!document.querySelector(".print-page .tickets > *")) return imprimerNatif();
+    const w = window.open("", "_blank");
+    try {
+      const { fabriquerPdf } = await import("./components/Partager");
+      const f = await fabriquerPdf("auto", document.title || "document");
+      const url = URL.createObjectURL(f);
+      if (w) w.location.href = url; else window.location.href = url;
+    } catch { w?.close(); imprimerNatif(); }
+  };
+}
+
 const qc = new QueryClient({
   defaultOptions: {
     // networkMode « always » : sans internet, les requêtes passent quand même par la copie gardée sur l'appareil.
