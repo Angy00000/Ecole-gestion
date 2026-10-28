@@ -2,6 +2,7 @@ import { useState } from "react";
 import { MessageCircle, FileDown, Share2 } from "lucide-react";
 import { telWa } from "../lib/format";
 import { useToast } from "./ui";
+import { libererPage } from "../lib/ajuster";
 
 const TAILLES = { A4: [210, 297], A5: [148, 210], A4L: [297, 210] };
 
@@ -11,21 +12,60 @@ export async function fabriquerPdf(format, nom) {
   const pages = [...document.querySelectorAll(".print-page .tickets > *")].filter((el) => el.offsetHeight > 0);
   if (!pages.length) throw new Error("Aucun document à exporter.");
   if (format === "auto") { // d'après la taille de la feuille affichée
-    const mm = pages[0].offsetWidth * 25.4 / 96;
-    format = pages[0].offsetWidth > pages[0].offsetHeight * 1.1 ? "A4L" : mm < 170 ? "A5" : "A4";
+    const p0 = pages[0];
+    const mm = p0.offsetWidth * 25.4 / 96;
+    format = p0.classList.contains("ticket") ? "A5" : p0.classList.contains("a4l") ? "A4L"
+      : p0.offsetWidth > p0.offsetHeight * 1.1 ? "A4L" : mm < 170 && !p0.style.zoom ? "A5" : "A4";
   }
   const [w, h] = TAILLES[format] || TAILLES.A4;
   const ori = w > h ? "landscape" : "portrait";
   const pdf = new jsPDF({ unit: "mm", format: [w, h], orientation: ori, compress: true });
   document.body.classList.add("export-pdf");
+  let premiere = true;
+  const ajouter = (src, iw, ih) => {
+    if (!premiere) pdf.addPage([w, h], ori);
+    premiere = false;
+    pdf.addImage(src, "JPEG", (w - iw) / 2, 0, iw, ih);
+  };
   try {
-    for (let i = 0; i < pages.length; i++) {
-      const canvas = await html2canvas(pages[i], { scale: 2, backgroundColor: "#ffffff", useCORS: true, logging: false });
-      const ratio = canvas.width / canvas.height;
-      let iw = w, ih = w / ratio;
-      if (ih > h) { ih = h; iw = h * ratio; }
-      if (i > 0) pdf.addPage([w, h], ori);
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", (w - iw) / 2, 0, iw, ih);
+    for (const el of pages) {
+      // La réduction automatique (zoom) n'est pas comprise par html2canvas : on capture le document à sa taille réelle.
+      const zoom = el.style.zoom ? { zoom: el.style.zoom, width: el.style.width, minHeight: el.style.minHeight, height: el.style.height } : null;
+      if (zoom) libererPage(el);
+      try {
+        const pageH = el.offsetWidth * h / w; // hauteur d'une feuille, en pixels écran
+        const long = (el.classList.contains("etat") && !zoom && el.offsetHeight > pageH + 2) || el.offsetHeight > pageH * 1.35;
+        const scale = Math.min(2, 30000 / Math.max(el.offsetHeight, 1));
+        const canvas = await html2canvas(el, { scale, backgroundColor: "#ffffff", useCORS: true, logging: false });
+        if (!long) {
+          const ratio = canvas.width / canvas.height;
+          let iw = w, ih = w / ratio;
+          if (ih > h) { ih = h; iw = h * ratio; }
+          ajouter(canvas.toDataURL("image/jpeg", 0.92), iw, ih);
+          continue;
+        }
+        // État ou liste longue : plusieurs feuilles, coupées entre deux lignes du tableau.
+        const top = el.getBoundingClientRect().top;
+        const coupes = [...el.querySelectorAll("tr, h3, .etat-total, .d-sign, .d-head")].map((x) => x.getBoundingClientRect().bottom - top).sort((a, b) => a - b);
+        const total = el.offsetHeight;
+        const k = canvas.width / el.offsetWidth;
+        for (let debut = 0; debut < total - 2;) {
+          let fin = Math.min(total, debut + pageH);
+          if (fin < total) {
+            const c = coupes.filter((y) => y > debut + pageH * 0.5 && y <= fin).pop();
+            if (c) fin = c;
+          }
+          const part = document.createElement("canvas");
+          part.width = canvas.width; part.height = Math.round((fin - debut) * k);
+          const ctx = part.getContext("2d");
+          ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, part.width, part.height);
+          ctx.drawImage(canvas, 0, Math.round(debut * k), canvas.width, part.height, 0, 0, canvas.width, part.height);
+          ajouter(part.toDataURL("image/jpeg", 0.92), w, (fin - debut) * w / el.offsetWidth);
+          debut = fin;
+        }
+      } finally {
+        if (zoom) Object.assign(el.style, zoom);
+      }
     }
   } finally { document.body.classList.remove("export-pdf"); }
   const blob = pdf.output("blob");

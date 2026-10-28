@@ -29,9 +29,9 @@ function EtatImpayes({ data, classes, etab, annee, mois }) {
           <table className="b-table d-list">
             <thead><tr><th>N°</th><th>Matricule</th><th>Nom et prénom</th><th>Parent</th><th>Téléphone</th><th>Retards</th><th>Reste</th></tr></thead>
             <tbody>{rows.map((r, i) => (
-              <tr key={r.inscription_id}><td>{i + 1}</td><td>{r.matricule}</td><td><strong>{r.nom}</strong> {r.prenom}</td><td>{r.parent || ""}</td><td>{r.telephone || ""}</td>
+              <tr key={r.inscription_id}><td>{i + 1}</td><td className="nw">{r.matricule}</td><td><strong>{r.nom}</strong> {r.prenom}</td><td>{r.parent || ""}</td><td className="nw">{r.telephone || ""}</td>
                 <td>{[r.frais > r.frais_payes ? "Inscr." : null, ...(r.liste_mois || "").split(",").filter(Boolean).map(moisAbr)].filter(Boolean).join(", ")}</td>
-                <td style={{ textAlign: "right", fontWeight: 700 }}>{fcfa(r.reste)}</td></tr>))}</tbody>
+                <td className="nw" style={{ textAlign: "right", fontWeight: 700 }}>{fcfa(r.reste)}</td></tr>))}</tbody>
           </table>
         </section>
       ))}
@@ -61,8 +61,8 @@ function EtatService({ data, classes, etab, annee, svc, filtre }) {
           <table className="b-table d-list">
             <thead><tr><th>N°</th><th>Matricule</th><th>Nom et prénom</th><th>Téléphone</th><th>Attendu</th><th>Payé</th><th>Reste</th><th>État</th></tr></thead>
             <tbody>{rs.map((r, i) => (
-              <tr key={r.inscription_id}><td>{i + 1}</td><td>{r.matricule}</td><td><strong>{r.nom}</strong> {r.prenom}</td><td>{r.telephone || ""}</td>
-                <td>{r.du ? fcfa(r.du) : "—"}</td><td>{fcfa(r.paye)}</td><td style={{ fontWeight: 700 }}>{r.du ? fcfa(reste(r)) : "—"}</td><td>{statut(r)}</td></tr>))}</tbody>
+              <tr key={r.inscription_id}><td>{i + 1}</td><td className="nw">{r.matricule}</td><td><strong>{r.nom}</strong> {r.prenom}</td><td className="nw">{r.telephone || ""}</td>
+                <td className="nw">{r.du ? fcfa(r.du) : "—"}</td><td className="nw">{fcfa(r.paye)}</td><td className="nw" style={{ fontWeight: 700 }}>{r.du ? fcfa(reste(r)) : "—"}</td><td className="nw">{statut(r)}</td></tr>))}</tbody>
           </table>
         </section>
       ))}
@@ -158,13 +158,13 @@ function Carte({ e, classe, annee, etab }) {
 function Liste({ rows, classe, annee, etab }) {
   const f = rows.filter((r) => r.sexe === "F").length;
   return (
-    <article className="doc a4">
+    <article className="doc a4 etat">
       <EnTete etab={etab} />
       <h1 className="d-title">Liste de la classe de {classe?.nom}</h1>
       <p className="d-num">Année scolaire {annee} · {rows.length} élèves ({f} filles, {rows.length - f} garçons){classe?.titulaire ? ` · Titulaire : ${classe.titulaire}` : ""}</p>
       <table className="b-table d-list">
         <thead><tr><th>N°</th><th>Matricule</th><th>Nom</th><th>Prénom(s)</th><th>Sexe</th><th>Né(e) le</th><th>Téléphone parent</th></tr></thead>
-        <tbody>{rows.map((r, i) => <tr key={r.id}><td>{i + 1}</td><td>{r.matricule}</td><td>{r.nom}</td><td>{r.prenom}</td><td>{r.sexe}</td><td>{r.date_naissance ? date(r.date_naissance) : ""}</td><td>{r.telephone || ""}</td></tr>)}</tbody>
+        <tbody>{rows.map((r, i) => <tr key={r.id}><td>{i + 1}</td><td className="nw">{r.matricule}</td><td>{r.nom}</td><td>{r.prenom}</td><td>{r.sexe}</td><td className="nw">{r.date_naissance ? date(r.date_naissance) : ""}</td><td className="nw">{r.telephone || ""}</td></tr>)}</tbody>
       </table>
       <div className="d-sign"><p>Fait à {etab.ville || "Malika"}, le {aujourdhui()}</p><p className="d-sign-t">La Direction</p></div>
     </article>

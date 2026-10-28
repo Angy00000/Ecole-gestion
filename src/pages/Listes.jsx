@@ -174,7 +174,7 @@ export function ListeImpression() {
               {(g.nom || g.info) && <h3>{g.nom} <span>{g.info}</span></h3>}
               <table className={`b-table d-list ${g.total ? "avec-total" : ""}`}>
                 <thead><tr>{g.cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
-                <tbody>{g.lignes.map((l, j) => <tr key={j}>{l.map((x, m) => <td key={m}>{x}</td>)}</tr>)}</tbody>
+                <tbody>{g.lignes.map((l, j) => <tr key={j}>{l.map((x, m) => <td key={m} className={String(x ?? "").length <= 16 ? "nw" : undefined}>{x}</td>)}</tr>)}</tbody>
               </table>
             </section>
           ))}

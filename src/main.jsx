@@ -13,11 +13,13 @@ import "@fontsource/sora/600.css";
 import "@fontsource/sora/700.css";
 import "@fontsource/sora/800.css";
 import "./styles.css";
+import { demarrerAjustement } from "./lib/ajuster";
 
 document.documentElement.dataset.theme = localStorage.getItem("eg2_theme") || "light";
 
 // Après une mise à jour du logiciel, une page restée ouverte cherche d'anciens fichiers (PDF, Excel…) qui n'existent plus :
 // on recharge la page une fois pour prendre la nouvelle version, puis l'action fonctionne.
+demarrerAjustement();
 window.addEventListener("vite:preloadError", (e) => {
   if (!navigator.onLine) return;
   const k = "eg2_rechargement_maj";

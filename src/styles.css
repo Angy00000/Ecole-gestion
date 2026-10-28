@@ -1268,3 +1268,9 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .ca-codes-ecran { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 .ca-codes-ecran div { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; } .ca-codes-ecran span { display: block; font-size: 12px; color: var(--muted); } .ca-codes-ecran b { font-size: 22px; letter-spacing: .12em; }
 .par-ligne .grow, .par-head .grow { flex: 1; }
+
+/* ═══ Mise en page des impressions (vérification d'octobre 2026) ═════════ */
+.d-list td.nw, .d-list th.nw { white-space: nowrap; }
+.cartes.cartes-acces { grid-template-columns: 1fr 1fr; grid-auto-rows: 51mm; gap: 3mm 6mm; padding-top: 9mm; }
+.carte-acces .ca-lien { line-height: 1.3; }
+.carte-acces { overflow: hidden; padding: 3mm 4.5mm; gap: 1.2mm; }
