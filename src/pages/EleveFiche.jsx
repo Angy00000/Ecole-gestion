@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt, PlusCircle, ArrowRightLeft } from "lucide-react";
+import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt, PlusCircle, ArrowRightLeft, KeyRound } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateLongue, age, initiales } from "../lib/format";
 import { Spinner, ErrorBox, Empty, Modal, Field, Select, Input, Confirm, useToast } from "../components/ui";
 import EleveForm from "./EleveForm";
+import { AccesParentModal } from "./AccesParents";
 import Encaissement from "../components/Encaissement";
 import TarifScolarite, { BadgeFormule, ReductionInscription } from "../components/TarifScolarite";
 import { moisNom, moisLong, libelleLigne, TYPES_COURTS } from "../lib/format";
@@ -269,6 +270,7 @@ export default function EleveFiche() {
   const [del, setDel] = useState(false);
   const [enc, setEnc] = useState(false);
   const [docs, setDocs] = useState(false);
+  const [acces, setAcces] = useState(false);
   const { data, isLoading, error } = useQuery({ queryKey: ["eleve", id], queryFn: () => api.get(`/eleves/${id}`) });
 
   if (isLoading) return <Spinner />;
@@ -325,6 +327,7 @@ export default function EleveFiche() {
                 {courante && s.peut("pedagogie.lire") && <button onClick={() => nav(`/bulletins/imprimer?classe=${courante.classe_id}&trimestre=1&eleve=${e.id}`)}>Bulletin du 1er trimestre</button>}
               </div>
             </div>}
+            {s.peut("eleves.ecrire") && courante && e.code_parent && <button className="btn" onClick={() => setAcces(true)}><KeyRound size={17} />Accès parent</button>}
             {s.peut("eleves.ecrire") && courante && <button className="btn" onClick={() => setChClasse(true)}><ArrowRightLeft size={17} />Changer de classe</button>}
             {s.peut("eleves.ecrire") && courante && <button className="btn" onClick={() => setInsc(courante)}><PlusCircle size={17} />Cantine, uniforme…</button>}
             {s.peut("eleves.ecrire") && !courante && <button className="btn primary" onClick={() => setInsc("new")}><RefreshCcw size={17} />Réinscrire</button>}
@@ -445,6 +448,7 @@ export default function EleveFiche() {
         </div>
       )}
 
+      {acces && courante && <AccesParentModal eleve={e} classe={courante.classe} telephone={e.mere_telephone || e.pere_telephone || e.tuteur_telephone} onClose={() => setAcces(false)} />}
       {enc && courante && <Encaissement inscriptionId={courante.id} eleve={e} onClose={() => setEnc(false)} onSaved={(r) => { setEnc(false); nav(`/recus/${r.id}`); }} />}
       {edit && <EleveForm eleve={e} onClose={() => setEdit(false)} onSaved={() => setEdit(false)} />}
       {chClasse && courante && <ChangerClasseModal eleve={e} inscription={courante} onClose={() => setChClasse(false)} />}

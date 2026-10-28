@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Search, UserPlus, Download, Users, ChevronLeft, ChevronRight, Utensils, ArrowDownAZ, Printer, IdCard } from "lucide-react";
+import { Search, UserPlus, Download, Users, ChevronLeft, ChevronRight, Utensils, ArrowDownAZ, Printer, IdCard, KeyRound } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { initiales, age, nombre, fcfa } from "../lib/format";
@@ -60,6 +60,7 @@ export default function Eleves() {
           <button className="btn" onClick={() => nav(`/documents?type=liste&classe=${classe}`)}><Printer size={17} /><span className="hide-m">Liste de classe</span></button>
           <button className="btn" onClick={() => nav(`/documents?type=carte&classe=${classe}`)}><IdCard size={17} /><span className="hide-m">Cartes scolaires</span></button>
         </>}
+        {s.peut("eleves.ecrire") && inscrits === "oui" && <button className="btn" onClick={() => nav(`/acces-parents/imprimer${classe ? `?classe=${classe}` : ""}`)}><KeyRound size={17} /><span className="hide-m">Cartes d'accès parents</span></button>}
         {!classe && inscrits === "oui" && <button className="btn" onClick={() => nav("/documents?type=listes")}><Printer size={17} /><span className="hide-m">Imprimer toutes les listes</span></button>}
         <button className="btn" onClick={exporter}><Download size={17} /><span className="hide-m">Exporter en Excel</span></button>
         {s.peut("eleves.ecrire") && <button className="btn primary" onClick={() => setForm(true)}><UserPlus size={17} />Inscrire un élève</button>}

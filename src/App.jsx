@@ -1,4 +1,6 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import EspaceParents from "./pages/EspaceParents";
+import { CartesAccesImpression } from "./pages/AccesParents";
 import { useSession } from "./lib/session";
 import { Spinner, ErrorBox } from "./components/ui";
 import Layout from "./components/Layout";
@@ -32,6 +34,8 @@ import Factures, { FacturesImpression } from "./pages/Factures";
 
 export default function App() {
   const s = useSession();
+  const loc = useLocation();
+  if (loc.pathname.startsWith("/parents")) return <EspaceParents />;
   if (!s.token) return <><Login /><MiseAJour /></>;
   if (s.bootError) return <div style={{ padding: 40, maxWidth: 520 }}><ErrorBox error={s.bootError} /><button className="btn" style={{ marginTop: 16 }} onClick={s.logout}>Revenir à la connexion</button></div>;
   if (!s.ready) return <Spinner />;
@@ -59,6 +63,7 @@ export default function App() {
         <Route path="imprimes/imprimer" element={<ViergesImpression />} />
         <Route path="listes/imprimer" element={<ListeImpression />} />
         <Route path="fournitures/liste" element={<ListeFournituresImpression />} />
+        {s.peut("eleves.ecrire") && <Route path="acces-parents/imprimer" element={<CartesAccesImpression />} />}
         {s.peut("pedagogie.lire") && <Route path="emploi/imprimer" element={<EmploiImpression />} />}
         {s.peut("finances.lire") && <Route path="factures/imprimer" element={<FacturesImpression />} />}
         {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}

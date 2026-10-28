@@ -313,6 +313,74 @@ route("POST", "/auth/login", async ({ body }) => {
 
 route("GET", "/auth/me", async (ctx) => ({ user: ctx.user }));
 
+// ══ Espace parents : matricule de l'élève + code parent (remis par l'école) ══════════
+const tokenParent = async (eleveId) => {
+  const p = b64(JSON.stringify({ parent: eleveId, exp: Date.now() + 120 * 864e5 }));
+  return `${p}.${hmac(p, await secret())}`;
+};
+const lireParent = async (req) => {
+  const t = await readToken(req);
+  if (!t?.parent) fail(401, "Session parent expirée : reconnectez-vous avec le matricule et le code.");
+  return Number(t.parent);
+};
+route("POST", "/eleves/:id/code-parent", async (ctx) => {
+  exige(ctx, "eleves.ecrire");
+  const r = await one("update app.eleves set code_parent=app.nouveau_code_parent() where id=$1 returning code_parent", [ctx.params.id]);
+  await journal(ctx, "modification", "eleve", Number(ctx.params.id), { code_parent: "nouveau" });
+  return r;
+});
+route("GET", "/parents/codes", async (ctx) => {
+  exige(ctx, "eleves.ecrire");
+  const annee = await anneeCourante(ctx.query.annee_id);
+  const p = [annee]; let w = "";
+  if (ctx.query.classe_id) { p.push(ctx.query.classe_id); w = ` and i.classe_id=$${p.length}`; }
+  return q(`select e.id, e.matricule, e.prenom, e.nom, e.code_parent, c.nom as classe, c.ordre
+    from app.inscriptions i join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id
+    where i.annee_id=$1 and i.statut='active'${w} order by c.ordre, e.nom, e.prenom`, p);
+});
+route("POST", "/parents/connexion", async ({ body }) => {
+  const mat = String(body.matricule || "").trim().toUpperCase(), code = String(body.code || "").trim().toUpperCase().replace(/\s/g, "");
+  const cle = `parent:${mat}`;
+  const { n } = await one(`select count(*) as n from app.echecs_connexion where email=$1 and created_at > now() - interval '${BLOCAGE_MIN} minutes'`, [cle]);
+  if (n >= MAX_ECHECS) fail(429, `Trop d'essais. Réessayez dans ${BLOCAGE_MIN} minutes.`);
+  const e = await one("select id, prenom, nom from app.eleves where upper(matricule)=$1 and code_parent=$2 and statut<>'sorti'", [mat, code]);
+  if (!e) { await q("insert into app.echecs_connexion (email) values ($1)", [cle]); fail(401, "Matricule ou code incorrect. Vérifiez la carte remise par l'école."); }
+  await q("delete from app.echecs_connexion where email=$1", [cle]);
+  return { token: await tokenParent(e.id), eleve: { id: e.id, prenom: e.prenom, nom: e.nom } };
+}, { public: true });
+route("GET", "/parents/enfant", async (ctx) => {
+  const id = await lireParent(ctx.token);
+  const e = await one("select id, matricule, prenom, nom, sexe, date_naissance, statut from app.eleves where id=$1 and statut<>'sorti'", [id]);
+  if (!e) fail(401, "Cet élève n'est plus inscrit. Contactez l'école.");
+  const [etab] = await q("select nom, adresse, telephones, ville from app.etablissement where id=1");
+  const ins = await one(`select i.id, i.classe_id, c.nom as classe, a.libelle as annee, t.prenom || ' ' || t.nom as titulaire
+    from app.inscriptions i join app.annees a on a.id=i.annee_id and a.active join app.classes c on c.id=i.classe_id left join app.enseignants t on t.id=c.titulaire_id
+    where i.eleve_id=$1 and i.statut='active' order by i.id desc limit 1`, [id]);
+  if (!ins) return { eleve: e, etablissement: etab, inscription: null };
+  const [recus, notes, absences, edt, fournitures] = await tx([
+    [`select r.id, r.numero, r.date_paiement::text, r.montant, r.mode, r.annule,
+        (select json_agg(json_build_object('type', p.type, 'mois', to_char(p.mois,'YYYY-MM'), 'montant', p.montant, 'libelle', p.libelle) order by p.mois nulls first, p.id) from app.paiements p where p.recu_id=r.id) as lignes
+      from app.recus r where r.inscription_id=$1 and not r.annule order by r.date_paiement desc, r.id desc`, [ins.id]],
+    [`select ev.id, ev.libelle, ev.type, ev.trimestre, ev.date_eval::text as date, ev.bareme, m.nom as matiere, n.note, n.absent
+      from app.evaluations ev join app.matieres m on m.id=ev.matiere_id left join app.notes n on n.evaluation_id=ev.id and n.inscription_id=$2
+      where ev.classe_id=$1 order by ev.date_eval desc nulls last, ev.id desc`, [ins.classe_id, ins.id]],
+    [`select date_absence::text as date, moment, type, justifiee, motif from app.absences where inscription_id=$1 order by date_absence desc`, [ins.id]],
+    [`select t.jour, to_char(t.heure_debut,'HH24:MI') as heure_debut, to_char(t.heure_fin,'HH24:MI') as heure_fin, t.libelle, m.nom as matiere
+      from app.emploi_temps t left join app.matieres m on m.id=t.matiere_id where t.classe_id=$1 order by t.jour, t.heure_debut, t.id`, [ins.classe_id]],
+    ["select libelle, quantite, remarque from app.fournitures_classe where classe_id=$1 order by ordre, id", [ins.classe_id]],
+  ]);
+  const sit = await situation(ins.id);
+  const bulletins = [];
+  for (const tri of [1, 2, 3]) {
+    if (!notes.some((n) => n.trimestre === tri && n.note != null)) continue;
+    const b = await calculerBulletins(ins.classe_id, tri);
+    const r = b.eleves.find((x) => x.inscription_id === ins.id);
+    if (r) bulletins.push({ trimestre: tri, moyenne: r.moyenne, rang: r.rang, mention: r.mention, effectif: b.stats.effectif, moyenne_classe: b.stats.moyenne,
+      bareme: b.classe.bareme, lignes: r.lignes, observation: r.observation, decision: r.decision, absences: r.absences, retards: r.retards });
+  }
+  return { eleve: e, etablissement: etab, inscription: ins, situation: sit, recus, notes, absences, emploi: edt, fournitures, bulletins };
+}, { public: true });
+
 route("POST", "/auth/password", async (ctx) => {
   const { ancien, nouveau } = ctx.body;
   if (!nouveau || nouveau.length < 8) fail(400, "Le nouveau mot de passe doit faire au moins 8 caractères.");
@@ -531,6 +599,7 @@ route("GET", "/eleves/:id", async (ctx) => {
   if (!eleve) fail(404, "Élève introuvable.");
   const absences = peut(ctx.user, "pedagogie.lire") ? await q(`select a.id, a.date_absence, a.moment, a.type, a.justifiee, a.motif, i.annee_id
     from app.absences a join app.inscriptions i on i.id=a.inscription_id where i.eleve_id=$1 order by a.date_absence desc limit 100`, [id]) : [];
+  if (!peut(ctx.user, "eleves.ecrire")) delete eleve.code_parent;
   return { eleve, inscriptions: inscriptions.map((i) => sansArgent(ctx, i)), paiements, absences };
 });
 
@@ -1516,9 +1585,10 @@ const mention = (m, b) => {
 };
 route("GET", "/bulletins", async (ctx) => {
   exige(ctx, "pedagogie.lire");
-  const { classe_id } = ctx.query;
-  const tri = Number(ctx.query.trimestre) || 1;
   requis(ctx.query, [["classe_id", "La classe"]]);
+  return calculerBulletins(ctx.query.classe_id, Number(ctx.query.trimestre) || 1);
+});
+const calculerBulletins = async (classe_id, tri) => {
   const [[classe], matieres, eleves, notes, apps, abs] = await tx([
     [`select c.*, a.libelle as annee, a.debut, a.fin, t.prenom || ' ' || t.nom as titulaire from app.classes c join app.annees a on a.id=c.annee_id left join app.enseignants t on t.id=c.titulaire_id where c.id=$1`, [classe_id]],
     [`select m.*, e.prenom || ' ' || e.nom as enseignant from app.matieres m left join app.enseignants e on e.id=m.enseignant_id where m.classe_id=$1 order by m.ordre, m.nom`, [classe_id]],
@@ -1560,7 +1630,7 @@ route("GET", "/bulletins", async (ctx) => {
       max: moys.length ? Math.max(...moys) : null, min: moys.length ? Math.min(...moys) : null,
       admis: moys.filter((m) => m >= B / 2).length, par_matiere: parMatiere },
   };
-});
+};
 route("PUT", "/appreciations", async (ctx) => {
   exige(ctx, "pedagogie.ecrire");
   const { inscription_id, trimestre, observation, decision } = ctx.body;
@@ -1846,10 +1916,11 @@ export default {
           params: Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])])),
           query: Object.fromEntries(url.searchParams),
           body: ["POST", "PUT"].includes(request.method) ? await request.json().catch(() => ({})) : {},
+          token: (request.headers.get("authorization") || "").replace(/^Bearer /, ""),
         };
         if (!r.pub) {
           const t = await readToken((request.headers.get("authorization") || "").replace(/^Bearer /, ""));
-          if (!t) fail(401, "Session expirée, reconnectez-vous.");
+          if (!t || t.parent) fail(401, "Session expirée, reconnectez-vous.");
           ctx.user = await one(`select ${USER_COLS} from app.utilisateurs where id=$1 and actif`, [t.id]);
           if (!ctx.user) fail(401, "Compte désactivé.");
           await chargerRoles();

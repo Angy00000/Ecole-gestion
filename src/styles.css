@@ -1219,3 +1219,52 @@ body.export-pdf .ticket, body.export-pdf .doc, body.export-pdf .bulletin { box-s
 .hl-liste li { display: flex; gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .hl-liste li .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ticket .t-prov { text-align: center; font-weight: 800; color: #b3541e; border: 2px dashed #e0673f; border-radius: 6px; padding: 4px; margin: 6px 0; font-size: 11px; }
+
+/* Espace parents */
+.par-page { max-width: 760px; margin: 0 auto; padding: 14px 14px 40px; }
+.par-login { max-width: 420px; margin: 6vh auto 0; padding: 26px 22px; display: flex; flex-direction: column; gap: 12px; text-align: center; }
+.par-login img { width: 74px; height: 74px; object-fit: contain; margin: 0 auto; }
+.par-login h1 { margin: 0; font-size: 24px; }
+.par-login .field { display: flex; flex-direction: column; gap: 4px; text-align: left; font-size: 13px; font-weight: 700; }
+.par-login .btn { justify-content: center; }
+.par-err { color: var(--coral); font-weight: 700; font-size: 14px; }
+.par-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.par-head img { width: 40px; height: 40px; object-fit: contain; }
+.par-head div { display: flex; flex-direction: column; } .par-head span { font-size: 12px; color: var(--muted); }
+.par-enfants { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; }
+.par-enfants .class-tab { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.par-enfant { display: flex; gap: 14px; align-items: center; padding: 16px; margin-bottom: 12px; }
+.par-enfant .avatar { width: 52px; height: 52px; font-size: 18px; flex: none; }
+.par-enfant h2 { margin: 0; font-size: 20px; } .par-enfant div { display: flex; flex-direction: column; gap: 2px; } .par-enfant span { font-size: 13.5px; color: var(--ink-2); } .par-enfant small { font-size: 12px; color: var(--muted); }
+.par-onglets { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; padding-bottom: 2px; }
+.par-onglets button { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-weight: 700; font-size: 12px; cursor: pointer; }
+.par-onglets button.on { background: var(--teal); color: #fff; border-color: var(--teal); }
+.par-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.par-kpis .card { padding: 12px; display: flex; flex-direction: column; gap: 4px; } .par-kpis span { font-size: 11.5px; color: var(--muted); font-weight: 700; } .par-kpis strong { font-size: 17px; }
+.par-kpis .green, .par-m.green strong { color: var(--green); } .par-kpis .coral { color: var(--coral); } .par-kpis .gold { color: var(--gold-600); }
+.par-bloc { padding: 14px 16px; margin-bottom: 12px; } .par-bloc h3 { margin: 0 0 8px; font-size: 15px; }
+.par-ligne { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.par-ligne:last-child { border-bottom: 0; } .par-ligne .grow { display: flex; flex-direction: column; min-width: 0; } .par-ligne small { font-size: 12px; color: var(--muted); }
+.par-mois { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.par-m { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.par-m em { font-style: normal; align-self: flex-start; } .par-m small { font-size: 11.5px; color: var(--coral); }
+.par-m.coral { border-color: var(--coral); background: var(--coral-50); } .par-m.green { background: var(--green-50); }
+.par-toggle { display: flex; width: 100%; justify-content: space-between; align-items: center; background: none; border: 0; padding: 0; cursor: pointer; color: inherit; }
+.par-moy { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; margin-bottom: 8px; }
+.par-moy div { display: flex; flex-direction: column; } .par-moy span { font-size: 11.5px; color: var(--muted); font-weight: 700; } .par-moy strong { font-size: 22px; color: var(--teal); } .par-moy small { font-size: 12px; color: var(--muted); }
+.par-mention { text-align: center; font-weight: 800; color: var(--gold-600); margin: 0 0 8px; }
+.par-obs { margin-top: 10px; font-size: 13.5px; padding: 8px 10px; background: var(--surface-2); border-radius: 8px; }
+.par-edt { overflow-x: auto; } .par-edt .edt-table { min-width: 640px; }
+@media (max-width: 520px) { .par-kpis strong { font-size: 14px; } .par-moy strong { font-size: 18px; } }
+/* Cartes d'accès parents */
+.cartes-acces { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; align-content: start; }
+.carte-acces { border: 1.5px dashed #123f4a; border-radius: 4mm; padding: 4mm 5mm; font-size: 10.5px; display: flex; flex-direction: column; gap: 1.5mm; break-inside: avoid; }
+.carte-acces .ca-top { display: flex; gap: 3mm; align-items: center; } .carte-acces img { width: 11mm; height: 11mm; object-fit: contain; }
+.carte-acces .ca-top strong { font-size: 11.5px; color: #123f4a; display: block; } .carte-acces .ca-top span { font-size: 9px; color: #4a6168; }
+.carte-acces .ca-nom { font-size: 12.5px; font-weight: 800; }
+.carte-acces .ca-codes { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm; }
+.carte-acces .ca-codes div { background: #f3f7f8; border-radius: 2mm; padding: 1.5mm 2mm; } .carte-acces .ca-codes span { display: block; font-size: 8.5px; color: #4a6168; } .carte-acces .ca-codes b { font-size: 14px; letter-spacing: .12em; color: #123f4a; }
+.carte-acces .ca-lien { font-size: 9.5px; } .carte-acces .ca-lien b { color: #1f7a8c; }
+.ca-codes-ecran { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.ca-codes-ecran div { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; } .ca-codes-ecran span { display: block; font-size: 12px; color: var(--muted); } .ca-codes-ecran b { font-size: 22px; letter-spacing: .12em; }
+.par-ligne .grow, .par-head .grow { flex: 1; }
