@@ -108,7 +108,7 @@ function PageEdt({ classe, data, etab, annee }) {
     const el = corps.current; if (!el) return;
     el.style.zoom = "";
     const dispo = el.parentElement.clientHeight - el.offsetTop - 4, h = el.scrollHeight;
-    if (h > dispo) el.style.zoom = String(Math.max(0.45, dispo / h));
+    if (h > dispo) el.style.zoom = String(Math.max(0.8, dispo / h));
   }, [data]);
   return (
     <article className="doc a4l edt-doc">
@@ -185,7 +185,7 @@ export default function Emploi() {
       const dispo = 700; // hauteur utile d'une page A4 paysage (px à 96 dpi, marges comprises)
       const h = el.scrollHeight;
       el.classList.remove("edt-mesure");
-      if (h > dispo) el.style.zoom = String(Math.max(0.5, dispo / h));
+      if (h > dispo) el.style.zoom = String(Math.max(0.75, dispo / h));
     };
     const apres = () => { const el = document.querySelector(".edt-print"); if (el) el.style.zoom = ""; };
     window.addEventListener("beforeprint", avant); window.addEventListener("afterprint", apres);

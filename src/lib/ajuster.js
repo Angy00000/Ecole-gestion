@@ -7,35 +7,56 @@
 // du temps (.a4l) ont leur propre ajustement.
 const SEL = ".print-page .ticket, .print-page .bulletin, .print-page .doc:not(.etat):not(.a4l), .print-page .doc.doc-texte";
 const MM = 96 / 25.4;
-const MIN = 0.55;
+// En dessous de 90 %, le texte deviendrait trop petit : on préfère continuer sur une 2e page.
+const MIN = 0.9;
 
 const taille = (el) => (el.classList.contains("ticket") ? [148, 209] : [210, 297]);
 
-export function libererPage(el) {
-  el.style.zoom = ""; el.style.width = ""; el.style.minHeight = ""; el.style.height = "";
-  delete el.dataset.ajuste;
-}
-
-export function ajusterPage(el) {
+const zoomer = (el, z) => {
   const [w, h] = taille(el);
-  libererPage(el);
-  const besoin = el.scrollHeight;
-  const dispo = h * MM;
-  if (besoin <= dispo + 1) return;
-  // Texte modifiable bien plus long qu'une page : on le laisse continuer sur la page suivante.
-  if (el.classList.contains("etat") && besoin > dispo * 1.25) return;
-  const z = Math.max(MIN, Math.floor((dispo / besoin) * 1000) / 1000);
   el.style.zoom = String(z);
   el.style.width = `${w / z}mm`;
   el.style.minHeight = `${h / z}mm`;
   el.style.height = `${h / z}mm`;
-  el.dataset.ajuste = Math.round(z * 100);
+};
+const sansZoomStyle = (el) => { el.style.zoom = ""; el.style.width = ""; el.style.minHeight = ""; el.style.height = ""; };
+
+export function libererPage(el) {
+  sansZoomStyle(el);
+  el.classList.remove("serre", "suite");
+  delete el.dataset.ajuste;
+}
+
+/** Retire le zoom le temps d'une capture (PDF) ; renvoie la fonction qui le remet. */
+export function sansZoom(el) {
+  if (!el.style.zoom) return () => {};
+  const z = Number(el.style.zoom);
+  sansZoomStyle(el);
+  return () => zoomer(el, z);
+}
+
+export function ajusterPage(el) {
+  const [, h] = taille(el);
+  libererPage(el);
+  const dispo = h * MM;
+  if (el.scrollHeight <= dispo + 1) return;
+  // Texte modifiable bien plus long qu'une page : il continue naturellement sur la page suivante.
+  if (el.classList.contains("etat") && el.scrollHeight > dispo * 1.25) return;
+  // 1. On resserre les espacements (marges, hauteur des lignes) sans toucher à la taille du texte.
+  el.classList.add("serre");
+  const besoin = el.scrollHeight;
+  if (besoin <= dispo + 1) { el.dataset.ajuste = "serre"; return; }
+  // 2. Léger rétrécissement si ça suffit…
+  const z = Math.floor((dispo / besoin) * 1000) / 1000;
+  if (z >= MIN) { zoomer(el, z); el.dataset.ajuste = Math.round(z * 100); return; }
+  // 3. … sinon le document continue sur une deuxième feuille, en gardant un texte lisible.
+  el.classList.add("suite");
+  el.dataset.ajuste = "suite";
 }
 
 export function ajusterPages() {
   document.querySelectorAll(SEL).forEach(ajusterPage);
 }
-
 let t = null;
 const plusTard = () => { clearTimeout(t); t = setTimeout(ajusterPages, 120); };
 

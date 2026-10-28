@@ -2,7 +2,7 @@ import { useState } from "react";
 import { MessageCircle, FileDown, Share2 } from "lucide-react";
 import { telWa } from "../lib/format";
 import { useToast } from "./ui";
-import { libererPage } from "../lib/ajuster";
+import { sansZoom } from "../lib/ajuster";
 
 const TAILLES = { A4: [210, 297], A5: [148, 210], A4L: [297, 210] };
 
@@ -30,11 +30,11 @@ export async function fabriquerPdf(format, nom) {
   try {
     for (const el of pages) {
       // La réduction automatique (zoom) n'est pas comprise par html2canvas : on capture le document à sa taille réelle.
-      const zoom = el.style.zoom ? { zoom: el.style.zoom, width: el.style.width, minHeight: el.style.minHeight, height: el.style.height } : null;
-      if (zoom) libererPage(el);
+      const zoom = !!el.style.zoom;
+      const remettre = sansZoom(el);
       try {
         const pageH = el.offsetWidth * h / w; // hauteur d'une feuille, en pixels écran
-        const long = (el.classList.contains("etat") && !zoom && el.offsetHeight > pageH + 2) || el.offsetHeight > pageH * 1.35;
+        const long = ((el.classList.contains("etat") || el.classList.contains("suite")) && !zoom && el.offsetHeight > pageH + 2) || el.offsetHeight > pageH * 1.35;
         const scale = Math.min(2, 30000 / Math.max(el.offsetHeight, 1));
         const canvas = await html2canvas(el, { scale, backgroundColor: "#ffffff", useCORS: true, logging: false });
         if (!long) {
@@ -64,7 +64,7 @@ export async function fabriquerPdf(format, nom) {
           debut = fin;
         }
       } finally {
-        if (zoom) Object.assign(el.style, zoom);
+        remettre();
       }
     }
   } finally { document.body.classList.remove("export-pdf"); }
