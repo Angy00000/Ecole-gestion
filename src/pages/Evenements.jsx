@@ -31,7 +31,7 @@ export default function Evenements() {
         {peut && <button className="btn primary" onClick={() => setNouveau(true)}><Plus size={17} />Nouvel événement</button>}
       </PageHead>
       {isLoading ? <Spinner /> : error ? <ErrorBox error={error} /> : !data.length ? (
-        <div className="card"><Empty icon={<MIco I={PartyPopper} />} title="Aucun événement" action={peut && <button className="btn primary" onClick={() => setNouveau(true)}><Plus size={16} />Préparer un événement</button>}>
+        <div className="card"><Empty icon={PartyPopper} title="Aucun événement" action={peut && <button className="btn primary" onClick={() => setNouveau(true)}><Plus size={16} />Préparer un événement</button>}>
           Préparez les 20 ans de l'école, la fête de fin d'année, une kermesse… Le logiciel crée les cartes de soutien, les invitations, l'affiche et suit l'argent.
         </Empty></div>
       ) : (
@@ -285,7 +285,7 @@ function OngletCartes({ e, peut, onChange }) {
     setDel(null);
   };
   if (!e.cartes.length) return (
-    <div className="card"><Empty icon={<MIco I={Ticket} />} title="Pas encore de cartes de soutien" action={peut && <button className="btn primary" onClick={() => setSerie(true)}><Plus size={16} />Créer une série de cartes</button>}>
+    <div className="card"><Empty icon={Ticket} title="Pas encore de cartes de soutien" action={peut && <button className="btn primary" onClick={() => setSerie(true)}><Plus size={16} />Créer une série de cartes</button>}>
       Créez par exemple 200 cartes à 5 000 F et 50 cartes « Parrain » à 25 000 F. Chaque carte est numérotée, avec une souche à garder, et le logiciel suit qui les vend et l'argent rentré.
     </Empty>{serie && <SerieModal e={e} onClose={() => setSerie(false)} onDone={onChange} />}</div>
   );
@@ -459,7 +459,7 @@ function OngletInvites({ e, peut, onChange }) {
         {peut && <button className="btn primary" onClick={() => setEdit("new")}><Plus size={16} />Ajouter un invité</button>}
         {e.invites.length > 0 && <button className="btn" onClick={() => nav(`/evenements/${e.id}/imprimer?doc=invitations`)}><Printer size={16} />Invitations</button>}
       </div>
-      {!e.invites.length ? <Empty icon={<MIco I={Users} />} title="Aucun invité" action={peut && <button className="btn primary" onClick={() => setEdit("new")}><Plus size={16} />Ajouter un invité</button>}>Ajoutez les autorités, partenaires, anciens élèves, parents… Chaque invité a son invitation nominative à imprimer ou à envoyer par WhatsApp.</Empty> : (
+      {!e.invites.length ? <Empty icon={Users} title="Aucun invité" action={peut && <button className="btn primary" onClick={() => setEdit("new")}><Plus size={16} />Ajouter un invité</button>}>Ajoutez les autorités, partenaires, anciens élèves, parents… Chaque invité a son invitation nominative à imprimer ou à envoyer par WhatsApp.</Empty> : (
         <div className="table-wrap"><table className="table">
           <thead><tr><th>N°</th><th>Invité</th><th className="hide-m">Catégorie</th><th className="r hide-m">Places</th><th className="hide-m">Table</th><th>Statut</th><th>Présent</th><th /></tr></thead>
           <tbody>{rows.map((i) => (
