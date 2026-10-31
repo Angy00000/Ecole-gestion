@@ -144,6 +144,7 @@ const GROUPES_DROITS = [
   ["Élèves", [["eleves.lire", "Voir les élèves"], ["eleves.ecrire", "Inscrire et modifier les élèves"], ["eleves.supprimer", "Supprimer / archiver un élève"], ["classes.ecrire", "Gérer les classes et matières"]]],
   ["Pédagogie", [["pedagogie.lire", "Voir notes, bulletins, emploi du temps"], ["pedagogie.ecrire", "Saisir les notes et appréciations"], ["absences.ecrire", "Faire l'appel / absences"], ["enseignants.ecrire", "Gérer les enseignants"]]],
   ["Argent", [["finances.lire", "Voir les paiements, factures, impayés, tarifs"], ["finances.encaisser", "Encaisser / vendre"], ["finances.annuler", "Annuler et corriger les reçus des autres"], ["depenses.lire", "Voir dépenses et recettes"], ["depenses.ecrire", "Saisir dépenses, recettes et stock"]]],
+  ["Événements", [["evenements.lire", "Voir les événements, cartes de soutien et invités"], ["evenements.ecrire", "Organiser les événements : cartes, invités, budget, supports"]]],
   ["Administration", [["etablissement.ecrire", "Paramètres de l'école et sauvegarde"], ["annees.ecrire", "Années scolaires"], ["journal.lire", "Journal des actions"], ["utilisateurs", "Gérer les comptes utilisateurs"]]],
 ];
 
@@ -327,7 +328,7 @@ function Utilisateurs() {
 
 // ── Journal ──
 const ACTIONS = { sauvegarde: "Sauvegarde", encaissement: "Encaissement", annulation: "Annulation", appel: "Appel", saisie_notes: "Saisie de notes", connexion: "Connexion", inscription: "Inscription", reinscription: "Réinscription", modification: "Modification", creation: "Création", suppression: "Suppression", sortie: "Archivage", activation: "Activation", changement_mot_de_passe: "Mot de passe changé" };
-const ENTITES = { recu: "reçu", depense: "dépense", recette: "recette", evaluation: "évaluation", enseignant: "enseignant", eleve: "élève", classe: "classe", annee: "année", utilisateur: "compte", etablissement: "établissement", inscription: "inscription" };
+const ENTITES = { recu: "reçu", depense: "dépense", recette: "recette", evaluation: "évaluation", enseignant: "enseignant", eleve: "élève", classe: "classe", annee: "année", utilisateur: "compte", etablissement: "établissement", inscription: "inscription", evenement: "événement", carte_soutien: "carte de soutien", cartes_soutien: "cartes de soutien", invite: "invité", budget_evenement: "budget d'événement", tache_evenement: "tâche d'événement" };
 function Journal() {
   const { data, isLoading, error } = useQuery({ queryKey: ["journal"], queryFn: () => api.get("/journal", { limit: 200 }) });
   if (isLoading) return <Spinner />;
@@ -441,7 +442,7 @@ function TypesPaiement() {
 
 
 // ── Sauvegarde ──
-const FEUILLES = { eleves: "Élèves", inscriptions: "Inscriptions", recus: "Reçus", paiements: "Détail paiements", depenses: "Dépenses", recettes: "Recettes diverses",
+const FEUILLES = { evenements: "Événements", evt_cartes: "Cartes de soutien", evt_invites: "Invités", evt_budget: "Budget événements", evt_taches: "Tâches événements", eleves: "Élèves", inscriptions: "Inscriptions", recus: "Reçus", paiements: "Détail paiements", depenses: "Dépenses", recettes: "Recettes diverses",
   classes: "Classes et tarifs", matieres: "Matières", enseignants: "Enseignants", evaluations: "Évaluations", notes: "Notes", appreciations: "Appréciations",
   absences: "Absences", emploi_temps: "Emploi du temps", annees: "Années scolaires", etablissement: "Établissement", utilisateurs: "Utilisateurs", types_paiement: "Types de paiement" };
 function Sauvegarde() {

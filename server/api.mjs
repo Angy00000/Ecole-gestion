@@ -84,13 +84,13 @@ const DROITS = {
   admin:      ["*"],
   direction:  ["eleves.lire", "eleves.ecrire", "eleves.supprimer", "classes.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire",
                "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire",
-               "pedagogie.lire", "pedagogie.ecrire", "enseignants.ecrire", "absences.ecrire"],
-  comptable:  ["eleves.lire", "finances.lire", "finances.encaisser", "depenses.lire", "depenses.ecrire"],
-  secretaire: ["eleves.lire", "eleves.ecrire", "pedagogie.lire", "absences.ecrire"],
+               "pedagogie.lire", "pedagogie.ecrire", "enseignants.ecrire", "absences.ecrire", "evenements.lire", "evenements.ecrire"],
+  comptable:  ["eleves.lire", "finances.lire", "finances.encaisser", "depenses.lire", "depenses.ecrire", "evenements.lire"],
+  secretaire: ["eleves.lire", "eleves.ecrire", "pedagogie.lire", "absences.ecrire", "evenements.lire", "evenements.ecrire"],
   professeur: ["eleves.lire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire"],
 };
 const CODES_DROITS = ["eleves.lire", "eleves.ecrire", "eleves.supprimer", "classes.ecrire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire", "enseignants.ecrire",
-  "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire", "utilisateurs"];
+  "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire", "utilisateurs", "evenements.lire", "evenements.ecrire"];
 const LIBELLES_ROLES = { admin: "Administrateur", direction: "Direction", comptable: "Comptable", secretaire: "Secrétariat", professeur: "Enseignant" };
 // Rôles créés ou modifiés dans Paramètres (table app.roles), rechargés toutes les 30 s.
 let ROLES_PERSO = {}, ROLES_AT = 0;
@@ -206,6 +206,16 @@ async function gardien(ctx, action, entite, id, d) {
     return alerter(ctx, "recette_supprimee", "grave", "Recette supprimée", `${qui} a supprimé la recette « ${d.libelle} » de ${F(d.montant)}.`, "/recettes");
   if (k === "modification:recette" && d.avant != null && Number(d.montant) < Number(d.avant))
     return alerter(ctx, "recette_modifiee", "grave", "Recette modifiée à la baisse", `${qui} a modifié la recette « ${d.libelle} » : ${F(d.avant)} → ${F(d.montant)}.`, "/recettes");
+  if (k === "suppression:evenement")
+    return alerter(ctx, "evenement_supprime", "grave", "Événement supprimé", `${qui} a supprimé l'événement « ${d.titre} »${Number(d.encaisse) ? ` (${F(d.encaisse)} déjà encaissés)` : ""}, avec ses cartes, invités et budget.`, "/evenements");
+  if (k === "modification:carte_soutien" && d.avant != null && Number(d.paye) < Number(d.avant))
+    return alerter(ctx, "carte_modifiee", "grave", "Carte de soutien modifiée à la baisse", `${qui} a modifié la carte de soutien n° ${d.libelle} : ${F(d.avant)} → ${F(d.paye)} encaissés.`, d.evenement_id ? `/evenements/${d.evenement_id}` : "/evenements");
+  if (k === "suppression:carte_soutien" && Number(d.paye) > 0)
+    return alerter(ctx, "carte_supprimee", "grave", "Carte de soutien supprimée", `${qui} a supprimé la carte de soutien n° ${d.libelle} (${F(d.paye)} encaissés).`, d.evenement_id ? `/evenements/${d.evenement_id}` : "/evenements");
+  if (k === "suppression:budget_evenement" && d.sens === "recette" && Number(d.montant) > 0)
+    return alerter(ctx, "recette_supprimee", "grave", "Recette d'événement supprimée", `${qui} a supprimé la recette « ${d.libelle} » de ${F(d.montant)}.`, d.evenement_id ? `/evenements/${d.evenement_id}` : "/evenements");
+  if (k === "modification:budget_evenement" && d.sens === "recette" && d.avant != null && Number(d.montant) < Number(d.avant))
+    return alerter(ctx, "recette_modifiee", "grave", "Recette d'événement modifiée à la baisse", `${qui} a modifié la recette « ${d.libelle} » : ${F(d.avant)} → ${F(d.montant)}.`, d.evenement_id ? `/evenements/${d.evenement_id}` : "/evenements");
   if (k === "suppression:eleve" || k === "sortie:eleve")
     return alerter(ctx, "eleve_retire", "attention", k === "sortie:eleve" ? "Élève sorti de l'école" : "Élève supprimé",
       `${qui} a ${k === "sortie:eleve" ? "marqué comme sorti" : "supprimé"} ${d.nom || "un élève"}.`, k === "sortie:eleve" ? `/eleves/${id}` : null);
@@ -1118,6 +1128,127 @@ route("DELETE", "/depenses/:id", async (ctx) => {
 
 
 
+// ── Événements (anniversaires, fêtes, kermesses, journées culturelles…) ──
+// Un événement, ses cartes de soutien numérotées, ses invités, son budget et les tâches du comité.
+const EVT_COLS = ["titre", "type", "accroche", "sous_titre", "slogan", "date_evt", "heure", "lieu", "description", "programme", "contact", "theme", "statut"];
+const EVT_SOUS = {
+  cartes: { table: "app.evt_cartes", cols: ["numero", "categorie", "montant", "vendeur", "detenteur", "telephone", "statut", "paye", "date_vente", "note"], ordre: "numero", entite: "carte_soutien" },
+  invites: { table: "app.evt_invites", cols: ["civilite", "nom", "qualite", "organisation", "telephone", "categorie", "places", "table_no", "statut", "present", "note"], ordre: "nom, id", requis: [["nom", "Le nom"]], entite: "invite" },
+  budget: { table: "app.evt_budget", cols: ["sens", "categorie", "libelle", "montant", "prevu", "date_op", "note"], ordre: "date_op desc, id desc", requis: [["libelle", "Le libellé"]], entite: "budget_evenement" },
+  taches: { table: "app.evt_taches", cols: ["libelle", "responsable", "echeance", "fait"], ordre: "fait, echeance nulls last, id", requis: [["libelle", "La tâche"]], entite: "tache_evenement" },
+};
+const sousEvt = (t) => EVT_SOUS[t] || fail(404, "Rubrique inconnue.");
+const STATS_EVT = `
+  (select count(*) from app.evt_cartes c where c.evenement_id=e.id) as cartes_total,
+  (select count(*) from app.evt_cartes c where c.evenement_id=e.id and c.statut='vendue') as cartes_vendues,
+  (select coalesce(sum(c.paye),0) from app.evt_cartes c where c.evenement_id=e.id and c.statut<>'annulee') as cartes_encaisse,
+  (select coalesce(sum(c.montant),0) from app.evt_cartes c where c.evenement_id=e.id and c.statut<>'annulee') as cartes_valeur,
+  (select count(*) from app.evt_invites i where i.evenement_id=e.id) as invites_total,
+  (select count(*) from app.evt_invites i where i.evenement_id=e.id and i.statut='confirme') as invites_confirmes,
+  (select coalesce(sum(i.places),0) from app.evt_invites i where i.evenement_id=e.id and i.statut<>'excuse') as places,
+  (select coalesce(sum(b.montant),0) from app.evt_budget b where b.evenement_id=e.id and b.sens='recette' and not b.prevu) as recettes,
+  (select coalesce(sum(b.montant),0) from app.evt_budget b where b.evenement_id=e.id and b.sens='depense' and not b.prevu) as depenses,
+  (select coalesce(sum(b.montant),0) from app.evt_budget b where b.evenement_id=e.id and b.sens='depense' and b.prevu) as depenses_prevues,
+  (select count(*) from app.evt_taches t where t.evenement_id=e.id) as taches_total,
+  (select count(*) from app.evt_taches t where t.evenement_id=e.id and t.fait) as taches_faites`;
+const evtValide = (d) => {
+  if ("programme" in d) d.programme = Array.isArray(d.programme) ? d.programme.filter((p) => p && (p.titre || p.heure)).slice(0, 40) : [];
+  if (d.theme && !["ecole", "prestige", "festif"].includes(d.theme)) d.theme = "ecole";
+  return d;
+};
+route("GET", "/evenements", async (ctx) => {
+  exige(ctx, "evenements.lire");
+  return q(`select e.*, ${STATS_EVT} from app.evenements e order by (e.statut='preparation') desc, e.date_evt desc nulls first, e.id desc`);
+});
+route("GET", "/evenements/:id", async (ctx) => {
+  exige(ctx, "evenements.lire");
+  const e = await one(`select e.*, ${STATS_EVT} from app.evenements e where e.id=$1`, [ctx.params.id]);
+  if (!e) fail(404, "Événement introuvable.");
+  const [cartes, invites, budget, taches] = await tx(Object.values(EVT_SOUS).map((t) => [`select * from ${t.table} where evenement_id=$1 order by ${t.ordre}`, [e.id]]));
+  return { ...e, cartes, invites, budget, taches };
+});
+route("POST", "/evenements", async (ctx) => {
+  exige(ctx, "evenements.ecrire");
+  const d = evtValide(pick(ctx.body, EVT_COLS));
+  requis(d, [["titre", "Le titre"]]);
+  d.created_by = ctx.user.id;
+  const r = await one(...insertSql("app.evenements", d));
+  await journal(ctx, "creation", "evenement", r.id, { titre: r.titre });
+  return r;
+});
+route("PUT", "/evenements/:id", async (ctx) => {
+  exige(ctx, "evenements.ecrire");
+  const r = await one(...updateSql("app.evenements", ctx.params.id, evtValide(pick(ctx.body, EVT_COLS))));
+  if (!r) fail(404, "Événement introuvable.");
+  await journal(ctx, "modification", "evenement", r.id, { titre: r.titre });
+  return r;
+});
+route("DELETE", "/evenements/:id", async (ctx) => {
+  exige(ctx, "evenements.ecrire");
+  const e = await one(`select e.titre, ${STATS_EVT} from app.evenements e where e.id=$1`, [ctx.params.id]);
+  if (!e) fail(404, "Événement introuvable.");
+  await q("delete from app.evenements where id=$1", [ctx.params.id]);
+  await journal(ctx, "suppression", "evenement", Number(ctx.params.id), { titre: e.titre, encaisse: Number(e.cartes_encaisse) + Number(e.recettes) });
+  return { ok: true };
+});
+// Série de cartes de soutien numérotées (ex. 100 cartes de 5 000 F)
+route("POST", "/evenements/:id/cartes/serie", async (ctx) => {
+  exige(ctx, "evenements.ecrire");
+  const nombre = Math.floor(Number(ctx.body.nombre)), montant = Math.floor(Number(ctx.body.montant));
+  if (!(nombre > 0 && nombre <= 2000)) fail(400, "Indiquez un nombre de cartes entre 1 et 2000.");
+  if (!(montant > 0)) fail(400, "Indiquez le montant de la carte.");
+  const e = await one("select id, coalesce((select max(numero) from app.evt_cartes where evenement_id=$1),0) as dernier from app.evenements where id=$1", [ctx.params.id]);
+  if (!e) fail(404, "Événement introuvable.");
+  const debut = Number(ctx.body.debut) > 0 ? Math.floor(Number(ctx.body.debut)) : Number(e.dernier) + 1;
+  const r = await one(`with n as (insert into app.evt_cartes (evenement_id, numero, categorie, montant, vendeur, statut)
+      select $1, g, $4, $5, $6, case when $6::text is null then 'disponible' else 'remise' end from generate_series($2::int, $2::int + $3::int - 1) g
+      on conflict (evenement_id, numero) do nothing returning numero)
+    select count(*) as crees, min(numero) as du, max(numero) as au from n`,
+    [e.id, debut, nombre, String(ctx.body.categorie || "").trim() || null, montant, String(ctx.body.vendeur || "").trim() || null]);
+  await journal(ctx, "creation", "cartes_soutien", e.id, { nombre: Number(r.crees), montant, du: r.du, au: r.au });
+  return r;
+});
+// Remettre plusieurs cartes à un vendeur (membre du comité, enseignant…)
+route("POST", "/evenements/:id/cartes/remise", async (ctx) => {
+  exige(ctx, "evenements.ecrire");
+  const du = Number(ctx.body.du), au = Number(ctx.body.au), vendeur = String(ctx.body.vendeur || "").trim();
+  if (!(du > 0 && au >= du)) fail(400, "Indiquez les numéros de cartes (du … au …).");
+  if (!vendeur) fail(400, "Indiquez à qui les cartes sont remises.");
+  const r = await one(`with u as (update app.evt_cartes set vendeur=$4, statut=case when statut='disponible' then 'remise' else statut end
+      where evenement_id=$1 and numero between $2 and $3 and statut in ('disponible','remise') returning 1) select count(*) as n from u`, [ctx.params.id, du, au, vendeur]);
+  await journal(ctx, "modification", "cartes_soutien", Number(ctx.params.id), { remise: vendeur, du, au, n: Number(r.n) });
+  return r;
+});
+route("POST", "/evenements/:id/:sous", async (ctx) => {
+  exige(ctx, "evenements.ecrire");
+  const t = sousEvt(ctx.params.sous);
+  const d = pick(ctx.body, t.cols);
+  if (t.requis) requis(d, t.requis);
+  d.evenement_id = Number(ctx.params.id);
+  const r = await one(...insertSql(t.table, d));
+  await journal(ctx, "creation", t.entite, r.id, { evenement_id: d.evenement_id, libelle: r.libelle || r.nom || r.numero, montant: r.montant });
+  return r;
+});
+route("PUT", "/evt/:sous/:rid", async (ctx) => {
+  exige(ctx, "evenements.ecrire");
+  const t = sousEvt(ctx.params.sous);
+  const av = await one(`select * from ${t.table} where id=$1`, [ctx.params.rid]);
+  if (!av) fail(404, "Élément introuvable.");
+  const d = pick(ctx.body, t.cols);
+  if (t === EVT_SOUS.cartes && d.statut === "vendue" && !d.date_vente && !av.date_vente) d.date_vente = new Date().toISOString().slice(0, 10);
+  const r = await one(...updateSql(t.table, ctx.params.rid, d));
+  await journal(ctx, "modification", t.entite, r.id, { evenement_id: r.evenement_id, libelle: r.libelle || r.nom || r.numero, montant: r.montant, paye: r.paye, avant: t === EVT_SOUS.cartes ? av.paye : av.montant, sens: r.sens });
+  return r;
+});
+route("DELETE", "/evt/:sous/:rid", async (ctx) => {
+  exige(ctx, "evenements.ecrire");
+  const t = sousEvt(ctx.params.sous);
+  const r = await one(`delete from ${t.table} where id=$1 returning *`, [ctx.params.rid]);
+  if (!r) fail(404, "Élément introuvable.");
+  await journal(ctx, "suppression", t.entite, r.id, { evenement_id: r.evenement_id, libelle: r.libelle || r.nom || r.numero, montant: r.montant, paye: r.paye, sens: r.sens });
+  return { ok: true };
+});
+
 // ── Sauvegarde complète des données ──
 route("GET", "/sauvegarde", async (ctx) => {
   exige(ctx, "etablissement.ecrire");
@@ -1127,6 +1258,11 @@ route("GET", "/sauvegarde", async (ctx) => {
     recus: `select r.*, e.matricule, e.nom, e.prenom, u.prenom || ' ' || u.nom as encaisse_par_nom from app.recus r join app.inscriptions i on i.id=r.inscription_id join app.eleves e on e.id=i.eleve_id left join app.utilisateurs u on u.id=r.encaisse_par order by r.id`,
     paiements: "select p.*, r.numero from app.paiements p join app.recus r on r.id=p.recu_id order by p.id",
     depenses: "select * from app.depenses order by date_depense, id",
+    evenements: "select * from app.evenements order by id",
+    evt_cartes: "select * from app.evt_cartes order by evenement_id, numero",
+    evt_invites: "select * from app.evt_invites order by evenement_id, nom",
+    evt_budget: "select * from app.evt_budget order by evenement_id, date_op",
+    evt_taches: "select * from app.evt_taches order by evenement_id, id",
     articles: "select * from app.articles order by nom",
     mouvements_stock: "select m.*, a.nom as article from app.mouvements_stock m join app.articles a on a.id=m.article_id order by m.date_mouvement, m.id",
     recettes: "select * from app.recettes order by date_recette, id",

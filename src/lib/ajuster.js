@@ -5,12 +5,12 @@
 // feuille au lieu d'être coupé à l'impression.
 // Un texte (règlement…) qui dépasse d'un peu est réduit ; les états et listes longues (.etat) continuent sur plusieurs pages ; les emplois
 // du temps (.a4l) ont leur propre ajustement.
-const SEL = ".print-page .ticket, .print-page .bulletin, .print-page .doc:not(.etat):not(.a4l), .print-page .doc.doc-texte";
+const SEL = ".print-page .ticket, .print-page .bulletin, .print-page .doc:not(.etat):not(.a4l), .print-page .doc.doc-texte, .print-page .evt.a5";
 const MM = 96 / 25.4;
 // En dessous de 90 %, le texte deviendrait trop petit : on préfère continuer sur une 2e page.
 const MIN = 0.9;
 
-const taille = (el) => (el.classList.contains("ticket") ? [148, 209] : [210, 297]);
+const taille = (el) => (el.classList.contains("ticket") || el.classList.contains("a5") ? [148, 209] : [210, 297]);
 
 const zoomer = (el, z) => {
   const [w, h] = taille(el);

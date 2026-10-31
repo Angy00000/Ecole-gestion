@@ -31,6 +31,8 @@ import Listes, { ListeImpression } from "./pages/Listes";
 import MiseAJour from "./components/MiseAJour";
 import Documents from "./pages/Documents";
 import Factures, { FacturesImpression } from "./pages/Factures";
+import Evenements, { EvenementFiche } from "./pages/Evenements";
+import EvenementSupports from "./pages/EvenementSupports";
 
 export default function App() {
   const s = useSession();
@@ -66,6 +68,7 @@ export default function App() {
         {s.peut("eleves.ecrire") && <Route path="acces-parents/imprimer" element={<CartesAccesImpression />} />}
         {s.peut("pedagogie.lire") && <Route path="emploi/imprimer" element={<EmploiImpression />} />}
         {s.peut("finances.lire") && <Route path="factures/imprimer" element={<FacturesImpression />} />}
+        {s.peut("evenements.lire") && <Route path="evenements/:id/imprimer" element={<EvenementSupports />} />}
         {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />
@@ -80,6 +83,8 @@ export default function App() {
           {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
           {s.peut("finances.lire") && <Route path="factures" element={<Factures />} />}
           {s.peut("depenses.lire") && <Route path="depenses" element={<Depenses />} />}
+          {s.peut("evenements.lire") && <Route path="evenements" element={<Evenements />} />}
+          {s.peut("evenements.lire") && <Route path="evenements/:id" element={<EvenementFiche />} />}
           {s.peut("depenses.lire") && <Route path="recettes" element={<Recettes />} />}
           {s.peut("finances.lire") && <Route path="rapports" element={<Rapports />} />}
           {s.peut("finances.lire") && <Route path="services/:type" element={<Service />} />}

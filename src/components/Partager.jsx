@@ -14,7 +14,7 @@ export async function fabriquerPdf(format, nom) {
   if (format === "auto") { // d'après la taille de la feuille affichée
     const p0 = pages[0];
     const mm = p0.offsetWidth * 25.4 / 96;
-    format = p0.classList.contains("ticket") ? "A5" : p0.classList.contains("a4l") ? "A4L"
+    format = p0.classList.contains("ticket") || p0.classList.contains("a5") ? "A5" : p0.classList.contains("a4l") ? "A4L"
       : p0.offsetWidth > p0.offsetHeight * 1.1 ? "A4L" : mm < 170 && !p0.style.zoom ? "A5" : "A4";
   }
   const [w, h] = TAILLES[format] || TAILLES.A4;
