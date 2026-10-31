@@ -1380,7 +1380,7 @@ tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--surf
 
 /* Affiche / flyer */
 .ev-affiche, .doc.evt.ev-affiche { position: relative; color: var(--e-texte); text-align: center; display: flex; flex-direction: column; padding: 15mm 16mm 12mm; overflow: hidden; background: var(--e-bg); }
-.ev-affiche > *:not(.ev-fond):not(.ev-cadre) { position: relative; z-index: 2; }
+.ev-affiche > *:not(.ev-fond):not(.ev-cadre):not(.ev-photo):not(.ev-photo-voile) { position: relative; z-index: 2; }
 .ev-cadre { position: absolute; inset: 7mm; border: 1.5px solid var(--e-or); z-index: 1; pointer-events: none; }
 .ev-cadre::after { content: ""; position: absolute; inset: 2.2mm; border: .6px solid var(--e-or); opacity: .55; }
 .ev-ecole { display: flex; align-items: center; justify-content: center; gap: 12px; text-align: left; }
@@ -1478,7 +1478,7 @@ tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--surf
 /* Programme */
 .ev-programme { background: #fff; color: #1d2b30; display: flex; flex-direction: column; }
 .ev-prog-bandeau { position: relative; overflow: hidden; color: var(--e-texte); text-align: center; padding: 12mm 16mm 9mm; background: var(--e-bg); }
-.ev-prog-bandeau > *:not(.ev-fond) { position: relative; z-index: 1; }
+.ev-prog-bandeau > *:not(.ev-fond):not(.ev-photo):not(.ev-photo-voile) { position: relative; z-index: 1; }
 .ev-prog-bandeau .ev-acc { margin-top: 4mm; } .ev-prog-bandeau .ev-titre { font-size: 24px; }
 .ev-prog-h { font-family: "Great Vibes", cursive; font-weight: 400; font-size: 46px; text-align: center; color: var(--e-encre); margin: 8mm 0 2mm; letter-spacing: 0; }
 .ev-prog-liste { list-style: none; margin: 0 22mm; padding: 0 0 0 0; position: relative; }
@@ -1524,3 +1524,27 @@ tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--surf
   .doc.evt { overflow: hidden; }
 }
 .ev-invit-slogan { font-family: "Playfair Display", Georgia, serif; font-style: italic; color: var(--e-encre); opacity: .8; margin-top: 4mm !important; font-size: 13px; }
+
+/* Événements : textes modifiables sur les supports, couleurs perso, photo */
+.ev-invit-intro { white-space: pre-line; }
+.evt-edition .ev-editable { outline: 1.5px dashed rgba(242, 193, 78, .9); outline-offset: 2px; border-radius: 3px; cursor: text; min-width: 24px; display: inline-block; }
+.evt-edition .ev-editable:hover { outline-color: #f2c14e; background: rgba(242, 193, 78, .12); }
+.evt-edition .ev-editable:focus { outline: 2px solid #1f7a8c; background: rgba(255, 255, 255, .14); }
+.evt-edition .ev-editable:empty::before { content: attr(data-ph); opacity: .5; font-style: italic; }
+.evt-edition div.ev-editable, .evt-edition p.ev-editable, .evt-edition h1.ev-editable, .evt-edition h2.ev-editable, .evt-edition h3.ev-editable { display: block; }
+.evt-aide { max-width: 900px; margin: 0 auto 18px; align-items: center; background: var(--gold-50); color: var(--gold-ink); border-color: var(--gold); }
+@media print { .ev-editable { outline: 0 !important; background: none !important; } .evt-aide { display: none !important; } }
+.evt-couleurs { display: grid; grid-template-columns: repeat(4, auto) 1fr; gap: 10px; align-items: center; }
+.evt-couleurs label { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: var(--ink-2); }
+.evt-couleurs input[type=color] { width: 54px; height: 40px; border: 1px solid var(--line-2); border-radius: 10px; padding: 2px; background: var(--surface); cursor: pointer; }
+.evt-apercu-couleurs { border-radius: 12px; padding: 10px 14px; background: linear-gradient(140deg, var(--e-bg2), var(--e-bg)); color: var(--e-texte); display: flex; flex-direction: column; min-width: 0; }
+.evt-apercu-couleurs b { font-family: "Playfair Display", Georgia, serif; color: var(--e-or); font-size: 20px; line-height: 1.1; }
+.evt-apercu-couleurs span { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.evt-photo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.evt-photo img { width: 120px; height: 80px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
+.theme-perso { --e-bg: #4a1d6e; --e-bg2: #8e44ad; --e-or: #f2c14e; --e-or2: #f9e0a6; --e-texte: #fff; --e-doux: rgba(255,255,255,.78); --e-papier: #fefbf2; --e-encre: #4a1d6e; --e-ligne: #f2c14e; }
+.ev-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+.ev-photo-voile { position: absolute; inset: 0; z-index: 0; background: linear-gradient(180deg, var(--e-bg) 0%, transparent 30%, transparent 45%, var(--e-bg) 88%), linear-gradient(0deg, var(--e-bg), var(--e-bg)); opacity: .7; }
+.ev-prog-bandeau .ev-photo-voile { opacity: .8; }
+@media (max-width: 700px) { .evt-couleurs { grid-template-columns: repeat(4, auto); } .evt-apercu-couleurs { grid-column: 1 / -1; } }
+.evt-edition .ev-ecole .ev-editable, .evt-edition .ev-doc-tete .ev-editable { display: block; }

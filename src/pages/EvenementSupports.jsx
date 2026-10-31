@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Printer, CalendarDays, Clock, MapPin, Phone } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Printer, CalendarDays, Clock, MapPin, Phone, PenLine, RotateCcw, Check } from "lucide-react";
 import QRCode from "qrcode";
 import "@fontsource/playfair-display/400-italic.css";
 import "@fontsource/playfair-display/700.css";
@@ -10,9 +10,9 @@ import "@fontsource/great-vibes/400.css";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, telWa } from "../lib/format";
-import { Spinner, ErrorBox, Select, Input } from "../components/ui";
+import { Spinner, ErrorBox, Select, Input, useToast } from "../components/ui";
 import Partager from "../components/Partager";
-import { TYPES_EVT, CATEGORIES_INVITE, STATUTS_INVITE, jourLong, nomInvite } from "../lib/evenements";
+import { TYPES_EVT, CATEGORIES_INVITE, STATUTS_INVITE, jourLong, nomInvite, styleTheme } from "../lib/evenements";
 
 const num = (n) => String(n).padStart(4, "0");
 const maj1 = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
@@ -30,55 +30,104 @@ function useQr(texte) {
   return src;
 }
 
+// ── Textes modifiables directement sur les supports ──────────────────────
+// Mode « Modifier les textes » : on clique sur un texte, on le change, il est enregistré en quittant la zone.
+const Edit = createContext({ e: {}, edit: false, save: () => {} });
+
+/**
+ * Un texte de support. `champ` = champ de l'événement (titre, lieu…) ; sinon `k` = texte libre du support,
+ * avec `def` comme texte d'origine. `onSave` pour un enregistrement particulier (ligne du programme).
+ */
+function T({ k, champ, def = "", as: Tag = "span", className = "", multi, onSave, ph, valeur }) {
+  const { e, edit, save } = useContext(Edit);
+  const val = valeur !== undefined ? valeur : champ ? (e[champ] ?? "") : (e.textes?.[k] ?? def);
+  if (!edit) return val ? <Tag className={className}>{val}</Tag> : null;
+  return (
+    <Tag className={`${className} ev-editable`} contentEditable suppressContentEditableWarning spellCheck={false} data-ph={ph || def || "…"}
+      onKeyDown={(x) => { if (x.key === "Enter" && !multi) { x.preventDefault(); x.currentTarget.blur(); } }}
+      onBlur={(x) => {
+        const v = x.currentTarget.innerText.replace(/ /g, " ").replace(/\n{3,}/g, "\n\n").trim();
+        if (v === String(val ?? "")) return;
+        if (onSave) onSave(v);
+        else if (champ) save({ [champ]: v || null });
+        else save({ textes: { ...(e.textes || {}), [k]: v } });
+      }}>{val}</Tag>
+  );
+}
+
 const Ornement = () => <span className="ev-orn" aria-hidden="true"><i /><b>✦</b><i /></span>;
 
 function Accroche({ e, taille = "xl" }) {
+  const { edit } = useContext(Edit);
+  if (edit) return <T champ="accroche" as="div" className={`ev-acc ev-acc-${taille} ev-acc-mot`} ph="Accroche (ex. 20 ans)" />;
   const d = decouper(e.accroche);
   if (d) return <div className={`ev-acc ev-acc-${taille}`}><span className="ev-acc-num">{d.grand}</span>{d.petit && <span className="ev-acc-unit">{d.petit}</span>}</div>;
   return <div className={`ev-acc ev-acc-${taille} ev-acc-mot`}>{e.accroche || TYPES_EVT[e.type]}</div>;
 }
 
+function Ecole({ etab }) {
+  return (
+    <header className="ev-ecole">
+      <span className="ev-logo"><img src="/logo.png" alt="" /></span>
+      <div><T k="ecole_nom" def={etab.nom} as="strong" /><T k="ecole_adresse" def={etab.adresse} /></div>
+    </header>
+  );
+}
+
 function Infos({ e, compact }) {
+  const { edit } = useContext(Edit);
   return (
     <div className={`ev-infos${compact ? " compact" : ""}`}>
-      {e.date_evt && <div><CalendarDays size={compact ? 15 : 20} /><span>{maj1(jourLong(e.date_evt))}</span></div>}
-      {e.heure && <div><Clock size={compact ? 15 : 20} /><span>{e.heure}</span></div>}
-      {e.lieu && <div><MapPin size={compact ? 15 : 20} /><span>{e.lieu}</span></div>}
+      {e.date_evt && <div><CalendarDays size={compact ? 15 : 20} /><T k="date_texte" def={maj1(jourLong(e.date_evt))} /></div>}
+      {(e.heure || edit) && <div><Clock size={compact ? 15 : 20} /><T champ="heure" ph="Heure" /></div>}
+      {(e.lieu || edit) && <div><MapPin size={compact ? 15 : 20} /><T champ="lieu" ph="Lieu" /></div>}
     </div>
   );
 }
 
+function Photo({ e }) {
+  return e.image ? <><img className="ev-photo" src={e.image} alt="" /><div className="ev-photo-voile" aria-hidden="true" /></> : null;
+}
+
+/** Une ligne du programme, modifiable sur place. */
+function LigneProg({ e, i, p, save, heureClass, titreAs = "span", titreClass }) {
+  const maj = (f) => (v) => save({ programme: e.programme.map((x, j) => (j === i ? { ...x, [f]: v } : x)) });
+  return <>
+    <T valeur={p.heure || ""} as="b" className={heureClass} onSave={maj("heure")} ph="Heure" />
+    <T valeur={p.titre || ""} as={titreAs} className={titreClass} onSave={maj("titre")} ph="Moment" />
+  </>;
+}
+
 // ── Affiche (A4) et flyer (A5) ──
 function Affiche({ e, etab, qr, a5 }) {
+  const { edit, save } = useContext(Edit);
   const prog = (e.programme || []).slice(0, a5 ? 4 : 6);
   return (
-    <article className={`${a5 ? "evt a5" : "doc a4 evt"} ev-affiche theme-${e.theme}`}>
+    <article className={`${a5 ? "evt a5" : "doc a4 evt"} ev-affiche theme-${e.theme}`} style={styleTheme(e)}>
       <div className="ev-fond" aria-hidden="true" />
+      <Photo e={e} />
       <div className="ev-cadre" aria-hidden="true" />
-      <header className="ev-ecole">
-        <span className="ev-logo"><img src="/logo.png" alt="" /></span>
-        <div><strong>{etab.nom}</strong><span>{etab.adresse}</span></div>
-      </header>
+      <Ecole etab={etab} />
       <div className="ev-centre">
-        <p className="ev-presente">{e.type === "anniversaire" ? "célèbre ses" : "vous invite"}</p>
+        <T k="presente" def={e.type === "anniversaire" ? "célèbre ses" : "vous invite"} as="p" className="ev-presente" />
         <Accroche e={e} taille={a5 ? "l" : "xl"} />
-        {e.sous_titre && <p className="ev-sous"><Ornement />{e.sous_titre}<Ornement /></p>}
-        <h1 className="ev-titre">{e.titre}</h1>
-        {e.description && <p className="ev-desc">{e.description}</p>}
+        {(e.sous_titre || edit) && <p className="ev-sous"><Ornement /><T champ="sous_titre" ph="Sous-titre" /><Ornement /></p>}
+        <T champ="titre" as="h1" className="ev-titre" />
+        <T champ="description" as="p" className="ev-desc" multi ph="Message ou présentation (facultatif)" />
       </div>
       <Infos e={e} compact={a5} />
       {prog.length > 0 && (
         <div className="ev-prog-court">
-          <h3>Au programme</h3>
-          <ul>{prog.map((p, i) => <li key={i}>{p.heure && <b>{p.heure}</b>}<span>{p.titre}</span></li>)}</ul>
+          <T k="prog_titre" def="Au programme" as="h3" />
+          <ul>{prog.map((p, i) => <li key={i}><LigneProg e={e} i={i} p={p} save={save} /></li>)}</ul>
         </div>
       )}
       <footer className="ev-pied">
         <div>
-          {e.slogan && <p className="ev-slogan">« {e.slogan} »</p>}
-          {e.contact && <p className="ev-contact"><Phone size={a5 ? 13 : 16} /> Infos et cartes de soutien : <strong>{e.contact}</strong></p>}
+          {(e.slogan || edit) && <p className="ev-slogan">« <T champ="slogan" ph="Slogan" /> »</p>}
+          {(e.contact || edit) && <p className="ev-contact"><Phone size={a5 ? 13 : 16} /> <T k="contact_label" def="Infos et cartes de soutien :" /> <T champ="contact" as="strong" ph="Téléphone" /></p>}
         </div>
-        {qr && <div className="ev-qr"><img src={qr} alt="" /><span>Scannez pour nous écrire</span></div>}
+        {qr && <div className="ev-qr"><img src={qr} alt="" /><T k="qr_label" def="Scannez pour nous écrire" /></div>}
       </footer>
     </article>
   );
@@ -86,31 +135,33 @@ function Affiche({ e, etab, qr, a5 }) {
 
 // ── Invitation (A5), nominative ou vierge ──
 function Invitation({ e, etab, i }) {
+  const { edit } = useContext(Edit);
   const d = decouper(e.accroche);
   return (
-    <article className={`evt a5 ev-invit theme-${e.theme}`}>
+    <article className={`evt a5 ev-invit theme-${e.theme}`} style={styleTheme(e)}>
       <div className="ev-invit-bord" aria-hidden="true"><i className="c1" /><i className="c2" /><i className="c3" /><i className="c4" /></div>
       <header className="ev-invit-tete">
         <span className="ev-logo"><img src="/logo.png" alt="" /></span>
-        <strong>{etab.nom}</strong>
+        <T k="ecole_nom" def={etab.nom} as="strong" />
       </header>
-      <p className="ev-invit-intro">La Direction, le personnel et les élèves<br />ont l'honneur de vous inviter</p>
+      <T k="invit_intro" def={"La Direction, le personnel et les élèves\nont l'honneur de vous inviter"} as="p" className="ev-invit-intro" multi />
       <div className="ev-invit-nom">{i ? <>{nomInvite(i)}{i.qualite && <small>{i.qualite}{i.organisation ? ` — ${i.organisation}` : ""}</small>}</> : <span className="ev-ligne" />}</div>
-      <p className="ev-invit-a">à la célébration de</p>
+      <T k="invit_a" def="à la célébration de" as="p" className="ev-invit-a" />
       <div className="ev-invit-evt">
-        {d ? <div className="ev-invit-acc"><span>{d.grand}</span>{d.petit}</div> : <div className="ev-invit-acc mot">{e.accroche || TYPES_EVT[e.type]}</div>}
-        <h1>{e.titre}</h1>
-        {e.sous_titre && <p>{e.sous_titre}</p>}
+        {edit ? <T champ="accroche" as="div" className="ev-invit-acc mot" ph="Accroche" />
+          : d ? <div className="ev-invit-acc"><span>{d.grand}</span>{d.petit}</div> : <div className="ev-invit-acc mot">{e.accroche || TYPES_EVT[e.type]}</div>}
+        <T champ="titre" as="h1" />
+        <T champ="sous_titre" as="p" ph="Sous-titre" />
       </div>
       <div className="ev-invit-quand">
-        {e.date_evt && <p><strong>{maj1(jourLong(e.date_evt))}</strong>{e.heure ? ` à ${e.heure}` : ""}</p>}
-        {e.lieu && <p>{e.lieu}</p>}
-        {e.slogan && <p className="ev-invit-slogan">« {e.slogan} »</p>}
+        {e.date_evt && <p><T k="date_texte" def={maj1(jourLong(e.date_evt))} as="strong" />{e.heure ? ` à ${e.heure}` : ""}</p>}
+        <T champ="lieu" as="p" ph="Lieu" />
+        {(e.slogan || edit) && <p className="ev-invit-slogan">« <T champ="slogan" ph="Slogan" /> »</p>}
       </div>
       <footer className="ev-invit-pied">
-        {e.contact && <p>Merci de confirmer votre présence au <strong>{e.contact}</strong></p>}
+        {(e.contact || edit) && <p><T k="invit_confirmer" def="Merci de confirmer votre présence au" /> <T champ="contact" as="strong" ph="Téléphone" /></p>}
         <div className="ev-invit-ref">
-          <span>Invitation n° {i ? String(i.id).padStart(3, "0") : "……"}</span>
+          <span><T k="invit_numero" def="Invitation n°" /> {i ? String(i.id).padStart(3, "0") : "……"}</span>
           <span>{i ? `${i.places} personne${i.places > 1 ? "s" : ""}` : "…… personne(s)"}</span>
           {(i?.table_no || !i) && <span>Table {i?.table_no || "……"}</span>}
         </div>
@@ -122,9 +173,9 @@ function Invitation({ e, etab, i }) {
 // ── Cartes de soutien avec souche (4 par page A4) ──
 function CarteSoutien({ c, e, etab }) {
   return (
-    <div className={`ev-carte theme-${e.theme}`}>
+    <div className={`ev-carte theme-${e.theme}`} style={styleTheme(e)}>
       <div className="ev-souche">
-        <div className="ev-souche-n">Souche<b>N° {num(c.numero)}</b></div>
+        <div className="ev-souche-n"><T k="souche" def="Souche" /><b>N° {num(c.numero)}</b></div>
         <p><span>Nom</span><em>{c.detenteur || ""}</em></p>
         <p><span>Tél.</span><em>{c.telephone || ""}</em></p>
         <p><span>Vendeur</span><em>{c.vendeur || ""}</em></p>
@@ -134,15 +185,15 @@ function CarteSoutien({ c, e, etab }) {
       <div className="ev-carte-corps">
         <div className="ev-fond" aria-hidden="true" />
         <div className="ev-carte-g">
-          <div className="ev-carte-tete"><span className="ev-logo sm"><img src="/logo.png" alt="" /></span><strong>{etab.nom}</strong></div>
-          <div className="ev-carte-label">Carte de soutien{c.categorie && c.categorie !== "Soutien" ? ` · ${c.categorie}` : ""}</div>
-          <div className="ev-carte-titre"><Accroche e={e} taille="s" /><span>{e.titre}</span></div>
-          <div className="ev-carte-quand">{[e.date_evt && maj1(jourLong(e.date_evt)), e.heure, e.lieu].filter(Boolean).join(" · ")}</div>
+          <div className="ev-carte-tete"><span className="ev-logo sm"><img src="/logo.png" alt="" /></span><T k="ecole_nom" def={etab.nom} as="strong" /></div>
+          <div className="ev-carte-label"><T k="carte_label" def="Carte de soutien" />{c.categorie && c.categorie !== "Soutien" ? ` · ${c.categorie}` : ""}</div>
+          <div className="ev-carte-titre"><Accroche e={e} taille="s" /><T champ="titre" /></div>
+          <div className="ev-carte-quand"><T k="carte_quand" def={[e.date_evt && maj1(jourLong(e.date_evt)), e.heure, e.lieu].filter(Boolean).join(" · ")} /></div>
         </div>
         <div className="ev-carte-d">
           <div className="ev-carte-num">N° {num(c.numero)}</div>
           <div className="ev-carte-montant">{fcfa(c.montant)}</div>
-          <div className="ev-carte-merci">Merci pour votre soutien !</div>
+          <T k="carte_merci" def="Merci pour votre soutien !" className="ev-carte-merci" as="div" />
         </div>
       </div>
     </div>
@@ -151,20 +202,26 @@ function CarteSoutien({ c, e, etab }) {
 
 // ── Programme (A4) ──
 function Programme({ e, etab }) {
+  const { edit, save } = useContext(Edit);
   return (
-    <article className={`doc a4 evt ev-programme theme-${e.theme}`}>
+    <article className={`doc a4 evt ev-programme theme-${e.theme}`} style={styleTheme(e)}>
       <div className="ev-prog-bandeau">
         <div className="ev-fond" aria-hidden="true" />
-        <header className="ev-ecole"><span className="ev-logo"><img src="/logo.png" alt="" /></span><div><strong>{etab.nom}</strong><span>{etab.adresse}</span></div></header>
+        <Photo e={e} />
+        <Ecole etab={etab} />
         <Accroche e={e} taille="m" />
-        <h1 className="ev-titre">{e.titre}</h1>
+        <T champ="titre" as="h1" className="ev-titre" />
         <Infos e={e} compact />
       </div>
-      <h2 className="ev-prog-h">Programme</h2>
-      <ol className="ev-prog-liste">{(e.programme || []).map((p, i) => (
-        <li key={i}><span className="ev-prog-heure">{p.heure || "—"}</span><div><strong>{p.titre}</strong>{p.detail && <p>{p.detail}</p>}</div></li>
-      ))}</ol>
-      {e.slogan && <p className="ev-prog-slogan">« {e.slogan} »</p>}
+      <T k="prog_h" def="Programme" as="h2" className="ev-prog-h" />
+      <ol className="ev-prog-liste">{(e.programme || []).map((p, i) => {
+        const maj = (f) => (v) => save({ programme: e.programme.map((x, j) => (j === i ? { ...x, [f]: v } : x)) });
+        return (
+          <li key={i}><T valeur={p.heure || ""} className="ev-prog-heure" onSave={maj("heure")} ph="—" />
+            <div><T valeur={p.titre || ""} as="strong" onSave={maj("titre")} ph="Moment" />{(p.detail || edit) && <T valeur={p.detail || ""} as="p" onSave={maj("detail")} ph="Détail (facultatif)" />}</div></li>
+        );
+      })}</ol>
+      {(e.slogan || edit) && <p className="ev-prog-slogan">« <T champ="slogan" ph="Slogan" /> »</p>}
     </article>
   );
 }
@@ -172,8 +229,8 @@ function Programme({ e, etab }) {
 // ── Badges (8 par page) ──
 function Badge({ e, etab, role, nom, sous }) {
   return (
-    <div className={`ev-badge theme-${e.theme}`}>
-      <div className="ev-badge-tete"><div className="ev-fond" aria-hidden="true" /><span className="ev-logo sm"><img src="/logo.png" alt="" /></span><div><strong>{e.accroche || TYPES_EVT[e.type]}</strong><span>{etab.nom}</span></div></div>
+    <div className={`ev-badge theme-${e.theme}`} style={styleTheme(e)}>
+      <div className="ev-badge-tete"><div className="ev-fond" aria-hidden="true" /><span className="ev-logo sm"><img src="/logo.png" alt="" /></span><div><strong>{e.accroche || TYPES_EVT[e.type]}</strong><T k="ecole_nom" def={etab.nom} /></div></div>
       <div className="ev-badge-role">{role}</div>
       <div className="ev-badge-nom">{nom || <span className="ev-ligne" />}</div>
       <div className="ev-badge-sous">{sous || " "}</div>
@@ -182,12 +239,12 @@ function Badge({ e, etab, role, nom, sous }) {
 }
 
 // ── Tableaux : émargement, suivi des vendeurs, bilan ──
-function Entete({ e, etab, titre }) {
+function Entete({ e, etab, k, titre }) {
   return (
     <header className="ev-doc-tete">
       <span className="ev-logo sm"><img src="/logo.png" alt="" /></span>
-      <div><strong>{etab.nom}</strong><span>{e.titre}{e.date_evt ? ` — ${jourLong(e.date_evt)}` : ""}</span></div>
-      <h1>{titre}</h1>
+      <div><T k="ecole_nom" def={etab.nom} as="strong" /><span>{e.titre}{e.date_evt ? ` — ${jourLong(e.date_evt)}` : ""}</span></div>
+      <T k={k} def={titre} as="h1" />
     </header>
   );
 }
@@ -196,9 +253,9 @@ function Emargement({ e, etab }) {
   const rows = [...e.invites].filter((i) => i.statut !== "excuse").sort((a, b) => (a.table_no || "zz").localeCompare(b.table_no || "zz", "fr", { numeric: true }) || a.nom.localeCompare(b.nom, "fr"));
   return (
     <article className="doc a4 etat evt-tab">
-      <Entete e={e} etab={etab} titre="Liste d'émargement" />
+      <Entete e={e} etab={etab} k="emargement_titre" titre="Liste d'émargement" />
       <table className="b-table d-list">
-        <thead><tr><th>N°</th><th>Invité</th><th>Qualité</th><th>Places</th><th>Table</th><th style={{ width: "26%" }}>Arrivée / signature</th></tr></thead>
+        <thead><tr><th>N°</th><th>Invité</th><th>Qualité</th><th>Places</th><th>Table</th><th style={{ width: "26%" }}><T k="emargement_col" def="Arrivée / signature" /></th></tr></thead>
         <tbody>{rows.map((i) => <tr key={i.id}><td className="nw">{String(i.id).padStart(3, "0")}</td><td><strong>{nomInvite(i)}</strong></td><td>{[i.qualite, i.organisation].filter(Boolean).join(" — ")}</td><td>{i.places}</td><td className="nw">{i.table_no || ""}</td><td /></tr>)}
           {Array.from({ length: 8 }, (_, k) => <tr key={`v${k}`}><td>&nbsp;</td><td /><td /><td /><td /><td /></tr>)}</tbody>
       </table>
@@ -213,12 +270,16 @@ const plages = (nums) => {
   return out.join(", ");
 };
 
+function Signes() {
+  return <div className="ev-signes"><T k="signe_1" def="Le trésorier" as="div" /><T k="signe_2" def="La Direction" as="div" /></div>;
+}
+
 function Suivi({ e, etab }) {
   const vendeurs = [...new Set(e.cartes.map((c) => c.vendeur || "— Non remises —"))].sort();
   let tv = 0, tp = 0;
   return (
     <article className="doc a4 etat evt-tab">
-      <Entete e={e} etab={etab} titre="Suivi des cartes de soutien" />
+      <Entete e={e} etab={etab} k="suivi_titre" titre="Suivi des cartes de soutien" />
       <table className="b-table d-list">
         <thead><tr><th>Vendeur</th><th>Numéros</th><th>Cartes</th><th>Vendues</th><th>Valeur vendue</th><th>Remis</th><th>Reste</th></tr></thead>
         <tbody>{vendeurs.map((v) => {
@@ -229,7 +290,7 @@ function Suivi({ e, etab }) {
         })}</tbody>
         <tfoot><tr><td colSpan={4}><strong>Total</strong></td><td className="nw"><strong>{fcfa(tv)}</strong></td><td className="nw"><strong>{fcfa(tp)}</strong></td><td className="nw"><strong>{fcfa(Math.max(tv - tp, 0))}</strong></td></tr></tfoot>
       </table>
-      <div className="ev-signes"><div>Le trésorier</div><div>La Direction</div></div>
+      <Signes />
     </article>
   );
 }
@@ -241,7 +302,7 @@ function Bilan({ e, etab }) {
   const recettes = Number(e.cartes_encaisse) + Number(e.recettes), depenses = Number(e.depenses);
   return (
     <article className="doc a4 etat evt-tab">
-      <Entete e={e} etab={etab} titre="Bilan de l'événement" />
+      <Entete e={e} etab={etab} k="bilan_titre" titre="Bilan de l'événement" />
       <div className="ev-bilan-kpi">
         <div><span>Recettes</span><strong>{fcfa(recettes)}</strong></div>
         <div><span>Dépenses</span><strong>{fcfa(depenses)}</strong></div>
@@ -267,7 +328,7 @@ function Bilan({ e, etab }) {
         </tbody></table></div>
       </div>
       <p className="ev-note">Arrêté le {date(new Date().toISOString())}.</p>
-      <div className="ev-signes"><div>Le trésorier</div><div>La Direction</div></div>
+      <Signes />
     </article>
   );
 }
@@ -278,16 +339,29 @@ export default function EvenementSupports() {
   const { id } = useParams();
   const s = useSession();
   const nav = useNavigate();
+  const qc = useQueryClient();
+  const toast = useToast();
   const [p, setP] = useSearchParams();
+  const [edit, setEdit] = useState(false);
   const doc = DOCS[p.get("doc")] ? p.get("doc") : "affiche";
   const { data: e, isLoading, error } = useQuery({ queryKey: ["evenement", id], queryFn: () => api.get(`/evenements/${id}`) });
   const etab = s.etablissement || {};
+  const peut = s.peut("evenements.ecrire");
   const tel = e?.contact || (etab.telephones || "").split("/")[0];
   const qr = useQr(e && (doc === "affiche" || doc === "flyer") && tel ? `https://wa.me/${telWa(tel)}?text=${encodeURIComponent(`Bonjour, je souhaite des informations sur « ${e.titre} ».`)}` : null);
+  const save = async (d) => {
+    try {
+      const r = await api.put(`/evenements/${id}`, d);
+      qc.setQueryData(["evenement", id], (old) => ({ ...old, ...r }));
+      qc.invalidateQueries({ queryKey: ["evenements"] });
+      toast("Texte enregistré");
+    } catch (x) { toast(x.message, "error"); }
+  };
   if (isLoading) return <Spinner />;
   if (error) return <div style={{ padding: 32 }}><ErrorBox error={error} /></div>;
   const [titre, format] = DOCS[doc];
   const maj = (k, v) => { const n = new URLSearchParams(p); if (v === "" || v == null) n.delete(k); else n.set(k, v); setP(n, { replace: true }); };
+  const retablir = () => { if (window.confirm("Remettre tous les textes d'origine des supports (accroches, titres de rubriques, mentions…) ? Les infos de l'événement (titre, date, lieu…) ne changent pas.")) save({ textes: {} }); };
   let pages = null, options = null, nb = 1;
 
   if (doc === "affiche" || doc === "flyer") pages = <Affiche e={e} etab={etab} qr={qr} a5={doc === "flyer"} />;
@@ -299,7 +373,7 @@ export default function EvenementSupports() {
     const vierge = Number(p.get("vierge")) || 0, seul = Number(p.get("invite")) || null, statut = p.get("statut") || "";
     const liste = vierge ? Array.from({ length: Math.min(vierge, 200) }, () => null) : e.invites.filter((i) => (!seul || i.id === seul) && (!statut || i.statut === statut) && i.statut !== "excuse");
     nb = liste.length;
-    pages = liste.map((i, k) => <Invitation key={i?.id ?? `v${k}`} e={e} etab={etab} i={i} />);
+    pages = (edit ? liste.slice(0, 1) : liste).map((i, k) => <Invitation key={i?.id ?? `v${k}`} e={e} etab={etab} i={i} />);
     options = !seul && <>
       <Select value={vierge ? "vierge" : statut} onChange={(x) => { const v = x.target.value; const n = new URLSearchParams(p); n.delete("vierge"); n.delete("statut"); if (v === "vierge") n.set("vierge", "10"); else if (v) n.set("statut", v); setP(n, { replace: true }); }}>
         <option value="">Tous les invités</option>{Object.entries(STATUTS_INVITE).filter(([k]) => k !== "excuse").map(([k, l]) => <option key={k} value={k}>{l}</option>)}<option value="vierge">Invitations vierges</option>
@@ -311,7 +385,7 @@ export default function EvenementSupports() {
     const l = e.cartes.filter((c) => (!cat || c.categorie === cat) && (!du || c.numero >= du) && (!au || c.numero <= au) && (!statut || c.statut === statut) && c.statut !== "annulee");
     nb = l.length;
     const groupes = []; for (let k = 0; k < l.length; k += 4) groupes.push(l.slice(k, k + 4));
-    pages = groupes.map((g, k) => <article key={k} className="doc a4 evt ev-cartes-page">{g.map((c) => <CarteSoutien key={c.id} c={c} e={e} etab={etab} />)}</article>);
+    pages = (edit ? groupes.slice(0, 1) : groupes).map((g, k) => <article key={k} className="doc a4 evt ev-cartes-page">{g.map((c) => <CarteSoutien key={c.id} c={c} e={e} etab={etab} />)}</article>);
     const cats = [...new Set(e.cartes.map((c) => c.categorie).filter(Boolean))];
     options = <>
       {cats.length > 1 && <Select value={cat} onChange={(x) => maj("categorie", x.target.value)}><option value="">Toutes les catégories</option>{cats.map((c) => <option key={c}>{c}</option>)}</Select>}
@@ -321,32 +395,42 @@ export default function EvenementSupports() {
   } else if (doc === "badges") {
     const mode = p.get("mode") || "", role = p.get("role") || "Organisation", n = Math.min(Number(p.get("n")) || 8, 200);
     const items = mode === "invites"
-      ? e.invites.filter((i) => i.statut !== "excuse").map((i) => ({ k: i.id, role: CATEGORIES_INVITE[i.categorie] === "Personnel de l'école" ? "Personnel" : "Invité", nom: nomInvite(i), sous: i.qualite || i.organisation }))
+      ? e.invites.filter((i) => i.statut !== "excuse").map((i) => ({ k: i.id, role: i.categorie === "personnel" ? "Personnel" : "Invité", nom: nomInvite(i), sous: i.qualite || i.organisation }))
       : Array.from({ length: n }, (_, k) => ({ k, role }));
     nb = items.length;
     const groupes = []; for (let k = 0; k < items.length; k += 8) groupes.push(items.slice(k, k + 8));
-    pages = groupes.map((g, k) => <article key={k} className="doc a4 evt ev-badges-page"><div className="ev-badges-grille">{g.map((b) => <Badge key={b.k} e={e} etab={etab} role={b.role} nom={b.nom} sous={b.sous} />)}</div></article>);
+    pages = (edit ? groupes.slice(0, 1) : groupes).map((g, k) => <article key={k} className="doc a4 evt ev-badges-page"><div className="ev-badges-grille">{g.map((b) => <Badge key={b.k} e={e} etab={etab} role={b.role} nom={b.nom} sous={b.sous} />)}</div></article>);
     options = <>
       <Select value={mode} onChange={(x) => maj("mode", x.target.value)}><option value="">Badges vierges</option>{e.invites.length > 0 && <option value="invites">Au nom des invités</option>}</Select>
-      {mode !== "invites" && <><Select value={role} onChange={(x) => maj("role", x.target.value)}>{ROLES_BADGE.map((r) => <option key={r}>{r}</option>)}</Select>
+      {mode !== "invites" && <><Input list="ev-roles" value={role} onChange={(x) => maj("role", x.target.value)} style={{ width: 150 }} aria-label="Rôle écrit sur le badge" /><datalist id="ev-roles">{ROLES_BADGE.map((r) => <option key={r} value={r} />)}</datalist>
         <Input type="number" min={8} step={8} max={200} value={n} onChange={(x) => maj("n", x.target.value)} style={{ width: 80 }} aria-label="Nombre" /></>}
     </>;
   }
 
   return (
-    <div className="print-page evt-print">
+    <div className={`print-page evt-print${edit ? " evt-edition" : ""}`}>
       <style>{`@page { size: ${format} portrait; margin: 0; }`}</style>
       <div className="print-bar">
         <button className="btn" onClick={() => nav(`/evenements/${id}`)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{titre}</strong> — {e.titre}{["invitations", "cartes", "badges"].includes(doc) ? ` · ${nb}` : ""}</span>
-        <Select value={doc} onChange={(x) => setP({ doc: x.target.value }, { replace: true })} aria-label="Support">{Object.entries(DOCS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</Select>
-        {options}
-        <Partager format={format} nom={`${titre}-${e.titre}`} message={`${titre} — ${e.titre}`} />
-        <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
+        <Select value={doc} onChange={(x) => { setEdit(false); setP({ doc: x.target.value }, { replace: true }); }} aria-label="Support">{Object.entries(DOCS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</Select>
+        {!edit && options}
+        {peut && (edit
+          ? <button className="btn primary" onClick={() => setEdit(false)}><Check size={17} />Terminé</button>
+          : <button className="btn" onClick={() => setEdit(true)}><PenLine size={17} />Modifier les textes</button>)}
+        {!edit && <Partager format={format} nom={`${titre}-${e.titre}`} message={`${titre} — ${e.titre}`} />}
+        {!edit && <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>}
       </div>
+      {edit && (
+        <div className="alert evt-aide">
+          <PenLine size={18} />
+          <span style={{ flex: 1 }}>Cliquez sur n'importe quel texte encadré pour le changer : il est enregistré dès que vous cliquez ailleurs, et repris sur tous les supports de l'événement. Pour les couleurs et la photo : onglet « Infos et programme ».</span>
+          <button className="btn sm" onClick={retablir}><RotateCcw size={15} />Textes d'origine</button>
+        </div>
+      )}
       {doc === "cartes" && !nb ? <div className="alert" style={{ maxWidth: 900, margin: "0 auto" }}>Aucune carte : créez d'abord une série dans l'onglet « Cartes de soutien ».</div>
         : doc === "invitations" && !nb ? <div className="alert" style={{ maxWidth: 900, margin: "0 auto" }}>Aucun invité dans cette sélection. Choisissez « Invitations vierges » pour imprimer des invitations à remplir à la main.</div>
-        : <div className="tickets">{pages}</div>}
+        : <Edit.Provider value={{ e, edit, save }}><div className="tickets">{pages}</div></Edit.Provider>}
     </div>
   );
 }

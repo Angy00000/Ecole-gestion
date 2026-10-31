@@ -1130,7 +1130,9 @@ route("DELETE", "/depenses/:id", async (ctx) => {
 
 // ── Événements (anniversaires, fêtes, kermesses, journées culturelles…) ──
 // Un événement, ses cartes de soutien numérotées, ses invités, son budget et les tâches du comité.
-const EVT_COLS = ["titre", "type", "accroche", "sous_titre", "slogan", "date_evt", "heure", "lieu", "description", "programme", "contact", "theme", "statut"];
+const EVT_COLS = ["titre", "type", "accroche", "sous_titre", "slogan", "date_evt", "heure", "lieu", "description", "programme", "contact", "theme", "statut", "textes", "couleurs", "image"];
+// Liste sans la photo (lourde) : seulement l'indication qu'il y en a une.
+const EVT_LISTE = "e.id, e.titre, e.type, e.accroche, e.sous_titre, e.slogan, e.date_evt, e.heure, e.lieu, e.description, e.programme, e.contact, e.theme, e.statut, e.textes, e.couleurs, (e.image is not null) as a_image, e.created_by, e.created_at";
 const EVT_SOUS = {
   cartes: { table: "app.evt_cartes", cols: ["numero", "categorie", "montant", "vendeur", "detenteur", "telephone", "statut", "paye", "date_vente", "note"], ordre: "numero", entite: "carte_soutien" },
   invites: { table: "app.evt_invites", cols: ["civilite", "nom", "qualite", "organisation", "telephone", "categorie", "places", "table_no", "statut", "present", "note"], ordre: "nom, id", requis: [["nom", "Le nom"]], entite: "invite" },
@@ -1153,12 +1155,23 @@ const STATS_EVT = `
   (select count(*) from app.evt_taches t where t.evenement_id=e.id and t.fait) as taches_faites`;
 const evtValide = (d) => {
   if ("programme" in d) d.programme = Array.isArray(d.programme) ? d.programme.filter((p) => p && (p.titre || p.heure)).slice(0, 40) : [];
-  if (d.theme && !["ecole", "prestige", "festif"].includes(d.theme)) d.theme = "ecole";
+  if (d.theme && !["ecole", "prestige", "festif", "perso"].includes(d.theme)) d.theme = "ecole";
+  // Textes modifiés sur les supports : { clé: texte }, chaînes courtes seulement.
+  if ("textes" in d) d.textes = Object.fromEntries(Object.entries(d.textes && typeof d.textes === "object" ? d.textes : {})
+    .filter(([k, v]) => /^[a-z0-9_]{1,40}$/.test(k) && typeof v === "string").slice(0, 80).map(([k, v]) => [k, v.slice(0, 600)]));
+  if ("couleurs" in d && d.couleurs != null) {
+    const c = d.couleurs, hex = (x) => (/^#[0-9a-f]{6}$/i.test(x || "") ? x : null);
+    d.couleurs = { fond: hex(c.fond), fond2: hex(c.fond2), accent: hex(c.accent), texte: hex(c.texte) };
+  }
+  if ("image" in d && d.image != null) {
+    if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(d.image)) fail(400, "Image invalide.");
+    if (d.image.length > 1_400_000) fail(400, "Image trop lourde (1 Mo au maximum).");
+  }
   return d;
 };
 route("GET", "/evenements", async (ctx) => {
   exige(ctx, "evenements.lire");
-  return q(`select e.*, ${STATS_EVT} from app.evenements e order by (e.statut='preparation') desc, e.date_evt desc nulls first, e.id desc`);
+  return q(`select ${EVT_LISTE}, ${STATS_EVT} from app.evenements e order by (e.statut='preparation') desc, e.date_evt desc nulls first, e.id desc`);
 });
 route("GET", "/evenements/:id", async (ctx) => {
   exige(ctx, "evenements.lire");
@@ -1178,9 +1191,11 @@ route("POST", "/evenements", async (ctx) => {
 });
 route("PUT", "/evenements/:id", async (ctx) => {
   exige(ctx, "evenements.ecrire");
-  const r = await one(...updateSql("app.evenements", ctx.params.id, evtValide(pick(ctx.body, EVT_COLS))));
+  const d = evtValide(pick(ctx.body, EVT_COLS));
+  const r = await one(...updateSql("app.evenements", ctx.params.id, d));
   if (!r) fail(404, "Événement introuvable.");
-  await journal(ctx, "modification", "evenement", r.id, { titre: r.titre });
+  // Pas de journal pour chaque petit texte retouché sur un support : seulement pour les vraies modifications.
+  if (Object.keys(d).some((k) => k !== "textes")) await journal(ctx, "modification", "evenement", r.id, { titre: r.titre });
   return r;
 });
 route("DELETE", "/evenements/:id", async (ctx) => {

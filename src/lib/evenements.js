@@ -15,7 +15,22 @@ export const THEMES_EVT = {
   prestige: { nom: "Prestige", sub: "Noir et or, élégant", couleurs: ["#14110b", "#c9a227", "#f6e7b4"] },
   ecole: { nom: "École", sub: "Bleu-vert et or de l'école", couleurs: ["#0b3f4a", "#1f7a8c", "#f2c14e"] },
   festif: { nom: "Festif", sub: "Bleu, jaune et couleurs vives", couleurs: ["#1d4fa3", "#f2c14e", "#e0673f"] },
+  perso: { nom: "Personnalisé", sub: "Vos propres couleurs", couleurs: ["#5b2a86", "#8e44ad", "#f2c14e"] },
 };
+export const COULEURS_PERSO = { fond: "#4a1d6e", fond2: "#8e44ad", accent: "#f2c14e", texte: "#ffffff" };
+
+// Couleurs personnalisées → variables CSS des supports (thème « perso »).
+const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const melange = (h, avec, t) => { const a = hexRgb(h), b = hexRgb(avec); return `#${a.map((x, i) => Math.round(x + (b[i] - x) * t).toString(16).padStart(2, "0")).join("")}`; };
+export function styleTheme(e) {
+  if (e?.theme !== "perso") return undefined;
+  const c = { ...COULEURS_PERSO, ...Object.fromEntries(Object.entries(e.couleurs || {}).filter(([, v]) => v)) };
+  const [r, g, b] = hexRgb(c.texte);
+  return {
+    "--e-bg": c.fond, "--e-bg2": c.fond2, "--e-or": c.accent, "--e-or2": melange(c.accent, "#ffffff", 0.55),
+    "--e-texte": c.texte, "--e-doux": `rgba(${r},${g},${b},.78)`, "--e-papier": melange(c.accent, "#ffffff", 0.93), "--e-encre": c.fond, "--e-ligne": c.accent,
+  };
+}
 
 export const STATUTS_EVT = { preparation: "En préparation", termine: "Terminé", annule: "Annulé" };
 export const STATUTS_CARTE = { disponible: "Disponible", remise: "Chez un vendeur", vendue: "Vendue", annulee: "Annulée" };

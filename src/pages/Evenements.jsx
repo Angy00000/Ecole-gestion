@@ -11,7 +11,7 @@ import { fcfa, date, today, telWa } from "../lib/format";
 import { Modal, Field, Input, Select, Textarea, Money, Spinner, ErrorBox, Empty, Confirm, PageHead, useToast } from "../components/ui";
 import {
   TYPES_EVT, ICONES_EVT, THEMES_EVT, STATUTS_EVT, STATUTS_CARTE, COULEUR_CARTE, STATUTS_INVITE, COULEUR_INVITE, CATEGORIES_INVITE, CIVILITES, POSTES_BUDGET,
-  modeleEvt, quand, nomInvite, messageInvitation, messageCarte,
+  modeleEvt, quand, nomInvite, messageInvitation, messageCarte, COULEURS_PERSO, styleTheme,
 } from "../lib/evenements";
 
 const num = (n) => String(n).padStart(4, "0");
@@ -166,13 +166,27 @@ function OngletInfos({ e, peut, onSaved }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const set = (k) => (x) => setV({ ...v, [k]: x.target.value });
+  const toast2 = useToast();
+  const choisirPhoto = async (x) => {
+    const f = x.target.files?.[0]; x.target.value = "";
+    if (!f) return;
+    try {
+      const img = await new Promise((ok, ko) => { const i = new window.Image(); i.onload = () => ok(i); i.onerror = ko; i.src = URL.createObjectURL(f); });
+      const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      let q = 0.82, url = c.toDataURL("image/jpeg", q);
+      while (url.length > 1_300_000 && q > 0.4) { q -= 0.1; url = c.toDataURL("image/jpeg", q); }
+      setV((o) => ({ ...o, image: url }));
+    } catch { toast2("Cette image ne peut pas être lue.", "error"); }
+  };
   const prog = (i, k, val) => setV({ ...v, programme: v.programme.map((p, j) => (j === i ? { ...p, [k]: val } : p)) });
   const bouger = (i, d) => { const p = [...v.programme]; const [x] = p.splice(i, 1); p.splice(i + d, 0, x); setV({ ...v, programme: p }); };
   const save = async () => {
     setError(null); setBusy(true);
     try {
-      const { titre, type, accroche, sous_titre, slogan, date_evt, heure, lieu, description, programme, contact, theme, statut } = v;
-      await api.put(`/evenements/${e.id}`, { titre, type, accroche, sous_titre, slogan, date_evt: date_evt || null, heure, lieu, description, programme, contact, theme, statut });
+      const { titre, type, accroche, sous_titre, slogan, date_evt, heure, lieu, description, programme, contact, theme, statut, couleurs, image } = v;
+      await api.put(`/evenements/${e.id}`, { titre, type, accroche, sous_titre, slogan, date_evt: date_evt || null, heure, lieu, description, programme, contact, theme, statut, couleurs: couleurs || null, image: image || null });
       toast("Événement enregistré"); onSaved();
     } catch (x) { setError(x); } finally { setBusy(false); }
   };
@@ -206,6 +220,19 @@ function OngletInfos({ e, peut, onSaved }) {
               </button>
             ))}</div>
           </Field>
+          {v.theme === "perso" && (
+            <div className="evt-couleurs">{[["fond", "Fond"], ["fond2", "Fond (clair)"], ["accent", "Dorures / accent"], ["texte", "Texte"]].map(([k, l]) => (
+              <label key={k}><input type="color" disabled={!peut} value={(v.couleurs || {})[k] || COULEURS_PERSO[k]} onChange={(x) => setV({ ...v, couleurs: { ...COULEURS_PERSO, ...(v.couleurs || {}), [k]: x.target.value } })} /><span>{l}</span></label>
+            ))}<div className="evt-apercu-couleurs" style={styleTheme(v)}><b>{v.accroche || "Aperçu"}</b><span>{v.titre}</span></div></div>
+          )}
+          <Field label="Photo de fond (affiche, flyer, programme)" hint="Une photo de l'école, des élèves, d'une ancienne fête… Elle est assombrie aux couleurs choisies pour que le texte reste lisible.">
+            <div className="evt-photo">
+              {v.image ? <img src={v.image} alt="" /> : <span className="muted small">Aucune photo</span>}
+              {peut && <label className="btn sm"><Upload size={15} />{v.image ? "Changer" : "Choisir une photo"}<input type="file" accept="image/*" hidden onChange={choisirPhoto} /></label>}
+              {peut && v.image && <button type="button" className="btn sm ghost" onClick={() => setV({ ...v, image: null })}><Trash2 size={15} />Retirer</button>}
+            </div>
+          </Field>
+          <p className="xs muted">Les textes des supports (« célèbre ses », « Merci pour votre soutien ! », mentions de l'invitation…) se changent directement sur chaque support : bouton « Modifier les textes ».</p>
         </div>
       </div>
       <div className="card">
