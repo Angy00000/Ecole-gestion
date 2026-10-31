@@ -1490,7 +1490,8 @@ tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--surf
 .ev-prog-slogan { margin: auto 0 12mm; text-align: center; font-family: "Playfair Display", Georgia, serif; font-style: italic; font-size: 16px; color: var(--e-encre); }
 
 /* Badges */
-.doc.evt.ev-badges-page { padding: 12mm 11mm; display: grid; grid-template-columns: repeat(2, 90mm); grid-auto-rows: 62mm; gap: 6mm 8mm; justify-content: center; align-content: start; background: #fff; }
+.doc.evt.ev-badges-page { padding: 12mm 11mm; display: block; background: #fff; }
+.ev-badges-grille { display: grid; grid-template-columns: repeat(2, 90mm); grid-auto-rows: 62mm; gap: 6mm 8mm; justify-content: center; align-content: start; }
 .ev-badge { border: 1px dashed #9aa5a8; border-radius: 3mm; overflow: hidden; display: flex; flex-direction: column; text-align: center; color: #14232a; background: #fff; }
 .ev-badge-tete { position: relative; overflow: hidden; display: flex; align-items: center; gap: 8px; padding: 3mm 4mm; color: var(--e-texte); text-align: left; background: var(--e-bg); }
 .ev-badge-tete > *:not(.ev-fond) { position: relative; z-index: 1; }

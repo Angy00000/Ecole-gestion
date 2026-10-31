@@ -325,7 +325,7 @@ export default function EvenementSupports() {
       : Array.from({ length: n }, (_, k) => ({ k, role }));
     nb = items.length;
     const groupes = []; for (let k = 0; k < items.length; k += 8) groupes.push(items.slice(k, k + 8));
-    pages = groupes.map((g, k) => <article key={k} className="doc a4 evt ev-badges-page">{g.map((b) => <Badge key={b.k} e={e} etab={etab} role={b.role} nom={b.nom} sous={b.sous} />)}</article>);
+    pages = groupes.map((g, k) => <article key={k} className="doc a4 evt ev-badges-page"><div className="ev-badges-grille">{g.map((b) => <Badge key={b.k} e={e} etab={etab} role={b.role} nom={b.nom} sous={b.sous} />)}</div></article>);
     options = <>
       <Select value={mode} onChange={(x) => maj("mode", x.target.value)}><option value="">Badges vierges</option>{e.invites.length > 0 && <option value="invites">Au nom des invités</option>}</Select>
       {mode !== "invites" && <><Select value={role} onChange={(x) => maj("role", x.target.value)}>{ROLES_BADGE.map((r) => <option key={r}>{r}</option>)}</Select>
