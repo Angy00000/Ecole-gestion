@@ -75,73 +75,101 @@ const TYPES = ["ninea", "autorisation", "rccm", "statuts", "foncier", "fiscal", 
 const COLS = ["type", "titre", "reference", "organisme", "date_delivrance", "date_expiration", "note"];
 const FICHIER_MAX = 3_500_000; // ≈ 2,6 Mo une fois décodé (reste sous les limites du proxy Vercel)
 const LISTE = `a.id, a.type, a.titre, a.reference, a.organisme, a.date_delivrance, a.date_expiration, a.note,
-  a.fichier_nom, a.fichier_type, a.fichier_taille, a.created_at, a.updated_at, u.prenom || ' ' || u.nom as ajoute_par_nom`;
+  a.created_at, a.updated_at, u.prenom || ' ' || u.nom as ajoute_par_nom`;
 const valide = (body = {}) => {
   const d = {};
   for (const k of COLS) if (k in body) d[k] = body[k] === "" ? null : body[k];
   if ("type" in d && !TYPES.includes(d.type)) d.type = "autre";
   for (const k of ["titre", "reference", "organisme"]) if (d[k] != null) d[k] = String(d[k]).trim().slice(0, 200) || null;
   if (d.note != null) d.note = String(d.note).slice(0, 2000);
-  if ("fichier" in body) {
-    if (body.fichier == null) Object.assign(d, { fichier: null, fichier_nom: null, fichier_type: null, fichier_taille: null });
-    else {
-      const m = /^data:(application\/pdf|image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(body.fichier));
-      if (!m) fail(400, "Fichier invalide : seuls les PDF et les photos (JPEG, PNG, WebP) sont acceptés.");
-      if (body.fichier.length > FICHIER_MAX) fail(400, "Fichier trop lourd (2,5 Mo au maximum). Scannez en qualité plus basse ou en plusieurs pages.");
-      Object.assign(d, { fichier: body.fichier, fichier_type: m[1], fichier_taille: Math.floor((m[2].length * 3) / 4),
-        fichier_nom: String(body.fichier_nom || "document").replace(/[\\/:*?"<>|]/g, "_").slice(0, 120) });
-    }
-  }
   return d;
 };
+// Un fichier (page, recto, verso…) : PDF ou photo encodés en data URL.
+const MAX_FICHIERS = 20;
+const fichierValide = (body = {}) => {
+  const m = /^data:(application\/pdf|image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(body.fichier || ""));
+  if (!m) fail(400, "Fichier invalide : seuls les PDF et les photos (JPEG, PNG, WebP) sont acceptés.");
+  if (body.fichier.length > FICHIER_MAX) fail(400, "Fichier trop lourd (2,5 Mo au maximum). Scannez en qualité plus basse ou en plusieurs pages.");
+  return { fichier: body.fichier, type: m[1], taille: Math.floor((m[2].length * 3) / 4),
+    nom: String(body.fichier_nom || "document").replace(/[\\/:*?"<>|]/g, "_").slice(0, 120) };
+};
+const FICHIERS_JSON = `coalesce((select json_agg(json_build_object('id', f.id, 'nom', f.nom, 'type', f.type, 'taille', f.taille) order by f.ordre, f.id)
+  from app.archives_fichiers f where f.archive_id = a.id), '[]'::json) as fichiers`;
 
 // ── Routes ──
 async function traiter(method, chemin, query, body, u) {
-  const m = chemin.match(/^\/(\d+)(\/fichier)?\/?$/);
-  const id = m ? Number(m[1]) : null;
+  const m = chemin.match(/^\/(\d+)(?:\/(fichier|fichiers)(?:\/(\d+))?)?\/?$/);
+  const racine = chemin === "/" || chemin === "";
+  if (!racine && !m) fail(404, "Route inconnue.");
+  const id = m ? Number(m[1]) : null, sous = m?.[2], fid = m?.[3] ? Number(m[3]) : null;
 
-  if (method === "GET" && (chemin === "/" || chemin === "")) {
+  // Liste et recherche
+  if (method === "GET" && racine) {
     const where = ["1=1"], p = [];
     if (query.type) { p.push(query.type); where.push(`a.type = $${p.length}`); }
-    if (query.recherche) { p.push(`%${String(query.recherche).trim().toLowerCase()}%`); where.push(`lower(concat_ws(' ', a.titre, a.reference, a.organisme, a.note, a.fichier_nom)) like $${p.length}`); }
+    if (query.recherche) { p.push(`%${String(query.recherche).trim().toLowerCase()}%`); where.push(`lower(concat_ws(' ', a.titre, a.reference, a.organisme, a.note, (select string_agg(f.nom, ' ') from app.archives_fichiers f where f.archive_id = a.id))) like $${p.length}`); }
     const [rows, [tot]] = await tx([
-      [`select ${LISTE} from app.archives a left join app.utilisateurs u on u.id=a.ajoute_par where ${where.join(" and ")} order by a.type, a.titre, a.id`, p],
+      [`select ${LISTE}, ${FICHIERS_JSON} from app.archives a left join app.utilisateurs u on u.id=a.ajoute_par where ${where.join(" and ")} order by a.type, a.titre, a.id`, p],
       [`select count(*) as total, count(*) filter (where date_expiration < current_date) as expires,
           count(*) filter (where date_expiration >= current_date and date_expiration < current_date + 60) as bientot,
-          count(*) filter (where fichier is null) as sans_scan from app.archives`],
+          count(*) filter (where not exists (select 1 from app.archives_fichiers f where f.archive_id = a.id)) as sans_scan from app.archives a`],
     ]);
     return { rows, ...tot };
   }
-  if (method === "GET" && id && m[2]) {
-    const r = await one("select id, fichier, fichier_nom, fichier_type from app.archives where id=$1", [id]);
+  // Contenu d'un fichier (ou du premier, pour les anciennes versions de la page)
+  if (method === "GET" && id && sous) {
+    const r = await one(`select f.id, f.fichier, f.nom as fichier_nom, f.type as fichier_type from app.archives_fichiers f
+      where f.archive_id=$1 ${fid ? "and f.id=$2" : ""} order by f.ordre, f.id limit 1`, fid ? [id, fid] : [id]);
     if (!r?.fichier) fail(404, "Aucun scan pour ce document.");
-    await journal(u, "consultation", r.id, { fichier: r.fichier_nom });
+    await journal(u, "consultation", id, { fichier: r.fichier_nom });
     return r;
   }
-  if (method === "POST" && (chemin === "/" || chemin === "")) {
+  // Ajouter un fichier à un document
+  if (method === "POST" && id && sous === "fichiers" && !fid) {
+    const f = fichierValide(body);
+    const [ok] = await tx([[`select (select count(*) from app.archives_fichiers where archive_id=$1) as nb, exists (select 1 from app.archives where id=$1) as existe`, [id]]]);
+    if (!ok[0].existe) fail(404, "Document introuvable.");
+    if (ok[0].nb >= MAX_FICHIERS) fail(400, `${MAX_FICHIERS} fichiers au maximum par document.`);
+    const r = await one(`insert into app.archives_fichiers (archive_id, ordre, nom, type, taille, fichier, ajoute_par)
+      values ($1, (select coalesce(max(ordre), 0) + 1 from app.archives_fichiers where archive_id=$1), $2, $3, $4, $5, $6)
+      returning id, nom, type, taille`, [id, f.nom, f.type, f.taille, f.fichier, u.id]);
+    await q("update app.archives set updated_at=now() where id=$1", [id]);
+    await journal(u, "ajout_fichier", id, { fichier: r.nom });
+    return r;
+  }
+  // Retirer un fichier
+  if (method === "DELETE" && id && sous === "fichiers" && fid) {
+    const r = await one("delete from app.archives_fichiers where id=$1 and archive_id=$2 returning id, nom", [fid, id]);
+    if (!r) fail(404, "Fichier introuvable.");
+    await q("update app.archives set updated_at=now() where id=$1", [id]);
+    await journal(u, "retrait_fichier", id, { fichier: r.nom });
+    return { ok: true };
+  }
+  // Créer un document (les fichiers s'ajoutent ensuite, un par un)
+  if (method === "POST" && racine) {
     const d = valide(body);
     if (!d.titre) fail(400, "Le titre est obligatoire.");
     d.ajoute_par = u.id;
     const k = Object.keys(d);
-    const r = await one(`insert into app.archives (${k.join(",")}) values (${k.map((_, i) => `$${i + 1}`).join(",")}) returning id, type, titre, reference, organisme, date_delivrance, date_expiration, note, fichier_nom, fichier_type, fichier_taille, created_at`, k.map((c) => d[c]));
+    const r = await one(`insert into app.archives (${k.join(",")}) values (${k.map((_, i) => `$${i + 1}`).join(",")}) returning id, type, titre, reference, organisme, date_delivrance, date_expiration, note, created_at`, k.map((c) => d[c]));
     await journal(u, "creation", r.id, { titre: r.titre, type: r.type });
     return r;
   }
-  if (method === "PUT" && id && !m[2]) {
+  if (method === "PUT" && id && !sous) {
     const d = valide(body);
     if ("titre" in d && !d.titre) fail(400, "Le titre est obligatoire.");
     const k = Object.keys(d);
     if (!k.length) fail(400, "Rien à modifier.");
     const r = await one(`update app.archives set ${k.map((c, i) => `${c}=$${i + 1}`).join(",")}, updated_at=now() where id=$${k.length + 1} returning id, titre, type`, [...k.map((c) => d[c]), id]);
     if (!r) fail(404, "Document introuvable.");
-    await journal(u, "modification", r.id, { titre: r.titre, scan_change: "fichier" in d });
+    await journal(u, "modification", r.id, { titre: r.titre });
     return r;
   }
-  if (method === "DELETE" && id && !m[2]) {
-    const r = await one("delete from app.archives where id=$1 returning id, titre, type, reference", [id]);
+  if (method === "DELETE" && id && !sous) {
+    const r = await one(`delete from app.archives where id=$1 returning id, titre, type, reference`, [id]);
     if (!r) fail(404, "Document introuvable.");
     await journal(u, "suppression", r.id, r);
-    await alerter(u, "Document officiel supprimé", `${qui(u)} a supprimé le document officiel « ${r.titre} »${r.reference ? ` (n° ${r.reference})` : ""} des archives de l'école.`);
+    await alerter(u, "Document officiel supprimé", `${qui(u)} a supprimé le document officiel « ${r.titre} »${r.reference ? ` (n° ${r.reference})` : ""} et ses fichiers des archives de l'école.`);
     return { ok: true };
   }
   fail(404, "Route inconnue.");

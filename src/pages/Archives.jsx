@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Archive, FileText, Upload, Camera, Download, ExternalLink, Eye, Search, Pencil, Trash2, Plus, Paperclip, AlertTriangle, CalendarClock, X } from "lucide-react";
+import { Archive, FileText, Upload, Camera, Download, ExternalLink, Eye, Search, Pencil, Trash2, Plus, Paperclip, AlertTriangle, CalendarClock, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { getToken } from "../lib/api";
 import { date, today } from "../lib/format";
 import { Modal, Field, Input, Select, Textarea, Spinner, ErrorBox, Empty, Confirm, PageHead, useToast } from "../components/ui";
@@ -20,7 +20,7 @@ async function appel(method, path, body) {
 const qs = (p) => { const e = Object.entries(p || {}).filter(([, v]) => v); return e.length ? "?" + new URLSearchParams(e) : ""; };
 const api = {
   get: (path, p) => appel("GET", path.replace(/^\/archives/, "") + qs(p)),
-  post: (path, b) => appel("POST", "", b),
+  post: (path, b) => appel("POST", path.replace(/^\/archives/, ""), b),
   put: (path, b) => appel("PUT", path.replace(/^\/archives/, ""), b),
   del: (path) => appel("DELETE", path.replace(/^\/archives/, "")),
 };
@@ -90,47 +90,77 @@ const versBlob = (dataUrl) => {
   return new Blob([u], { type });
 };
 
+const MAX_FICHIERS = 20;
+
 function ArchiveForm({ doc, typeInitial, onClose }) {
   const toast = useToast();
   const qc = useQueryClient();
   const t0 = doc?.type || typeInitial || "ninea";
   const [v, setV] = useState(doc ? { ...doc, date_delivrance: doc.date_delivrance?.slice(0, 10) || "", date_expiration: doc.date_expiration?.slice(0, 10) || "" }
     : { type: t0, titre: TITRES_PAR_DEFAUT[t0] || "", reference: "", organisme: "", date_delivrance: "", date_expiration: "", note: "" });
-  const [scan, setScan] = useState(null); // { fichier, fichier_nom, fichier_taille } ou "retirer"
+  // Fichiers déjà enregistrés (on peut en retirer) et nouveaux fichiers à envoyer (pages, recto, verso…).
+  const [gardes, setGardes] = useState(doc?.fichiers || []);
+  const [nouveaux, setNouveaux] = useState([]);
+  const [docId, setDocId] = useState(doc?.id || null);
   const [lecture, setLecture] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [envoi, setEnvoi] = useState(null);
   const [error, setError] = useState(null);
   const fichierRef = useRef(); const photoRef = useRef();
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
+  const total = gardes.length + nouveaux.length;
   const changerType = (e) => {
     const t = e.target.value;
     setV({ ...v, type: t, titre: !v.titre || v.titre === TITRES_PAR_DEFAUT[v.type] ? TITRES_PAR_DEFAUT[t] || "" : v.titre });
   };
   const choisir = async (e) => {
-    const f = e.target.files?.[0]; e.target.value = "";
-    if (!f) return;
+    const liste = [...(e.target.files || [])]; e.target.value = "";
+    if (!liste.length) return;
     setError(null); setLecture(true);
-    try { setScan(await preparer(f)); } catch (x) { setError(x); }
+    const prets = [];
+    try {
+      if (total + liste.length > MAX_FICHIERS) throw new Error(`${MAX_FICHIERS} fichiers au maximum par document.`);
+      for (const f of liste) prets.push({ cle: Math.random(), ...(await preparer(f)) });
+    } catch (x) { setError(x); }
+    setNouveaux((n) => [...n, ...prets]);
     setLecture(false);
   };
   const save = async () => {
-    setError(null); setBusy(true);
+    setError(null);
     try {
       const d = { type: v.type, titre: v.titre, reference: v.reference, organisme: v.organisme, date_delivrance: v.date_delivrance, date_expiration: v.date_expiration, note: v.note };
-      if (scan === "retirer") d.fichier = null;
-      else if (scan) { d.fichier = scan.fichier; d.fichier_nom = scan.fichier_nom; }
-      if (doc) await api.put(`/archives/${doc.id}`, d); else await api.post("/archives", d);
+      setEnvoi("Enregistrement…");
+      let id = docId;
+      if (id) await api.put(`/archives/${id}`, d); else { id = (await api.post("/archives", d)).id; setDocId(id); }
+      // Fichiers retirés
+      for (const f of doc?.fichiers || []) if (!gardes.some((g) => g.id === f.id)) await api.del(`/archives/${id}/fichiers/${f.id}`).catch((x) => { if (!/introuvable/i.test(x.message)) throw x; });
+      // Nouveaux fichiers, un par un (chacun peut faire jusqu'à 2,5 Mo)
+      const reste = [...nouveaux];
+      for (let i = 0; i < reste.length; i++) {
+        setEnvoi(`Envoi du fichier ${i + 1} sur ${reste.length}…`);
+        const r = await api.post(`/archives/${id}/fichiers`, { fichier: reste[i].fichier, fichier_nom: reste[i].fichier_nom });
+        setGardes((g) => [...g, { id: r.id, nom: r.nom, type: r.type, taille: r.taille }]);
+        setNouveaux((n) => n.filter((x) => x.cle !== reste[i].cle));
+      }
       toast(doc ? "Document modifié" : "Document ajouté aux archives");
       qc.invalidateQueries({ queryKey: ["archives"] });
-      if (doc && scan) qc.removeQueries({ queryKey: ["archive-fichier", doc.id] });
       onClose();
-    } catch (e) { setError(e); setBusy(false); }
+    } catch (e) { setError(e); setEnvoi(null); qc.invalidateQueries({ queryKey: ["archives"] }); }
   };
-  const actuel = scan === "retirer" ? null : scan || (doc?.fichier_nom ? doc : null);
+  const busy = !!envoi;
+  const ligne = (nom, tailleF, nouveau, retirer, i) => (
+    <div key={i} className="row" style={{ padding: "8px 10px", border: "1px solid var(--line-2)", borderRadius: 10 }}>
+      <span className="badge" style={{ flex: "none" }}>{i + 1}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13 }}>{nom}</strong>
+        <span className="xs muted">{taille(tailleF)}{nouveau ? " · à envoyer" : ""}</span>
+      </div>
+      <button className="btn sm ghost icon" onClick={retirer} disabled={busy} aria-label={`Retirer ${nom}`}><X size={16} /></button>
+    </div>
+  );
   return (
-    <Modal title={doc ? "Modifier le document" : "Ajouter un document officiel"} icon={<span className="ic teal" style={{ width: 36, height: 36, borderRadius: 11, display: "grid", placeItems: "center" }}><Archive size={18} /></span>} onClose={onClose} footer={<>
-      <button className="btn" onClick={onClose}>Annuler</button>
-      <button className="btn primary" onClick={save} disabled={!v.titre?.trim() || busy || lecture}>{busy ? "Envoi…" : "Enregistrer"}</button>
+    <Modal title={doc ? "Modifier le document" : "Ajouter un document officiel"} icon={<span className="ic teal" style={{ width: 36, height: 36, borderRadius: 11, display: "grid", placeItems: "center" }}><Archive size={18} /></span>} onClose={busy ? () => {} : onClose} footer={<>
+      <button className="btn" onClick={onClose} disabled={busy}>Annuler</button>
+      <button className="btn primary" onClick={save} disabled={!v.titre?.trim() || busy || lecture}>{envoi || "Enregistrer"}</button>
     </>}>
       <div className="stack" style={{ gap: 14 }}>
         <ErrorBox error={error} />
@@ -143,24 +173,18 @@ function ArchiveForm({ doc, typeInitial, onClose }) {
           <Field label="Date d'expiration" hint="Laissez vide si le document n'expire pas."><Input type="date" value={v.date_expiration} onChange={set("date_expiration")} /></Field>
         </div>
         <Field label="Remarques"><Textarea value={v.note || ""} onChange={set("note")} placeholder="Où se trouve l'original, à renouveler auprès de…" /></Field>
-        <Field label="Scan du document" hint="PDF ou photo, 2,5 Mo au maximum. Les photos sont allégées automatiquement.">
-          {actuel ? (
-            <div className="row" style={{ padding: "10px 12px", border: "1px solid var(--line-2)", borderRadius: 12 }}>
-              <Paperclip size={17} style={{ color: "var(--teal)", flex: "none" }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{actuel.fichier_nom}</strong>
-                <span className="xs muted">{taille(actuel.fichier_taille)}{scan && scan !== "retirer" ? " · nouveau fichier" : ""}</span>
-              </div>
-              <button className="btn sm" onClick={() => fichierRef.current.click()}>Remplacer</button>
-              <button className="btn sm ghost icon" onClick={() => setScan(doc?.fichier_nom ? "retirer" : null)} aria-label="Retirer le scan"><X size={16} /></button>
-            </div>
-          ) : (
-            <div className="row" style={{ flexWrap: "wrap" }}>
-              <button className="btn" onClick={() => fichierRef.current.click()} disabled={lecture}><Upload size={17} />{lecture ? "Préparation…" : "Choisir un fichier"}</button>
-              <button className="btn" onClick={() => photoRef.current.click()} disabled={lecture}><Camera size={17} />Prendre une photo</button>
+        <Field label={`Scans du document${total ? ` (${total})` : ""}`} hint={`Recto, verso, plusieurs pages : jusqu'à ${MAX_FICHIERS} fichiers, PDF ou photos de 2,5 Mo chacun. Les photos sont allégées automatiquement.`}>
+          {total > 0 && (
+            <div className="stack" style={{ gap: 6, marginBottom: 8 }}>
+              {gardes.map((f, i) => ligne(f.nom, f.taille, false, () => setGardes(gardes.filter((g) => g.id !== f.id)), i))}
+              {nouveaux.map((f, i) => ligne(f.fichier_nom, f.fichier_taille, true, () => setNouveaux(nouveaux.filter((n) => n.cle !== f.cle)), gardes.length + i))}
             </div>
           )}
-          <input ref={fichierRef} type="file" accept="application/pdf,image/*" hidden onChange={choisir} />
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => fichierRef.current.click()} disabled={lecture || busy || total >= MAX_FICHIERS}><Upload size={17} />{lecture ? "Préparation…" : total ? "Ajouter des fichiers" : "Choisir des fichiers"}</button>
+            <button className="btn" onClick={() => photoRef.current.click()} disabled={lecture || busy || total >= MAX_FICHIERS}><Camera size={17} />{total ? "Ajouter une photo" : "Prendre une photo"}</button>
+          </div>
+          <input ref={fichierRef} type="file" accept="application/pdf,image/*" multiple hidden onChange={choisir} />
           <input ref={photoRef} type="file" accept="image/*" capture="environment" hidden onChange={choisir} />
         </Field>
       </div>
@@ -169,14 +193,21 @@ function ArchiveForm({ doc, typeInitial, onClose }) {
 }
 
 function Visionneuse({ doc, onClose }) {
-  const { data, isLoading, error } = useQuery({ queryKey: ["archive-fichier", doc.id], queryFn: () => api.get(`/archives/${doc.id}/fichier`), staleTime: 10 * 60e3 });
+  const fichiers = doc.fichiers || [];
+  const [i, setI] = useState(0);
+  const courant = fichiers[i];
+  const { data, isLoading, error } = useQuery({ queryKey: ["archive-fichier", doc.id, courant?.id], queryFn: () => api.get(`/archives/${doc.id}/fichiers/${courant.id}`), staleTime: 10 * 60e3, enabled: !!courant });
   const url = useMemo(() => (data?.fichier ? URL.createObjectURL(versBlob(data.fichier)) : null), [data]);
   useEffect(() => () => url && URL.revokeObjectURL(url), [url]);
+  useEffect(() => {
+    const k = (e) => { if (e.key === "ArrowRight") setI((x) => Math.min(fichiers.length - 1, x + 1)); if (e.key === "ArrowLeft") setI((x) => Math.max(0, x - 1)); };
+    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
+  }, [fichiers.length]);
   const pdf = data?.fichier_type === "application/pdf";
   return (
     <Modal wide title={doc.titre} onClose={onClose} footer={url && <>
       <a className="btn" href={url} target="_blank" rel="noreferrer"><ExternalLink size={16} />Ouvrir en grand</a>
-      <a className="btn primary" href={url} download={data.fichier_nom || "document"}><Download size={16} />Télécharger</a>
+      <a className="btn primary" href={url} download={data.fichier_nom || "document"}><Download size={16} />Télécharger{fichiers.length > 1 ? " ce fichier" : ""}</a>
     </>}>
       <div className="stack" style={{ gap: 12 }}>
         <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
@@ -184,9 +215,20 @@ function Visionneuse({ doc, onClose }) {
           {doc.reference && <span className="badge">N° {doc.reference}</span>}
           <Echeance d={doc.date_expiration} />
         </div>
-        {isLoading ? <Spinner /> : error ? <ErrorBox error={error} /> : pdf
-          ? <iframe title={doc.titre} src={url} style={{ width: "100%", height: "65vh", border: "1px solid var(--line)", borderRadius: 12, background: "#fff" }} />
-          : <img src={url} alt={doc.titre} style={{ width: "100%", maxHeight: "68vh", objectFit: "contain", borderRadius: 12, border: "1px solid var(--line)", background: "#fff" }} />}
+        {fichiers.length > 1 && (
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn sm icon" onClick={() => setI(i - 1)} disabled={i === 0} aria-label="Fichier précédent"><ChevronLeft size={18} /></button>
+            <div className="seg" style={{ flex: 1, overflowX: "auto" }}>
+              {fichiers.map((f, k) => <button key={f.id} type="button" className={k === i ? "on" : ""} onClick={() => setI(k)} title={f.nom}>{k + 1}</button>)}
+            </div>
+            <button className="btn sm icon" onClick={() => setI(i + 1)} disabled={i === fichiers.length - 1} aria-label="Fichier suivant"><ChevronRight size={18} /></button>
+          </div>
+        )}
+        {courant && <p className="xs muted" style={{ margin: 0 }}>{fichiers.length > 1 ? `Fichier ${i + 1} sur ${fichiers.length} · ` : ""}{courant.nom} · {taille(courant.taille)}</p>}
+        {!courant ? <Empty icon={Paperclip} title="Aucun scan">Ajoutez-en avec le bouton Modifier.</Empty>
+          : isLoading ? <Spinner /> : error ? <ErrorBox error={error} /> : pdf
+          ? <iframe key={courant.id} title={courant.nom} src={url} style={{ width: "100%", height: "62vh", border: "1px solid var(--line)", borderRadius: 12, background: "#fff" }} />
+          : <img src={url} alt={courant.nom} style={{ width: "100%", maxHeight: "64vh", objectFit: "contain", borderRadius: 12, border: "1px solid var(--line)", background: "#fff" }} />}
         {pdf && <p className="xs muted">Si le PDF ne s'affiche pas sur ce téléphone, utilisez « Ouvrir en grand » ou « Télécharger ».</p>}
       </div>
     </Modal>
@@ -268,8 +310,8 @@ export default function Archives() {
                     <td className="num"><strong>{d.reference || "—"}</strong></td>
                     <td className="hide-m num">{d.date_delivrance ? date(d.date_delivrance) : "—"}</td>
                     <td><Echeance d={d.date_expiration} /></td>
-                    <td className="r">{d.fichier_nom
-                      ? <button className="btn sm" onClick={() => setVoir(d)} title={`${d.fichier_nom} · ${taille(d.fichier_taille)}`}><Eye size={15} />Voir</button>
+                    <td className="r">{d.fichiers?.length
+                      ? <button className="btn sm" onClick={() => setVoir(d)} title={d.fichiers.map((f) => f.nom).join(", ")}><Eye size={15} />Voir{d.fichiers.length > 1 ? ` (${d.fichiers.length})` : ""}</button>
                       : <button className="btn sm ghost" onClick={() => setEdit(d)} style={{ color: "var(--muted)" }}><Upload size={15} />Joindre</button>}</td>
                     <td className="r" style={{ whiteSpace: "nowrap" }}>
                       <button className="btn sm ghost icon" onClick={() => setEdit(d)} aria-label="Modifier"><Pencil size={15} /></button>
@@ -282,11 +324,11 @@ export default function Archives() {
           </div>
         )}
       </div>
-      <p className="xs muted" style={{ marginTop: 12, display: "flex", gap: 6, alignItems: "center" }}><FileText size={14} />Chaque consultation de scan est notée dans le journal. Seules la direction et l'administration ont accès à cette page.</p>
+      <p className="xs muted" style={{ marginTop: 12, display: "flex", gap: 6, alignItems: "center" }}><FileText size={14} />Un document peut avoir plusieurs fichiers (recto, verso, pages). Chaque consultation est notée dans le journal. Seules la direction et l'administration ont accès à cette page.</p>
 
       {edit && <ArchiveForm doc={edit.id ? edit : null} typeInitial={edit.type} onClose={() => setEdit(null)} />}
       {voir && <Visionneuse doc={voir} onClose={() => setVoir(null)} />}
-      {del && <Confirm danger title="Supprimer ce document ?" confirmLabel="Supprimer" message={`${del.titre}${del.reference ? ` (n° ${del.reference})` : ""} et son scan seront définitivement supprimés.`} onConfirm={supprimer} onClose={() => setDel(null)} />}
+      {del && <Confirm danger title="Supprimer ce document ?" confirmLabel="Supprimer" message={`${del.titre}${del.reference ? ` (n° ${del.reference})` : ""} et tous ses fichiers seront définitivement supprimés.`} onConfirm={supprimer} onClose={() => setDel(null)} />}
     </>
   );
 }
