@@ -6,6 +6,7 @@ import { date, today } from "../lib/format";
 import { Modal, Field, Input, Select, Textarea, Spinner, ErrorBox, Empty, Confirm, PageHead, useToast } from "../components/ui";
 
 // Les archives ont leur propre petit service (/api/archives), avec la même session.
+// Jamais de « / » final (/api/archives/) : Vercel ne le redirige pas et répond 404.
 const BASE = /^https?:$/.test(location.protocol) ? "/api/archives" : "https://ecole-gestion-eta.vercel.app/api/archives";
 async function appel(method, path, body) {
   let res;
@@ -18,8 +19,8 @@ async function appel(method, path, body) {
 }
 const qs = (p) => { const e = Object.entries(p || {}).filter(([, v]) => v); return e.length ? "?" + new URLSearchParams(e) : ""; };
 const api = {
-  get: (path, p) => appel("GET", (path === "/archives" ? "/" : path.replace(/^\/archives/, "")) + qs(p)),
-  post: (path, b) => appel("POST", "/", b),
+  get: (path, p) => appel("GET", path.replace(/^\/archives/, "") + qs(p)),
+  post: (path, b) => appel("POST", "", b),
   put: (path, b) => appel("PUT", path.replace(/^\/archives/, ""), b),
   del: (path) => appel("DELETE", path.replace(/^\/archives/, "")),
 };
