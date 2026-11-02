@@ -84,13 +84,13 @@ const DROITS = {
   admin:      ["*"],
   direction:  ["eleves.lire", "eleves.ecrire", "eleves.supprimer", "classes.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire",
                "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire",
-               "pedagogie.lire", "pedagogie.ecrire", "enseignants.ecrire", "absences.ecrire", "evenements.lire", "evenements.ecrire"],
-  comptable:  ["eleves.lire", "finances.lire", "finances.encaisser", "depenses.lire", "depenses.ecrire", "evenements.lire"],
-  secretaire: ["eleves.lire", "eleves.ecrire", "pedagogie.lire", "absences.ecrire", "evenements.lire", "evenements.ecrire"],
+               "pedagogie.lire", "pedagogie.ecrire", "enseignants.ecrire", "absences.ecrire", "evenements.lire", "evenements.ecrire", "personnel.lire"],
+  comptable:  ["eleves.lire", "finances.lire", "finances.encaisser", "depenses.lire", "depenses.ecrire", "evenements.lire", "personnel.lire"],
+  secretaire: ["eleves.lire", "eleves.ecrire", "pedagogie.lire", "absences.ecrire", "evenements.lire", "evenements.ecrire", "personnel.lire"],
   professeur: ["eleves.lire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire"],
 };
 const CODES_DROITS = ["eleves.lire", "eleves.ecrire", "eleves.supprimer", "classes.ecrire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire", "enseignants.ecrire",
-  "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire", "utilisateurs", "evenements.lire", "evenements.ecrire"];
+  "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire", "utilisateurs", "evenements.lire", "evenements.ecrire", "personnel.lire"];
 const LIBELLES_ROLES = { admin: "Administrateur", direction: "Direction", comptable: "Comptable", secretaire: "Secrétariat", professeur: "Enseignant" };
 // Rôles créés ou modifiés dans Paramètres (table app.roles), rechargés toutes les 30 s.
 let ROLES_PERSO = {}, ROLES_AT = 0;
@@ -209,6 +209,8 @@ async function gardien(ctx, action, entite, id, d) {
     return alerter(ctx, "recette_supprimee", "grave", "Recette supprimée", `${qui} a supprimé la recette « ${d.libelle} » de ${F(d.montant)}.`, "/recettes");
   if (k === "modification:recette" && d.avant != null && Number(d.montant) < Number(d.avant))
     return alerter(ctx, "recette_modifiee", "grave", "Recette modifiée à la baisse", `${qui} a modifié la recette « ${d.libelle} » : ${F(d.avant)} → ${F(d.montant)}.`, "/recettes");
+  if (k === "annulation:salaire")
+    return alerter(ctx, "salaire_annule", "attention", "Paiement de salaire annulé", `${qui} a annulé le paiement du salaire de ${d.nom} (${moisG(d.mois)}, ${F(d.montant)}). La dépense correspondante a été retirée.${d.motif ? ` Motif : ${d.motif}.` : ""}`, "/personnel");
   if (k === "suppression:evenement")
     return alerter(ctx, "evenement_supprime", "grave", "Événement supprimé", `${qui} a supprimé l'événement « ${d.titre} »${Number(d.encaisse) ? ` (${F(d.encaisse)} déjà encaissés)` : ""}, avec ses cartes, invités et budget.`, "/evenements");
   if (k === "modification:carte_soutien" && d.avant != null && Number(d.paye) < Number(d.avant))
@@ -1279,6 +1281,8 @@ route("GET", "/sauvegarde", async (ctx) => {
     recus: `select r.*, e.matricule, e.nom, e.prenom, u.prenom || ' ' || u.nom as encaisse_par_nom from app.recus r join app.inscriptions i on i.id=r.inscription_id join app.eleves e on e.id=i.eleve_id left join app.utilisateurs u on u.id=r.encaisse_par order by r.id`,
     paiements: "select p.*, r.numero from app.paiements p join app.recus r on r.id=p.recu_id order by p.id",
     depenses: "select * from app.depenses order by date_depense, id",
+    personnel_absences: "select * from app.personnel_absences order by date_debut, id",
+    salaires: "select * from app.salaires order by mois, personnel_id",
     evenements: "select * from app.evenements order by id",
     evt_cartes: "select * from app.evt_cartes order by evenement_id, numero",
     evt_invites: "select * from app.evt_invites order by evenement_id, nom",
@@ -1588,7 +1592,7 @@ route("GET", "/rapport", async (ctx) => {
 });
 
 // ═══ PÉDAGOGIE ═════════════════════════════════════════════════════════════
-const COLS_ENS = ["nom", "prenom", "sexe", "telephone", "email", "adresse", "specialite", "diplome", "date_embauche", "salaire", "statut", "observations"];
+const COLS_ENS = ["nom", "prenom", "sexe", "telephone", "email", "adresse", "specialite", "diplome", "date_embauche", "salaire", "statut", "observations", "service", "poste", "contrat", "horaires", "contact_urgence"];
 route("GET", "/enseignants", async (ctx) => {
   exige(ctx, "pedagogie.lire");
   const annee = await anneeCourante(ctx.query.annee_id);
@@ -1598,7 +1602,7 @@ route("GET", "/enseignants", async (ctx) => {
       (select count(*) from app.emploi_temps t join app.classes c on c.id=t.classe_id and c.annee_id=$1 where t.enseignant_id=e.id) as creneaux,
       (select c.id from app.classes c where c.titulaire_id=e.id and c.annee_id=$1 order by c.ordre limit 1) as classe_id,
       (select u.email from app.utilisateurs u where u.id=e.utilisateur_id) as compte
-    from app.enseignants e order by e.statut, e.nom, e.prenom`, [annee]).then((rows) => peut(ctx.user, "finances.lire") ? rows : rows.map(({ salaire, ...x }) => x));
+    from app.enseignants e where coalesce(e.service, 'enseignant')='enseignant' order by e.statut, e.nom, e.prenom`, [annee]).then((rows) => peut(ctx.user, "finances.lire") ? rows : rows.map(({ salaire, ...x }) => x));
 });
 // École primaire : un enseignant titulaire par classe.
 const affecterClasse = async (ensId, classeId) => {
@@ -1611,6 +1615,7 @@ route("POST", "/enseignants", async (ctx) => {
   const d = pick(ctx.body, COLS_ENS);
   requis(d, [["nom", "Le nom"], ["prenom", "Le prénom"]]);
   d.nom = d.nom.trim().toUpperCase();
+  if (d.service && !SERVICES_PERSO.includes(d.service)) d.service = "autre";
   const r = await one(...insertSql("app.enseignants", d));
   if ("classe_id" in ctx.body) await affecterClasse(r.id, ctx.body.classe_id);
   await journal(ctx, "creation", "enseignant", r.id, { nom: `${r.prenom} ${r.nom}` });
@@ -1620,6 +1625,8 @@ route("PUT", "/enseignants/:id", async (ctx) => {
   exige(ctx, "enseignants.ecrire");
   const d = pick(ctx.body, COLS_ENS);
   if (d.nom) d.nom = d.nom.trim().toUpperCase();
+  if (d.service && !SERVICES_PERSO.includes(d.service)) d.service = "autre";
+  if (d.service && d.service !== "enseignant") ctx.body.classe_id = null; // seul un enseignant est titulaire d'une classe
   const r = Object.keys(d).length ? await one(...updateSql("app.enseignants", ctx.params.id, d)) : { id: Number(ctx.params.id) };
   if ("classe_id" in ctx.body) await affecterClasse(r.id, ctx.body.classe_id);
   await journal(ctx, "modification", "enseignant", r.id);
@@ -1637,6 +1644,142 @@ route("DELETE", "/enseignants/:id", async (ctx) => {
   await journal(ctx, "suppression", "enseignant", Number(id));
   return { ok: true };
 });
+
+// ═══ PERSONNEL : toute l'équipe (enseignants compris), absences et congés, salaires ═══
+// Les membres du personnel sont dans app.enseignants (champ « service ») : les enseignants gardent leurs liens
+// avec les classes, matières et emploi du temps ; les autres services n'apparaissent pas dans ces listes.
+const SERVICES_PERSO = ["direction", "administration", "enseignant", "surveillance", "infirmerie", "cantine", "garderie", "entretien", "gardiennage", "transport", "autre"];
+const TYPES_ABS_PERSO = ["absence", "retard", "conge", "permission", "maladie", "formation"];
+const peutVoirPersonnel = (u) => peut(u, "personnel.lire") || peut(u, "enseignants.ecrire");
+route("GET", "/personnel", async (ctx) => {
+  if (!peutVoirPersonnel(ctx.user)) fail(403, "Accès refusé.");
+  const annee = await anneeCourante(ctx.query.annee_id);
+  const rows = await q(`select e.*,
+      (select string_agg(c.nom, ', ' order by c.ordre) from app.classes c where c.titulaire_id=e.id and c.annee_id=$1) as classes_titulaire,
+      (select string_agg(distinct m.nom, ', ') from app.matieres m join app.classes c on c.id=m.classe_id and c.annee_id=$1 where m.enseignant_id=e.id) as matieres,
+      (select c.id from app.classes c where c.titulaire_id=e.id and c.annee_id=$1 order by c.ordre limit 1) as classe_id,
+      (select u.email from app.utilisateurs u where u.id=e.utilisateur_id) as compte,
+      (select count(*) from app.personnel_absences a where a.personnel_id=e.id and a.type<>'retard' and a.date_debut >= date_trunc('month', current_date)) as absences_mois,
+      (select count(*) from app.personnel_absences a where a.personnel_id=e.id and a.type='retard' and a.date_debut >= date_trunc('month', current_date)) as retards_mois,
+      exists (select 1 from app.personnel_absences a where a.personnel_id=e.id and current_date between a.date_debut and coalesce(a.date_fin, a.date_debut) and a.type<>'retard') as absent_aujourdhui
+    from app.enseignants e order by e.statut, array_position(string_to_array($2,','), coalesce(e.service,'autre')), e.nom, e.prenom`, [annee, SERVICES_PERSO.join(",")]);
+  return peut(ctx.user, "finances.lire") ? rows : rows.map(({ salaire, ...x }) => x);
+});
+
+// Absences, retards, congés
+const COLS_ABS_PERSO = ["personnel_id", "date_debut", "date_fin", "type", "justifiee", "motif"];
+route("GET", "/personnel/absences", async (ctx) => {
+  if (!peutVoirPersonnel(ctx.user)) fail(403, "Accès refusé.");
+  const du = ctx.query.du || null, au = ctx.query.au || null;
+  const p = [du, au]; let w = "($1::date is null or coalesce(a.date_fin, a.date_debut) >= $1::date) and ($2::date is null or a.date_debut <= $2::date)";
+  if (ctx.query.personnel_id) { p.push(ctx.query.personnel_id); w += ` and a.personnel_id=$${p.length}`; }
+  return q(`select a.*, e.prenom, e.nom, e.service, e.poste, (coalesce(a.date_fin, a.date_debut) - a.date_debut + 1) as jours
+    from app.personnel_absences a join app.enseignants e on e.id=a.personnel_id where ${w} order by a.date_debut desc, e.nom`, p);
+});
+const absValide = (d) => {
+  if (d.type && !TYPES_ABS_PERSO.includes(d.type)) fail(400, "Type d'absence invalide.");
+  if (d.date_fin && d.date_debut && d.date_fin < d.date_debut) fail(400, "La date de fin est avant la date de début.");
+  return d;
+};
+route("POST", "/personnel/absences", async (ctx) => {
+  exige(ctx, "enseignants.ecrire");
+  const d = absValide(pick(ctx.body, COLS_ABS_PERSO));
+  requis(d, [["personnel_id", "La personne"], ["date_debut", "La date"]]);
+  d.saisi_par = ctx.user.id;
+  const r = await one(...insertSql("app.personnel_absences", d));
+  await journal(ctx, "creation", "absence_personnel", r.id, { personnel_id: r.personnel_id, type: r.type, date: r.date_debut });
+  return r;
+});
+route("PUT", "/personnel/absences/:id", async (ctx) => {
+  exige(ctx, "enseignants.ecrire");
+  const r = await one(...updateSql("app.personnel_absences", ctx.params.id, absValide(pick(ctx.body, COLS_ABS_PERSO))));
+  await journal(ctx, "modification", "absence_personnel", r.id, { personnel_id: r.personnel_id, type: r.type });
+  return r;
+});
+route("DELETE", "/personnel/absences/:id", async (ctx) => {
+  exige(ctx, "enseignants.ecrire");
+  const r = await one("delete from app.personnel_absences where id=$1 returning id, personnel_id, type", [ctx.params.id]);
+  await journal(ctx, "suppression", "absence_personnel", Number(ctx.params.id), r);
+  return { ok: true };
+});
+
+// Salaires du mois : une ligne par membre du personnel en poste (préparée à partir du salaire de la fiche).
+const moisValide = (m) => { if (!/^\d{4}-\d{2}$/.test(m || "")) fail(400, "Choisissez le mois."); return `${m}-01`; };
+route("GET", "/salaires", async (ctx) => {
+  exige(ctx, "finances.lire");
+  const m1 = moisValide(ctx.query.mois);
+  return q(`select e.id as personnel_id, e.prenom, e.nom, e.service, e.poste, e.contrat, e.telephone, e.salaire as salaire_base, e.statut,
+      s.id, s.montant, s.primes, s.retenues, (s.montant + s.primes - s.retenues) as net, s.paye_le, s.mode, s.depense_id, s.note,
+      (select count(*) from app.personnel_absences a where a.personnel_id=e.id and a.type<>'retard' and a.date_debut >= $1::date and a.date_debut < ($1::date + interval '1 month')) as absences,
+      (select count(*) from app.personnel_absences a where a.personnel_id=e.id and a.type='retard' and a.date_debut >= $1::date and a.date_debut < ($1::date + interval '1 month')) as retards
+    from app.enseignants e left join app.salaires s on s.personnel_id=e.id and s.mois=$1::date
+    where e.statut='actif' or s.id is not null
+    order by array_position(string_to_array($2,','), coalesce(e.service,'autre')), e.nom, e.prenom`, [m1, SERVICES_PERSO.join(",")]);
+});
+route("POST", "/salaires/preparer", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const m1 = moisValide(ctx.body.mois);
+  const r = await one(`with n as (insert into app.salaires (personnel_id, mois, montant, saisi_par)
+      select e.id, $1::date, e.salaire, $2 from app.enseignants e where e.statut='actif' and coalesce(e.salaire,0) > 0
+      on conflict (personnel_id, mois) do nothing returning 1) select count(*) as n from n`, [m1, ctx.user.id]);
+  return r;
+});
+const COLS_SAL = ["montant", "primes", "retenues", "note"];
+route("POST", "/salaires", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const d = pick(ctx.body, COLS_SAL);
+  d.personnel_id = Number(ctx.body.personnel_id) || fail(400, "La personne est obligatoire.");
+  d.mois = moisValide(ctx.body.mois);
+  d.saisi_par = ctx.user.id;
+  return one(...insertSql("app.salaires", d));
+});
+route("PUT", "/salaires/:id", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const av = await one("select * from app.salaires where id=$1", [ctx.params.id]);
+  if (!av) fail(404, "Salaire introuvable.");
+  if (av.paye_le) fail(400, "Ce salaire est déjà payé : annulez d'abord le paiement pour le modifier.");
+  const d = pick(ctx.body, COLS_SAL);
+  for (const k of ["montant", "primes", "retenues"]) if (k in d) d[k] = Math.max(0, Math.round(Number(d[k]) || 0));
+  return one(...updateSql("app.salaires", ctx.params.id, d));
+});
+route("DELETE", "/salaires/:id", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const av = await one("select paye_le from app.salaires where id=$1", [ctx.params.id]);
+  if (av?.paye_le) fail(400, "Ce salaire est déjà payé : annulez d'abord le paiement.");
+  await q("delete from app.salaires where id=$1", [ctx.params.id]);
+  return { ok: true };
+});
+// Payer : le salaire net est enregistré dans les dépenses (catégorie Salaires).
+route("POST", "/salaires/:id/payer", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const s = await one(`select s.*, (s.montant + s.primes - s.retenues) as net, e.prenom, e.nom from app.salaires s join app.enseignants e on e.id=s.personnel_id where s.id=$1`, [ctx.params.id]);
+  if (!s) fail(404, "Salaire introuvable.");
+  if (s.paye_le) fail(400, "Ce salaire est déjà payé.");
+  if (!(Number(s.net) > 0)) fail(400, "Le montant à payer est nul.");
+  const mode = MODES.includes(ctx.body.mode) ? ctx.body.mode : "especes";
+  const jour = /^\d{4}-\d{2}-\d{2}$/.test(ctx.body.date || "") ? ctx.body.date : new Date().toISOString().slice(0, 10);
+  const annee = await anneeCourante();
+  const nom = `${s.prenom} ${s.nom}`;
+  const [[dep]] = await tx([
+    [`insert into app.depenses (annee_id, date_depense, categorie, libelle, montant, mode, beneficiaire, note, saisi_par) values ($1,$2,'salaires',$3,$4,$5,$6,$7,$8) returning id`,
+      [annee, jour, `Salaire ${moisG(s.mois)} — ${nom}`, s.net, mode, nom, s.primes || s.retenues ? `Base ${s.montant} F, primes ${s.primes} F, retenues ${s.retenues} F` : null, ctx.user.id]],
+  ]);
+  const r = await one("update app.salaires set paye_le=$2, mode=$3, depense_id=$4 where id=$1 returning *", [s.id, jour, mode, dep.id]);
+  await journal(ctx, "paiement", "salaire", s.id, { nom, mois: s.mois, montant: s.net });
+  return r;
+});
+route("POST", "/salaires/:id/annuler", async (ctx) => {
+  exige(ctx, "depenses.ecrire");
+  const s = await one(`select s.*, (s.montant + s.primes - s.retenues) as net, e.prenom, e.nom from app.salaires s join app.enseignants e on e.id=s.personnel_id where s.id=$1`, [ctx.params.id]);
+  if (!s?.paye_le) fail(400, "Ce salaire n'est pas payé.");
+  await tx([
+    ["delete from app.depenses where id=$1", [s.depense_id]],
+    ["update app.salaires set paye_le=null, mode=null, depense_id=null where id=$1", [s.id]],
+  ]);
+  await journal(ctx, "annulation", "salaire", s.id, { nom: `${s.prenom} ${s.nom}`, mois: s.mois, montant: s.net, motif: ctx.body.motif });
+  return { ok: true };
+});
+
 
 // ── Matières ──
 route("GET", "/classes/:id/matieres", async (ctx) => {

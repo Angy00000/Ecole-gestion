@@ -14,7 +14,7 @@ import Encaissements from "./pages/Encaissements";
 import Impayes from "./pages/Impayes";
 import Depenses from "./pages/Depenses";
 import Recu from "./pages/Recu";
-import Enseignants from "./pages/Enseignants";
+import Personnel, { PersonnelImpression } from "./pages/Personnel";
 import Notes from "./pages/Notes";
 import Bulletins from "./pages/Bulletins";
 import Absences from "./pages/Absences";
@@ -70,6 +70,7 @@ export default function App() {
         {s.peut("pedagogie.lire") && <Route path="emploi/imprimer" element={<EmploiImpression />} />}
         {s.peut("finances.lire") && <Route path="factures/imprimer" element={<FacturesImpression />} />}
         {s.peut("evenements.lire") && <Route path="evenements/:id/imprimer" element={<EvenementSupports />} />}
+        {(s.peut("personnel.lire") || s.peut("enseignants.ecrire")) && <Route path="personnel/imprimer" element={<PersonnelImpression />} />}
         {s.peut("pedagogie.lire") && <Route path="bulletins/imprimer" element={<Bulletins />} />}
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />
@@ -93,7 +94,8 @@ export default function App() {
           {s.peut("finances.lire") && <Route path="fournitures" element={<Fournitures />} />}
           {s.peut("pedagogie.lire") && <Route path="notes" element={<Notes />} />}
           {s.peut("pedagogie.lire") && <Route path="absences" element={<Absences />} />}
-          {s.peut("pedagogie.lire") && <Route path="enseignants" element={<Enseignants />} />}
+          {(s.peut("personnel.lire") || s.peut("enseignants.ecrire")) && <Route path="personnel" element={<Personnel />} />}
+          <Route path="enseignants" element={<Navigate to="/personnel?service=enseignant" replace />} />
           {s.peut("pedagogie.lire") && <Route path="emploi" element={<Emploi />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
