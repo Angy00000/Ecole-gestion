@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 //  Ecole-gestion — API v2
-//  Hébergée sur Neon Functions. Aucune dépendance : SQL via l'endpoint HTTP.
+//  Fonction Vercel (déployée avec le site). Aucune dépendance : SQL via l'endpoint HTTP Neon.
 // ═══════════════════════════════════════════════════════════════════════════
 import crypto from "node:crypto";
 
@@ -2265,7 +2265,10 @@ export default {
   async fetch(request) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     const url = new URL(request.url);
-    const path = url.pathname.replace(/^\/api(\/v2)?/, "") || "/";
+    // Vercel : /api/v2/xxx est réécrit en /api/v2?__p=xxx (voir vercel.json).
+    const rewritten = url.searchParams.get("__p");
+    url.searchParams.delete("__p");
+    const path = rewritten !== null ? "/" + rewritten.replace(/^\/+/, "") : url.pathname.replace(/^\/api(\/v2)?/, "") || "/";
     try {
       for (const r of routes) {
         if (r.method !== request.method) continue;
