@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Plus, Search, Wallet, ShoppingCart, ChevronRight, Printer, ArrowDownLeft, ArrowUpRight, Receipt, Scale } from "lucide-react";
+import { Plus, Search, Wallet, ShoppingCart, ChevronRight, Printer, ArrowDownLeft, ArrowUpRight, Receipt, Scale, Users } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, initiales, MODES, MODE_COULEUR, TYPES, TYPES_COURTS, CATEGORIES, CATEGORIES_RECETTES, today, dateLongue, libelleLigne, nombre } from "../lib/format";
@@ -186,6 +186,7 @@ export default function Encaissements() {
           <button className={tab === "recus" ? "on" : ""} onClick={() => setParams({})}><Receipt size={16} />Reçus</button>
           <button className={tab === "caisse" ? "on" : ""} onClick={() => setParams({ vue: "caisse" })}><Scale size={16} />Journal de caisse</button>
         </div>}
+        {s.peut("finances.encaisser") && <button className="btn" onClick={() => nav("/paiements/groupe")}><Users size={17} />Encaissement groupé</button>}
         {s.peut("finances.encaisser") && <button className="btn" onClick={() => setVente(true)}><ShoppingCart size={17} />Vendre des fournitures</button>}
         {s.peut("finances.encaisser") && <button className="btn primary" onClick={() => setEnc(true)}><Plus size={17} />Nouvel encaissement</button>}
       </PageHead>

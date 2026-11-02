@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Printer, Ban, MessageCircle, Pencil, History, Trash2, MinusCircle } from "lucide-react";
 import Encaissement from "../components/Encaissement";
 import Partager from "../components/Partager";
@@ -112,6 +112,40 @@ function Ticket({ r, etab, sit, copie, rectifie }) {
       </footer>
       <p className="t-motto">{etab.slogan}</p>
     </article>
+  );
+}
+
+// Plusieurs reçus à imprimer d'un coup (encaissement groupé) : /recus/lot?ids=1,2,3
+export function RecusLot() {
+  const s = useSession();
+  const nav = useNavigate();
+  const [p] = useSearchParams();
+  const ids = (p.get("ids") || "").split(",").map(Number).filter(Boolean);
+  const [deux, setDeux] = useState(false);
+  const res = useQueries({ queries: ids.map((id) => ({ queryKey: ["recu", String(id)], queryFn: () => api.get(`/recus/${id}`) })) });
+  const charge = res.filter((x) => x.data).length;
+  if (charge < ids.length && !res.some((x) => x.error)) return <div className="loading"><div className="spinner" /><p className="small muted" style={{ marginTop: 12 }}>Préparation des reçus… {charge}/{ids.length}</p></div>;
+  const etab = s.etablissement;
+  const ok = res.filter((x) => x.data).map((x) => x.data);
+  const total = ok.reduce((t, d) => t + d.recu.montant, 0);
+  return (
+    <div className="print-page">
+      <style>{"@page { size: A5 portrait; margin: 0; }"}</style>
+      <div className="print-bar">
+        <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
+        <span className="grow"><strong>{ok.length} reçus</strong> — {fcfa(total)}</span>
+        <label className="check small"><input type="checkbox" checked={deux} onChange={(e) => setDeux(e.target.checked)} />Imprimer aussi les souches</label>
+        <Partager format="A5" nom={`Recus-${ok.length}`} message={`${ok.length} reçus — ${fcfa(total)}`} />
+        <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
+      </div>
+      {res.some((x) => x.error) && <div className="alert" style={{ maxWidth: 640, margin: "0 auto 16px" }}>Certains reçus n'ont pas pu être chargés.</div>}
+      <div className="tickets">
+        {ok.map((d) => [
+          <Ticket key={d.recu.id} r={d.recu} etab={etab} sit={d.situation} copie="Exemplaire parent" />,
+          deux && <Ticket key={`${d.recu.id}s`} r={d.recu} etab={etab} sit={d.situation} copie="Souche — école" />,
+        ])}
+      </div>
+    </div>
   );
 }
 

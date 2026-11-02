@@ -1575,3 +1575,21 @@ tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--surf
 .bulletin-paie .t-lines tfoot td { font-size: 1.15em; }
 .table td.nw { white-space: nowrap; }
 .bulletin-paie .bp-meta { font-size: 11px; color: #3d5258; margin: 8px 0 0; }
+
+/* ── Encaissement groupé ── */
+.eg-choix { align-items: end; }
+.grid.eg-choix { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.eg-liste { margin-bottom: 16px; }
+.eg-table tbody tr { cursor: pointer; }
+.eg-table tbody tr.eg-on { background: color-mix(in srgb, var(--teal) 8%, transparent); }
+.eg-table tbody tr.eg-solde { opacity: .55; cursor: default; }
+.eg-table input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--teal); }
+.eg-montant { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.eg-montant .input { width: 150px; text-align: right; }
+.avatar.sm { width: 34px; height: 34px; font-size: 12px; border-radius: 11px; }
+.eg-barre { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; padding: 14px 18px; box-shadow: var(--sh-3, 0 10px 30px rgba(0,0,0,.15)); }
+.eg-barre-l { flex: 1 1 520px; display: flex; flex-direction: column; gap: 10px; }
+.eg-champs { gap: 8px; flex-wrap: wrap; }
+.eg-champs .input { flex: 1 1 150px; width: auto; }
+.eg-barre-r { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-left: auto; }
+.btn.lg { height: 48px; padding: 0 22px; font-size: 15px; }

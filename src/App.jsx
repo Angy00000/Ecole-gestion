@@ -11,9 +11,10 @@ import EleveFiche from "./pages/EleveFiche";
 import Classes from "./pages/Classes";
 import Parametres from "./pages/Parametres";
 import Encaissements from "./pages/Encaissements";
+import EncaissementGroupe from "./pages/EncaissementGroupe";
 import Impayes from "./pages/Impayes";
 import Depenses from "./pages/Depenses";
-import Recu from "./pages/Recu";
+import Recu, { RecusLot } from "./pages/Recu";
 import Personnel, { PersonnelImpression } from "./pages/Personnel";
 import Notes from "./pages/Notes";
 import Bulletins from "./pages/Bulletins";
@@ -61,6 +62,7 @@ export default function App() {
     </Routes>
     ) : (
     <Routes>
+        <Route path="recus/lot" element={<RecusLot />} />
         <Route path="recus/:id" element={<Recu />} />
         <Route path="documents" element={<Documents />} />
         <Route path="imprimes/imprimer" element={<ViergesImpression />} />
@@ -83,6 +85,7 @@ export default function App() {
           {s.gardien && <Route path="gardien" element={<Gardien />} />}
           {s.peut("etablissement.ecrire") && <Route path="archives" element={<Archives />} />}
           {(s.peut("finances.lire") || s.peut("finances.encaisser")) && <Route path="paiements" element={<Encaissements />} />}
+          {s.peut("finances.encaisser") && <Route path="paiements/groupe" element={<EncaissementGroupe />} />}
           {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
           {s.peut("finances.lire") && <Route path="factures" element={<Factures />} />}
           {s.peut("depenses.lire") && <Route path="depenses" element={<Depenses />} />}

@@ -884,7 +884,9 @@ const verifierDejaPaye = async (inscriptionId, lignes, exclure = 0) => {
 
 route("POST", "/recus", async (ctx) => {
   exige(ctx, "finances.encaisser");
-  const b = ctx.body;
+  return creerRecu(ctx, ctx.body);
+});
+async function creerRecu(ctx, b) {
   requis(b, [["inscription_id", "L'élève"]]);
   // Encaissement fait hors ligne et renvoyé deux fois (coupure pendant l'envoi) : on renvoie le reçu déjà créé.
   if (b.cle_client) {
@@ -908,6 +910,57 @@ route("POST", "/recus", async (ctx) => {
      select r.id, r.numero, r.montant, (select count(*) from l) as lignes from r`, params);
   await journal(ctx, "encaissement", "recu", r.id, { numero: r.numero, montant: r.montant });
   return r;
+}
+
+// ── Encaissement groupé : plusieurs élèves d'un coup (un reçu par élève) ──
+const FRAIS_GROUPE = {
+  inscription: "case when i.inscription_offerte then 0 else greatest(c.frais_inscription - i.reduction_inscription, 0) end",
+  uniforme: "case when i.uniforme then c.uniforme else 0 end",
+  tenue_sport: "case when i.tenue_sport then c.tenue_sport else 0 end",
+  cantine: "case when i.cantine then c.frais_cantine else 0 end",
+  cotisation: "nullif(a.frais_cotisation, 0)",
+};
+route("GET", "/encaissement-groupe", async (ctx) => {
+  exige(ctx, "finances.encaisser");
+  const annee = await anneeCourante(ctx.query.annee_id);
+  const type = ctx.query.type;
+  if (!TYPES_LIGNE.includes(type) || type === "article") fail(400, "Choisissez ce qui est payé.");
+  const mois = TYPES_MOIS.includes(type) ? ctx.query.mois : null;
+  if (TYPES_MOIS.includes(type) && !/^\d{4}-\d{2}$/.test(mois || "")) fail(400, "Choisissez le mois.");
+  const p = [annee]; const w = ["i.annee_id=$1", "i.statut='active'"];
+  if (ctx.query.classe_id) { p.push(Number(ctx.query.classe_id)); w.push(`i.classe_id=$${p.length}`); }
+  if (type === "cours_soir") w.push("i.cours_soir");
+  let du = "null::int";
+  if (type === "mensualite") { p.push(`${mois}-01`); du = `app.du_mois(i.id, $${p.length}::date)`; }
+  else if (type === "cours_soir") { du = "nullif(a.frais_cours_soir, 0)"; p.push(`${mois}-01`); }
+  else if (FRAIS_GROUPE[type]) du = FRAIS_GROUPE[type];
+  const filtreMois = mois ? ` and pa.mois=$${p.length}::date` : "";
+  const suivi = du !== "null::int";
+  return q(`select i.id as inscription_id, e.id as eleve_id, e.nom, e.prenom, e.sexe, e.matricule, c.nom as classe, c.cycle, c.ordre,
+      ${du} as du,
+      ${suivi ? `coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule
+        where pa.inscription_id=i.id and pa.type='${type}'${filtreMois}),0)` : "null::int"} as paye
+    from app.inscriptions i join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id join app.annees a on a.id=i.annee_id
+    where ${w.join(" and ")} order by c.ordre, e.nom, e.prenom`, p);
+});
+
+route("POST", "/recus/lot", async (ctx) => {
+  exige(ctx, "finances.encaisser");
+  const b = ctx.body;
+  const items = Array.isArray(b.items) ? b.items : [];
+  if (!items.length) fail(400, "Sélectionnez au moins un élève.");
+  if (items.length > 200) fail(400, "200 élèves au maximum par encaissement groupé.");
+  if (!MODES.includes(b.mode || "especes")) fail(400, "Mode de paiement invalide.");
+  const recus = [], erreurs = [];
+  for (const it of items) {
+    try {
+      const r = await creerRecu(ctx, { inscription_id: it.inscription_id, lignes: it.lignes, mode: b.mode, date_paiement: b.date_paiement, reference: b.reference, note: b.note,
+        cle_client: b.cle_lot ? `${String(b.cle_lot).slice(0, 60)}-${it.inscription_id}` : null });
+      recus.push({ inscription_id: it.inscription_id, id: r.id, numero: r.numero, montant: r.montant, deja: !!r.deja });
+    } catch (e) { erreurs.push({ inscription_id: it.inscription_id, erreur: e.message }); }
+  }
+  if (recus.length) await journal(ctx, "encaissement_groupe", "recu", recus[0].id, { nombre: recus.length, montant: recus.reduce((t, r) => t + r.montant, 0), erreurs: erreurs.length });
+  return { recus, erreurs, total: recus.reduce((t, r) => t + r.montant, 0) };
 });
 
 
