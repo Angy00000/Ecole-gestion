@@ -115,11 +115,13 @@ const droitsDe = (u) => {
   return Array.isArray(u.droits) ? u.droits : droitsRole(u.role);
 };
 const peut = (u, droit) => droitsDe(u).some((d) => d === "*" || d === droit);
+// Encaisser implique de connaître les tarifs de l'élève, mais pas de voir les encaissements ni les ventes.
+const voitArgent = (u) => ["finances.lire", "finances.encaisser"].some((d) => peut(u, d));
 // Pour les comptes sans accès aux finances (secrétaire…) : on retire tous les montants des réponses.
 const ARGENT_CLASSE = ["frais_inscription", "uniforme", "tenue_sport", "cours_soir", "mensualite", "mensualite_jan_fev", "mensualite_cantine", "mensualite_cantine_jan_fev", "frais_cantine", "prix_uniforme", "prix_tenue", "prix_cours_soir"];
 const ARGENT_INSC = ["mensualite_speciale", "reduction_inscription", "frais_reste", "montant_uniforme", "montant_tenue", "montant_frais_cantine", "montant_cantine_mois", "montant_cours_soir"];
 const sansArgent = (ctx, row) => {
-  if (!row || peut(ctx.user, "finances.lire")) return row;
+  if (!row || voitArgent(ctx.user)) return row;
   const o = { ...row };
   if (typeof o.mensualite_cantine === "number") o.cantine_dispo = o.mensualite_cantine > 0;
   if (typeof o.cours_soir === "number") o.cours_soir_dispo = o.cours_soir > 0;
@@ -153,6 +155,7 @@ const ESPACE_PROF = new Set(["GET /auth/me", "POST /auth/password", "GET /bootst
   "GET /absences", "PUT /absences/:id", "DELETE /absences/:id", "GET /emploi"]);
 const espaceProf = (u) => !!u?.classe_seule && u.role !== "admin";
 const exige = (ctx, droit) => { if (!peut(ctx.user, droit)) fail(403, "Vous n'avez pas les droits pour cette action."); };
+const exigeUn = (ctx, droits) => { if (!droits.some((d) => peut(ctx.user, d))) fail(403, "Vous n'avez pas les droits pour cette action."); };
 
 const journal = async (ctx, action, entite, entite_id, details) => {
   await q("insert into app.journal (utilisateur_id, action, entite, entite_id, details) values ($1,$2,$3,$4,$5)",
@@ -789,7 +792,7 @@ route("PUT", "/inscriptions/:id/mois-retires", async (ctx) => {
   return r;
 });
 
-route("GET", "/inscriptions/:id/situation", async (ctx) => { exige(ctx, "finances.lire"); return situation(ctx.params.id, Number(ctx.query.exclure_recu) || 0); });
+route("GET", "/inscriptions/:id/situation", async (ctx) => { exigeUn(ctx, ["finances.lire", "finances.encaisser"]); return situation(ctx.params.id, Number(ctx.query.exclure_recu) || 0); });
 
 const recuComplet = async (id) => {
   const [[r], lignes] = await tx([
@@ -808,8 +811,11 @@ const recuComplet = async (id) => {
 };
 
 route("GET", "/recus/:id", async (ctx) => {
-  exige(ctx, "finances.lire");
+  exigeUn(ctx, ["finances.lire", "finances.encaisser"]);
   const r = await recuComplet(ctx.params.id);
+  // Sans « Voir les paiements » : uniquement le reçu qu'on vient d'émettre soi-même (aujourd'hui).
+  if (!peut(ctx.user, "finances.lire") && !(r.encaisse_par === ctx.user.id && String(r.created_at).slice(0, 10) === new Date().toISOString().slice(0, 10)))
+    fail(403, "Vous n'avez pas les droits pour cette action.");
   const sit = await situation(r.inscription_id);
   const historique = await q(`select m.id, m.motif, m.avant, m.apres, m.created_at, u.prenom || ' ' || u.nom as par
     from app.recus_modifications m left join app.utilisateurs u on u.id=m.modifie_par where m.recu_id=$1 order by m.created_at desc`, [ctx.params.id]);
@@ -1364,6 +1370,12 @@ route("GET", "/articles", async (ctx) => {
   return q(`select a.*, ${SQL_STOCK} as stock,
       coalesce((select sum(m.quantite) from app.mouvements_stock m join app.recus r on r.id=m.recu_id and not r.annule where m.article_id=a.id and m.sens='vente'),0) as vendus
     from app.articles a order by a.actif desc, a.nom`);
+});
+// Catalogue pour vendre : nom, prix de vente et stock, sans les prix d'achat ni le total des ventes.
+route("GET", "/catalogue-vente", async (ctx) => {
+  exige(ctx, "finances.encaisser");
+  return q(`select a.id, a.nom, a.unite, a.prix_vente, a.actif, ${SQL_STOCK} as stock
+    from app.articles a where a.actif and a.prix_vente > 0 order by a.nom`);
 });
 route("POST", "/articles", async (ctx) => {
   exige(ctx, "depenses.ecrire");

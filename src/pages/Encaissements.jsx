@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Plus, Search, Wallet, ChevronRight, Printer, ArrowDownLeft, ArrowUpRight, Receipt, Scale } from "lucide-react";
+import { Plus, Search, Wallet, ShoppingCart, ChevronRight, Printer, ArrowDownLeft, ArrowUpRight, Receipt, Scale } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, initiales, MODES, MODE_COULEUR, TYPES, TYPES_COURTS, CATEGORIES, CATEGORIES_RECETTES, today, dateLongue, libelleLigne, nombre } from "../lib/format";
 import { Spinner, ErrorBox, Empty, PageHead, Select } from "../components/ui";
 import Encaissement from "../components/Encaissement";
+import { VenteModal } from "./Fournitures";
 
 const debutMois = () => today().slice(0, 8) + "01";
 
@@ -176,16 +177,21 @@ export default function Encaissements() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("vue") || "recus";
   const [enc, setEnc] = useState(false);
+  const [vente, setVente] = useState(false);
+  const voit = s.peut("finances.lire");
   return (
     <>
-      <PageHead title="Encaissements" sub={`Paiements des élèves — année ${s.annee?.libelle}`}>
-        <div className="tabs">
+      <PageHead title={voit ? "Encaissements" : "Encaisser un paiement"} sub={`Paiements des élèves — année ${s.annee?.libelle}`}>
+        {voit && <div className="tabs">
           <button className={tab === "recus" ? "on" : ""} onClick={() => setParams({})}><Receipt size={16} />Reçus</button>
           <button className={tab === "caisse" ? "on" : ""} onClick={() => setParams({ vue: "caisse" })}><Scale size={16} />Journal de caisse</button>
-        </div>
+        </div>}
+        {s.peut("finances.encaisser") && <button className="btn" onClick={() => setVente(true)}><ShoppingCart size={17} />Vendre des fournitures</button>}
         {s.peut("finances.encaisser") && <button className="btn primary" onClick={() => setEnc(true)}><Plus size={17} />Nouvel encaissement</button>}
       </PageHead>
-      {tab === "caisse" ? <Caisse /> : <Recus />}
+      {!voit ? <div className="card"><Empty icon={Wallet} title="Encaisser un paiement">Cliquez sur « Nouvel encaissement » (scolarité, frais…) ou « Vendre des fournitures », cherchez l'élève et validez : le reçu s'ouvre pour l'impression.</Empty></div>
+        : tab === "caisse" ? <Caisse /> : <Recus />}
+      {vente && <VenteModal onClose={() => setVente(false)} />}
       {enc && <Encaissement onClose={() => setEnc(false)} onSaved={(r) => { setEnc(false); nav(`/recus/${r.id}`); }} />}
     </>
   );

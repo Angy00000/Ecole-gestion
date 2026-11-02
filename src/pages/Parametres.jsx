@@ -143,7 +143,7 @@ function Annees() {
 const GROUPES_DROITS = [
   ["Élèves", [["eleves.lire", "Voir les élèves"], ["eleves.ecrire", "Inscrire et modifier les élèves"], ["eleves.supprimer", "Supprimer / archiver un élève"], ["classes.ecrire", "Gérer les classes et matières"]]],
   ["Pédagogie", [["pedagogie.lire", "Voir notes, bulletins, emploi du temps"], ["pedagogie.ecrire", "Saisir les notes et appréciations"], ["absences.ecrire", "Faire l'appel / absences"], ["enseignants.ecrire", "Gérer les enseignants"]]],
-  ["Argent", [["finances.lire", "Voir les paiements, factures, impayés, tarifs"], ["finances.encaisser", "Encaisser / vendre"], ["finances.annuler", "Annuler et corriger les reçus des autres"], ["depenses.lire", "Voir dépenses et recettes"], ["depenses.ecrire", "Saisir dépenses, recettes et stock"]]],
+  ["Argent", [["finances.lire", "Voir les paiements, factures, impayés, tarifs"], ["finances.encaisser", "Encaisser et vendre (sans voir les montants encaissés)"], ["finances.annuler", "Annuler et corriger les reçus des autres"], ["depenses.lire", "Voir dépenses et recettes"], ["depenses.ecrire", "Saisir dépenses, recettes et stock"]]],
   ["Événements", [["evenements.lire", "Voir les événements, cartes de soutien et invités"], ["evenements.ecrire", "Organiser les événements : cartes, invités, budget, supports"]]],
   ["Administration", [["etablissement.ecrire", "Paramètres de l'école et sauvegarde"], ["annees.ecrire", "Années scolaires"], ["journal.lire", "Journal des actions"], ["utilisateurs", "Gérer les comptes utilisateurs"]]],
 ];
@@ -155,10 +155,10 @@ function Roles() {
   const [del, setDel] = useState(null);
   const [error, setError] = useState(null);
   const { data, isLoading, error: loadErr } = useQuery({ queryKey: ["droits"], queryFn: () => api.get("/droits") });
-  const BESOIN = { "eleves.ecrire": "eleves.lire", "eleves.supprimer": "eleves.lire", "pedagogie.ecrire": "pedagogie.lire", "absences.ecrire": "pedagogie.lire", "finances.encaisser": "finances.lire", "finances.annuler": "finances.lire", "depenses.ecrire": "depenses.lire" };
+  // Chaque case est indépendante : on peut par exemple encaisser et vendre sans voir les encaissements ni les ventes.
   const basculer = (code) => setForm((f) => f.droits.includes(code)
-    ? { ...f, droits: f.droits.filter((c) => c !== code && BESOIN[c] !== code) }
-    : { ...f, droits: [...new Set([...f.droits, code, ...(BESOIN[code] ? [BESOIN[code]] : [])])] });
+    ? { ...f, droits: f.droits.filter((c) => c !== code) }
+    : { ...f, droits: [...new Set([...f.droits, code])] });
   const save = async () => {
     setError(null);
     try {
@@ -230,12 +230,11 @@ function Utilisateurs() {
   const lib = (code) => ref.data?.liste?.find((x) => x.code === code)?.libelle || ROLES[code] || code;
   const effectifs = (f) => (f.role === "admin" ? ref.data?.codes || [] : Array.isArray(f.droits) ? f.droits : parRole(f.role));
   const perso = (f) => f.role !== "admin" && Array.isArray(f.droits);
-  // Faire implique voir : cocher « Encaisser » coche aussi « Voir les paiements », et décocher « Voir » retire ce qui en dépend.
-  const BESOIN = { "eleves.ecrire": "eleves.lire", "eleves.supprimer": "eleves.lire", "pedagogie.ecrire": "pedagogie.lire", "absences.ecrire": "pedagogie.lire", "finances.encaisser": "finances.lire", "finances.annuler": "finances.lire", "depenses.ecrire": "depenses.lire" };
+  // Chaque case est indépendante : on peut par exemple encaisser et vendre sans voir les encaissements ni les ventes.
   const basculer = (code) => setForm((f) => {
     const cur = effectifs(f);
-    if (cur.includes(code)) return { ...f, droits: cur.filter((c) => c !== code && BESOIN[c] !== code) };
-    return { ...f, droits: [...new Set([...cur, code, ...(BESOIN[code] ? [BESOIN[code]] : [])])] };
+    if (cur.includes(code)) return { ...f, droits: cur.filter((c) => c !== code) };
+    return { ...f, droits: [...new Set([...cur, code])] };
   });
 
   const save = async () => {

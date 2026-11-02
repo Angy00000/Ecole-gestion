@@ -81,7 +81,7 @@ export default function App() {
           <Route path="parametres/*" element={<Parametres />} />
           {s.gardien && <Route path="gardien" element={<Gardien />} />}
           {s.peut("etablissement.ecrire") && <Route path="archives" element={<Archives />} />}
-          {s.peut("finances.lire") && <Route path="paiements" element={<Encaissements />} />}
+          {(s.peut("finances.lire") || s.peut("finances.encaisser")) && <Route path="paiements" element={<Encaissements />} />}
           {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
           {s.peut("finances.lire") && <Route path="factures" element={<Factures />} />}
           {s.peut("depenses.lire") && <Route path="depenses" element={<Depenses />} />}

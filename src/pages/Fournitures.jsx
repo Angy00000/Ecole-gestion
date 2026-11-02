@@ -111,7 +111,7 @@ export function VenteModal({ eleve: eleveInit, onClose }) {
   const [reference, setReference] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const arts = useQuery({ queryKey: ["articles"], queryFn: () => api.get("/articles") });
+  const arts = useQuery({ queryKey: ["articles", "catalogue"], queryFn: () => api.get("/catalogue-vente") });
   const res = useQuery({ queryKey: ["eleves", "vente", rq, s.annee?.id], queryFn: () => api.get("/eleves", { q: rq, limit: 8, annee_id: s.annee?.id }), enabled: !eleve && rq.trim().length > 1 });
   const vendables = (arts.data || []).filter((a) => a.actif && a.prix_vente > 0);
   const total = lignes.reduce((t, l) => t + (l.quantite || 0) * (l.prix || 0), 0);
