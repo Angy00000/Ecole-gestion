@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, School, Wallet, Receipt, AlertTriangle, BookOpen, CalendarCheck,
-  GraduationCap, CalendarClock, HandCoins, FileBarChart, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, FileText, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange, FileStack, ListChecks, ShieldCheck, Sparkles } from "lucide-react";
+  GraduationCap, CalendarClock, HandCoins, FileBarChart, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, FileText, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange, FileStack, ListChecks, ShieldCheck, Sparkles, Archive } from "lucide-react";
 import { useSession } from "../lib/session";
 import { ROLES, initiales } from "../lib/format";
 import MotDePasse from "../pages/MotDePasse";
@@ -39,6 +39,7 @@ const NAV = [
   { to: "/evenements", label: "Événements", icon: Sparkles, droit: "evenements.lire" },
   { group: "Administration" },
   { to: "/gardien", label: "Le Gardien", icon: ShieldCheck, gardien: true },
+  { to: "/archives", label: "Archives officielles", icon: Archive, droit: "etablissement.ecrire" },
   { to: "/parametres", label: "Paramètres", icon: Settings },
 ];
 

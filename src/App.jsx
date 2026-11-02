@@ -33,6 +33,7 @@ import Documents from "./pages/Documents";
 import Factures, { FacturesImpression } from "./pages/Factures";
 import Evenements, { EvenementFiche } from "./pages/Evenements";
 import EvenementSupports from "./pages/EvenementSupports";
+import Archives from "./pages/Archives";
 
 export default function App() {
   const s = useSession();
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="listes" element={<Listes />} />
           <Route path="parametres/*" element={<Parametres />} />
           {s.gardien && <Route path="gardien" element={<Gardien />} />}
+          {s.peut("etablissement.ecrire") && <Route path="archives" element={<Archives />} />}
           {s.peut("finances.lire") && <Route path="paiements" element={<Encaissements />} />}
           {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
           {s.peut("finances.lire") && <Route path="factures" element={<Factures />} />}
