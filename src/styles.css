@@ -1593,3 +1593,10 @@ tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--surf
 .eg-champs .input { flex: 1 1 150px; width: auto; }
 .eg-barre-r { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-left: auto; }
 .btn.lg { height: 48px; padding: 0 22px; font-size: 15px; }
+.eg-mois { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.eg-mois-l { font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.eg-mois-l small { font-weight: 500; color: var(--muted); }
+.eg-mois-liste { display: flex; flex-wrap: wrap; gap: 6px; }
+.eg-mois-liste button { display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); font-weight: 700; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.eg-mois-liste button.on { background: var(--teal); border-color: var(--teal); color: #fff; }
+.eg-montant .xs { white-space: nowrap; }

@@ -925,23 +925,31 @@ route("GET", "/encaissement-groupe", async (ctx) => {
   const annee = await anneeCourante(ctx.query.annee_id);
   const type = ctx.query.type;
   if (!TYPES_LIGNE.includes(type) || type === "article") fail(400, "Choisissez ce qui est payé.");
-  const mois = TYPES_MOIS.includes(type) ? ctx.query.mois : null;
-  if (TYPES_MOIS.includes(type) && !/^\d{4}-\d{2}$/.test(mois || "")) fail(400, "Choisissez le mois.");
   const p = [annee]; const w = ["i.annee_id=$1", "i.statut='active'"];
   if (ctx.query.classe_id) { p.push(Number(ctx.query.classe_id)); w.push(`i.classe_id=$${p.length}`); }
   if (type === "cours_soir") w.push("i.cours_soir");
-  let du = "null::int";
-  if (type === "mensualite") { p.push(`${mois}-01`); du = `app.du_mois(i.id, $${p.length}::date)`; }
-  else if (type === "cours_soir") { du = "nullif(a.frais_cours_soir, 0)"; p.push(`${mois}-01`); }
-  else if (FRAIS_GROUPE[type]) du = FRAIS_GROUPE[type];
-  const filtreMois = mois ? ` and pa.mois=$${p.length}::date` : "";
-  const suivi = du !== "null::int";
-  return q(`select i.id as inscription_id, e.id as eleve_id, e.nom, e.prenom, e.sexe, e.matricule, c.nom as classe, c.cycle, c.ordre,
-      ${du} as du,
-      ${suivi ? `coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule
-        where pa.inscription_id=i.id and pa.type='${type}'${filtreMois}),0)` : "null::int"} as paye
-    from app.inscriptions i join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id join app.annees a on a.id=i.annee_id
-    where ${w.join(" and ")} order by c.ordre, e.nom, e.prenom`, p);
+  const base = `select i.id as inscription_id, e.id as eleve_id, e.nom, e.prenom, e.sexe, e.matricule, c.nom as classe, c.cycle, c.ordre`;
+  const from = `from app.inscriptions i join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id join app.annees a on a.id=i.annee_id
+    where ${w.join(" and ")} order by c.ordre, e.nom, e.prenom`;
+  if (TYPES_MOIS.includes(type)) {
+    // Un ou plusieurs mois : détail mois par mois (dû / déjà payé), le total est fait côté client.
+    const mois = [...new Set(String(ctx.query.mois || "").split(",").filter((m) => /^\d{4}-\d{2}$/.test(m)))].sort();
+    if (!mois.length) fail(400, "Choisissez au moins un mois.");
+    if (mois.length > 12) fail(400, "12 mois au maximum.");
+    p.push(mois.map((m) => `${m}-01`).join(","));
+    const du = type === "mensualite" ? "app.du_mois(i.id, d)" : "nullif(a.frais_cours_soir, 0)";
+    return q(`${base},
+      (select json_agg(json_build_object('mois', to_char(d,'YYYY-MM'), 'du', ${du},
+         'paye', coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule
+           where pa.inscription_id=i.id and pa.type='${type}' and pa.mois=d),0)) order by d)
+       from unnest(string_to_array($${p.length}, ',')::date[]) d) as detail
+      ${from}`, p);
+  }
+  const du = FRAIS_GROUPE[type] || "null::int";
+  return q(`${base}, ${du} as du,
+      ${du !== "null::int" ? `coalesce((select sum(pa.montant) from app.paiements pa join app.recus r on r.id=pa.recu_id and not r.annule
+        where pa.inscription_id=i.id and pa.type='${type}'),0)` : "null::int"} as paye
+    ${from}`, p);
 });
 
 route("POST", "/recus/lot", async (ctx) => {
