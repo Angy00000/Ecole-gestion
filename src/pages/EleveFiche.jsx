@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt, PlusCircle, ArrowRightLeft, KeyRound } from "lucide-react";
+import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt, PlusCircle, ArrowRightLeft, KeyRound, RotateCcw } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateLongue, age, initiales } from "../lib/format";
@@ -289,6 +289,14 @@ export default function EleveFiche() {
     } catch (err) { toast(err.message, "error"); setDel(false); }
   };
 
+  const reactiver = async () => {
+    try {
+      await api.post(`/eleves/${e.id}/reactiver`, {});
+      toast(`${e.prenom} ${e.nom} est de nouveau parmi les élèves`);
+      ["eleves", "eleve", "dashboard", "classes", "impayes"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    } catch (err) { toast(err.message, "error"); }
+  };
+
   const tabs = [["identite", "Identité et parents", null, User], ["scolarite", "Scolarité", inscriptions.length, School],
     ...(s.peut("finances.lire") ? [["paiements", "Paiements", paiements.length, Receipt]] : []),
     ...(s.peut("pedagogie.lire") ? [["absences", "Absences", absences.filter((a) => a.annee_id === s.annee?.id).length, CalendarCheck2]] : [])];
@@ -296,6 +304,7 @@ export default function EleveFiche() {
   return (
     <div className="stack" style={{ marginTop: 14 }}>
       <div><Link to="/eleves" className="crumb"><ArrowLeft size={16} />Retour aux élèves</Link></div>
+      {e.statut === "sorti" && <div className="alert" style={{ margin: 0 }}>Cet élève a été supprimé et archivé (il avait des paiements). Il n'apparaît plus dans les listes, effectifs ni impayés.{s.peut("eleves.supprimer") ? " Cliquez sur « Réactiver l'élève » pour le remettre." : ""}</div>}
 
       <div className="card profile">
         <div className={`cover lattice ${e.sexe || ""}`} />
@@ -333,7 +342,8 @@ export default function EleveFiche() {
             {s.peut("eleves.ecrire") && !courante && <button className="btn primary" onClick={() => setInsc("new")}><RefreshCcw size={17} />Réinscrire</button>}
             {s.peut("finances.encaisser") && courante && <button className="btn primary" onClick={() => setEnc(true)}><Wallet size={17} />Encaisser</button>}
             {s.peut("eleves.ecrire") && <button className="btn" onClick={() => setEdit(true)}><Pencil size={17} />Modifier</button>}
-            {s.peut("eleves.supprimer") && <button className="btn danger icon" onClick={() => setDel(true)} aria-label="Supprimer l'élève"><Trash2 size={17} /></button>}
+            {s.peut("eleves.supprimer") && e.statut === "sorti" && <button className="btn primary" onClick={reactiver}><RotateCcw size={17} />Réactiver l'élève</button>}
+            {s.peut("eleves.supprimer") && e.statut !== "sorti" && <button className="btn danger icon" onClick={() => setDel(true)} aria-label="Supprimer l'élève"><Trash2 size={17} /></button>}
           </div>
         </div>
         <div className="mini-stats">

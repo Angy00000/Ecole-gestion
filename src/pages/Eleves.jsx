@@ -34,7 +34,7 @@ export default function Eleves() {
   useEffect(() => { if (params.get("nouveau") === "1") setForm(true); }, [params]);
 
   const classes = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }) });
-  const filtres = { annee_id: s.annee?.id, q: dq, classe_id: classe, sexe, inscrits, sort, page, limit };
+  const filtres = { annee_id: s.annee?.id, q: dq, classe_id: classe, sexe, inscrits: inscrits === "sortis" ? "tous" : inscrits, statut: inscrits === "sortis" ? "sorti" : undefined, sort, page, limit };
   const list = useQuery({ queryKey: ["eleves", filtres], queryFn: () => api.get("/eleves", filtres), placeholderData: keepPreviousData });
 
   const exporter = async () => {
@@ -88,13 +88,14 @@ export default function Eleves() {
           <div className="seg">
             <button className={inscrits === "oui" ? "on" : ""} onClick={() => setInscrits("oui")}>Inscrits</button>
             <button className={inscrits === "non" ? "on" : ""} onClick={() => { setInscrits("non"); setClasse(""); }}>À réinscrire</button>
+            <button className={inscrits === "sortis" ? "on" : ""} onClick={() => { setInscrits("sortis"); setClasse(""); }}>Sortis / archivés</button>
           </div>
         </div>
 
         {list.isLoading ? <Spinner /> : list.error ? <div style={{ padding: 18 }}><ErrorBox error={list.error} /></div> : !d.rows.length ? (
-          <Empty icon={Users} title={dq || classe || sexe ? "Aucun élève ne correspond" : inscrits === "non" ? "Tous les élèves sont réinscrits" : "Aucun élève inscrit"}
+          <Empty icon={Users} title={dq || classe || sexe ? "Aucun élève ne correspond" : inscrits === "non" ? "Tous les élèves sont réinscrits" : inscrits === "sortis" ? "Aucun élève archivé" : "Aucun élève inscrit"}
             action={!dq && !classe && inscrits === "oui" && s.peut("eleves.ecrire") ? <button className="btn primary" onClick={() => setForm(true)}><UserPlus size={16} />Inscrire le premier élève</button> : null}>
-            {dq || classe || sexe ? "Essayez une autre recherche ou retirez un filtre." : inscrits === "non" ? "Ici apparaissent les élèves des années passées qui ne sont pas encore réinscrits." : ""}
+            {dq || classe || sexe ? "Essayez une autre recherche ou retirez un filtre." : inscrits === "non" ? "Ici apparaissent les élèves des années passées qui ne sont pas encore réinscrits." : inscrits === "sortis" ? "Ici apparaissent les élèves supprimés qui avaient des paiements : leur fiche est gardée et peut être réactivée." : ""}
           </Empty>
         ) : (
           <div className="table-wrap" style={{ opacity: list.isFetching ? 0.65 : 1, transition: "opacity .15s" }}>

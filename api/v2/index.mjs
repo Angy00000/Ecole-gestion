@@ -685,6 +685,19 @@ route("DELETE", "/eleves/:id", async (ctx) => {
   return { ok: true, archive: false };
 });
 
+// Remettre un élève archivé (« sorti ») parmi les élèves, avec son inscription de l'année en cours.
+route("POST", "/eleves/:id/reactiver", async (ctx) => {
+  exige(ctx, "eleves.supprimer");
+  const el = await one("select prenom, nom, statut from app.eleves where id=$1", [ctx.params.id]);
+  if (!el) fail(404, "Élève introuvable.");
+  await tx([
+    ["update app.eleves set statut='actif', updated_at=now() where id=$1", [ctx.params.id]],
+    ["update app.inscriptions set statut='active' where eleve_id=$1 and statut='abandon' and annee_id=(select id from app.annees where active)", [ctx.params.id]],
+  ]);
+  await journal(ctx, "reactivation", "eleve", Number(ctx.params.id), { nom: `${el.prenom} ${el.nom}` });
+  return { ok: true };
+});
+
 // ── Inscriptions / réinscriptions ─────────────────────────────────────────
 route("POST", "/eleves/:id/inscriptions", async (ctx) => {
   exige(ctx, "eleves.ecrire");

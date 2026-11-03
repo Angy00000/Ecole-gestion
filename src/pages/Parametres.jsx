@@ -327,7 +327,7 @@ function Utilisateurs() {
 }
 
 // ── Journal ──
-const ACTIONS = { sauvegarde: "Sauvegarde", encaissement: "Encaissement", annulation: "Annulation", appel: "Appel", saisie_notes: "Saisie de notes", connexion: "Connexion", inscription: "Inscription", reinscription: "Réinscription", modification: "Modification", creation: "Création", suppression: "Suppression", sortie: "Archivage", activation: "Activation", changement_mot_de_passe: "Mot de passe changé" };
+const ACTIONS = { sauvegarde: "Sauvegarde", encaissement: "Encaissement", annulation: "Annulation", appel: "Appel", saisie_notes: "Saisie de notes", connexion: "Connexion", inscription: "Inscription", reinscription: "Réinscription", modification: "Modification", creation: "Création", suppression: "Suppression", sortie: "Archivage", reactivation: "Réactivation", activation: "Activation", changement_mot_de_passe: "Mot de passe changé" };
 const ENTITES = { recu: "reçu", depense: "dépense", recette: "recette", evaluation: "évaluation", enseignant: "enseignant", eleve: "élève", classe: "classe", annee: "année", utilisateur: "compte", etablissement: "établissement", inscription: "inscription", evenement: "événement", carte_soutien: "carte de soutien", cartes_soutien: "cartes de soutien", invite: "invité", budget_evenement: "budget d'événement", tache_evenement: "tâche d'événement" };
 function Journal() {
   const { data, isLoading, error } = useQuery({ queryKey: ["journal"], queryFn: () => api.get("/journal", { limit: 200 }) });
