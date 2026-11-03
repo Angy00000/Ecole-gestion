@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, CornerDownLeft } from "lucide-react";
 import { api } from "../lib/api";
@@ -17,8 +17,11 @@ export default function SearchPalette({ onClose }) {
   useEffect(() => { ref.current?.focus(); }, []);
   useEffect(() => {
     if (q.trim().length < 2) { setRes([]); return; }
-    const t = setTimeout(() => api.get("/eleves", { q, annee_id: s.annee?.id, inscrits: "tous", statut: "tous", limit: 8 })
-      .then((r) => { setRes(r.rows); setI(0); }).catch(() => {}), 200);
+    // Élèves actifs d'abord ; les élèves supprimés (archivés) viennent après, clairement marqués.
+    const t = setTimeout(() => Promise.all([
+      api.get("/eleves", { q, annee_id: s.annee?.id, inscrits: "tous", statut: "actif", limit: 8 }),
+      api.get("/eleves", { q, annee_id: s.annee?.id, inscrits: "tous", statut: "sorti", limit: 4 }),
+    ]).then(([a, b]) => { setRes([...a.rows, ...b.rows]); setI(0); }).catch(() => {}), 200);
     return () => clearTimeout(t);
   }, [q]);
 
@@ -41,13 +44,14 @@ export default function SearchPalette({ onClose }) {
         <div className="palette-list">
           {q.trim().length < 2 ? <p className="muted small" style={{ padding: 14 }}>Tapez au moins deux lettres.</p>
             : !res.length ? <p className="muted small" style={{ padding: 14 }}>Aucun élève trouvé pour « {q} ».</p>
-            : res.map((r, k) => (
-              <div key={r.id} className={`palette-item ${k === i ? "on" : ""}`} onMouseEnter={() => setI(k)} onClick={() => go(r)}>
+            : res.map((r, k) => (<Fragment key={r.id}>
+              {r.statut === "sorti" && res[k - 1]?.statut !== "sorti" && <p className="xs muted" style={{ padding: "10px 14px 4px", fontWeight: 700 }}>Élèves supprimés (archivés)</p>}
+              <div style={r.statut === "sorti" ? { opacity: 0.7 } : undefined} className={`palette-item ${k === i ? "on" : ""}`} onMouseEnter={() => setI(k)} onClick={() => go(r)}>
                 <span className={`avatar ${r.sexe || ""}`}>{initiales(r.prenom, r.nom)}</span>
                 <div className="grow"><strong>{r.nom} {r.prenom}</strong><span>{r.matricule}{r.telephone ? ` · ${r.telephone}` : ""}</span></div>
-                {r.classe ? <span className={`chip ${r.cycle || ""}`}>{r.classe}</span> : <span className="badge gold">Non inscrit</span>}
+                {r.statut === "sorti" ? <span className="badge coral">Supprimé</span> : r.classe ? <span className={`chip ${r.cycle || ""}`}>{r.classe}</span> : <span className="badge gold">Non inscrit</span>}
               </div>
-            ))}
+            </Fragment>))}
         </div>
         <div className="palette-foot"><span>↑ ↓ pour naviguer</span><span className="row" style={{ gap: 4 }}><CornerDownLeft size={12} /> pour ouvrir</span></div>
       </div>
