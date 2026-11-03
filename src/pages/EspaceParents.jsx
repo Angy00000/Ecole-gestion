@@ -47,12 +47,13 @@ function Paiements({ d }) {
   const lignes = (s?.lignes || []).filter((l) => l.du > 0 || l.paye > 0);
   const frais = lignes.filter((l) => l.groupe === "frais"), mois = lignes.filter((l) => l.groupe === "mois");
   const ceMois = new Date().toISOString().slice(0, 7);
-  const etat = (l) => l.paye >= l.du ? ["Payé", "green"] : l.paye > 0 ? ["Partiel", "gold"] : (l.mois || "") <= ceMois ? ["À payer", "coral"] : ["À venir", ""];
+  const etat = (l) => l.paye >= l.du ? ["Payé", "green"] : l.paye > 0 ? ["Partiel", "gold"] : !l.mois ? ["À payer", "coral"] : l.mois < ceMois ? ["En retard", "coral"] : l.mois === ceMois ? ["À payer ce mois", "gold"] : ["À venir", ""];
   return (
     <>
       <div className="par-kpis">
         <div className="card"><span>Déjà payé</span><strong className="green">{fcfa(s?.total_paye)}</strong></div>
         <div className="card"><span>En retard aujourd'hui</span><strong className={s?.reste_echu ? "coral" : "green"}>{fcfa(s?.reste_echu)}</strong></div>
+        {s?.reste_mois_courant > 0 && <div className="card"><span>À payer ce mois</span><strong className="gold">{fcfa(s.reste_mois_courant)}</strong></div>}
         <div className="card"><span>Reste sur l'année</span><strong>{fcfa(s?.reste_annee)}</strong></div>
       </div>
       {frais.length > 0 && <div className="card par-bloc"><h3>Frais</h3>{frais.map((l, i) => { const [t, c] = etat(l); return (

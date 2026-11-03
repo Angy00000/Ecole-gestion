@@ -17,15 +17,17 @@ function analyse(sit) {
   const parCle = Object.fromEntries(lignes.map((l) => [cle(l.type, l.mois), l]));
   const reste = (l) => Math.max(l.du - l.paye, 0);
   const frais = lignes.filter((l) => l.groupe === "frais" && reste(l) > 0);
-  const retard = lignes.filter((l) => l.groupe === "mois" && l.mois <= mois && reste(l) > 0);
+  // Le mois en cours se paie pendant le mois : il n'est « en retard » qu'une fois le mois terminé.
+  const retard = lignes.filter((l) => l.groupe === "mois" && l.mois < mois && reste(l) > 0);
+  const courant = lignes.filter((l) => l.groupe === "mois" && l.mois === mois && reste(l) > 0);
   const avenir = lignes.filter((l) => l.groupe === "mois" && l.mois > mois && reste(l) > 0);
   const somme = (a) => a.reduce((t, l) => t + reste(l), 0);
-  return { parCle, cle, reste, frais, retard, avenir, tFrais: somme(frais), tRetard: somme(retard), tAvenir: somme(avenir) };
+  return { parCle, cle, reste, frais, retard, courant, avenir, tFrais: somme(frais), tRetard: somme(retard), tCourant: somme(courant), tAvenir: somme(avenir) };
 }
 
 function Ticket({ r, etab, sit, copie, rectifie }) {
   const a = analyse(sit);
-  const enRetard = a.tFrais + a.tRetard;
+  const enRetard = a.tFrais + a.tRetard + a.tCourant;
   return (
     <article className={`ticket ${r.annule ? "void" : ""}`}>
       {r.annule && <div className="void-stamp">ANNULÉ</div>}
@@ -72,7 +74,7 @@ function Ticket({ r, etab, sit, copie, rectifie }) {
       {sit && (
         <section className="t-reste">
           <h2 className="t-h2">Reste à payer — situation au {date(new Date())}</h2>
-          {a.frais.length + a.retard.length + a.avenir.length === 0 ? (
+          {a.frais.length + a.retard.length + a.courant.length + a.avenir.length === 0 ? (
             <p className="t-solde">Tous les frais et mensualités de l'année sont soldés. Merci !</p>
           ) : (
             <>
@@ -84,8 +86,14 @@ function Ticket({ r, etab, sit, copie, rectifie }) {
               )}
               {a.retard.length > 0 && (
                 <div className="t-grp">
-                  <h3>Mensualités échues non réglées</h3>
+                  <h3>Mensualités en retard (mois terminés)</h3>
                   {a.retard.length > 4 ? <div className="t-chips due">{a.retard.map((l) => <span key={l.mois}>{moisAbr(l.mois)} {l.mois.slice(2, 4)} : <b>{fcfa(a.reste(l))}</b>{l.paye > 0 ? ` (sur ${fcfa(l.du)})` : ""}</span>)}<span className="t-sum">Total retard : <b>{fcfa(a.tRetard)}</b></span></div> : a.retard.map((l) => <div key={l.mois} className="t-row"><span>{libelleLigne(l)} <em>{l.paye > 0 ? `(dû ${fcfa(l.du)}, réglé ${fcfa(l.paye)})` : "(non payé)"}</em></span><strong>{fcfa(a.reste(l))}</strong></div>)}
+                </div>
+              )}
+              {a.courant.length > 0 && (
+                <div className="t-grp">
+                  <h3>Mois en cours</h3>
+                  {a.courant.map((l) => <div key={l.mois} className="t-row"><span>{libelleLigne(l)} <em>{l.paye > 0 ? `(dû ${fcfa(l.du)}, réglé ${fcfa(l.paye)})` : "(à payer ce mois)"}</em></span><strong>{fcfa(a.reste(l))}</strong></div>)}
                 </div>
               )}
               {a.avenir.length > 0 && (
@@ -99,7 +107,7 @@ function Ticket({ r, etab, sit, copie, rectifie }) {
           <div className="t-totaux">
             <div><span>Total de l'année</span><strong>{fcfa(sit.total_du)}</strong></div>
             <div><span>Déjà réglé</span><strong>{fcfa(sit.total_paye)}</strong></div>
-            <div className={enRetard > 0 ? "warn" : ""}><span>À régler dès maintenant</span><strong>{fcfa(enRetard)}</strong></div>
+            <div className={enRetard > 0 ? "warn" : ""}><span>{a.tCourant > 0 ? "En retard + mois en cours" : "En retard"}</span><strong>{fcfa(enRetard)}</strong></div>
             <div className="main"><span>Reste sur l'année</span><strong>{fcfa(sit.reste_annee)}</strong></div>
           </div>
         </section>
@@ -222,7 +230,7 @@ function RecuServeur({ id }) {
     try { await api.post(`/recus/${id}/annuler`, { motif }); toast(`Reçu ${r.numero} annulé`); ["recu", "recus", "situation", "eleve", "dashboard", "impayes", "caisse"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); setAnnul(false); }
     catch (e) { toast(e.message, "error"); }
   };
-  const msg = `Bonjour, l'${etab.nom} confirme la réception de ${fcfa(r.montant)} pour ${r.prenom} ${r.nom} (${r.classe}), reçu n° ${r.numero} du ${date(r.date_paiement)}. Détail : ${r.lignes.map((l) => `${libelleLigne(l)} ${fcfa(l.montant)}`).join(", ")}.${det.frais.length ? ` Frais restants : ${det.frais.map((l) => `${libelleLigne(l)} ${fcfa(det.reste(l))}`).join(", ")}.` : ""}${det.retard.length ? ` Mois en retard : ${det.retard.map((l) => `${libelleLigne(l).replace("Mensualité ", "")} ${fcfa(det.reste(l))}`).join(", ")}.` : ""} À régler maintenant : ${fcfa(det.tFrais + det.tRetard)}. Reste sur l'année : ${fcfa(reste)}. Merci.`;
+  const msg = `Bonjour, l'${etab.nom} confirme la réception de ${fcfa(r.montant)} pour ${r.prenom} ${r.nom} (${r.classe}), reçu n° ${r.numero} du ${date(r.date_paiement)}. Détail : ${r.lignes.map((l) => `${libelleLigne(l)} ${fcfa(l.montant)}`).join(", ")}.${det.frais.length ? ` Frais restants : ${det.frais.map((l) => `${libelleLigne(l)} ${fcfa(det.reste(l))}`).join(", ")}.` : ""}${det.retard.length ? ` Mois en retard : ${det.retard.map((l) => `${libelleLigne(l).replace("Mensualité ", "")} ${fcfa(det.reste(l))}`).join(", ")}.` : ""}${det.courant.length ? ` Mois en cours : ${det.courant.map((l) => `${libelleLigne(l).replace("Mensualité ", "")} ${fcfa(det.reste(l))}`).join(", ")}.` : ""} Reste sur l'année : ${fcfa(reste)}. Merci.`;
 
   return (
     <div className="print-page">

@@ -20,7 +20,9 @@ export default function Impayes() {
   const nav = useNavigate();
   const mois = moisDe(s.annee);
   const courant = new Date().toISOString().slice(0, 7);
-  const [jusqua, setJusqua] = useState(mois.includes(courant) ? courant : mois[0] || courant);
+  // Par défaut : jusqu'au mois précédent (le mois en cours n'est pas encore en retard).
+  const precedent = (() => { const [y, m] = courant.split("-").map(Number); const d = new Date(y, m - 2, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
+  const [jusqua, setJusqua] = useState(mois.includes(precedent) ? precedent : mois[0] || courant);
   const [classe, setClasse] = useState("");
   const [q, setQ] = useState("");
   const [dq, setDq] = useState("");
@@ -64,7 +66,7 @@ export default function Impayes() {
         <div className="toolbar">
           <div className="with-icon"><Search size={18} /><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un élève…" /></div>
           <Select value={classe} onChange={(e) => setClasse(e.target.value)} aria-label="Classe"><option value="">Toutes les classes</option>{classes.data?.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}</Select>
-          <Select value={jusqua} onChange={(e) => setJusqua(e.target.value)} aria-label="Jusqu'au mois">{mois.map((m) => <option key={m} value={m}>Jusqu'à {moisLong(m)}</option>)}</Select>
+          <Select value={jusqua} onChange={(e) => setJusqua(e.target.value)} aria-label="Jusqu'au mois">{mois.filter((m) => m <= courant).map((m) => <option key={m} value={m}>Jusqu'à {moisLong(m)}{m === courant ? " (mois en cours, pas encore en retard)" : ""}</option>)}</Select>
         </div>
         {isLoading ? <Spinner /> : error ? <div style={{ padding: 18 }}><ErrorBox error={error} /></div> : !data.rows.length ? (
           <Empty icon={PartyPopper} title="Aucun impayé">Tous les élèves sont à jour à cette date.</Empty>

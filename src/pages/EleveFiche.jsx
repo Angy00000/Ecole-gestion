@@ -46,6 +46,7 @@ function Situation({ inscription, peutEncaisser, onEncaisser }) {
         <div><div className="l">Total de l'année</div><div className="v">{fcfa(data.total_du)}</div></div>
         <div><div className="l">Payé</div><div className="v" style={{ color: "var(--green)" }}>{fcfa(data.total_paye)}</div></div>
         <div><div className="l">En retard aujourd'hui</div><div className="v" style={{ color: data.reste_echu ? "var(--coral)" : "var(--green)" }}>{fcfa(data.reste_echu)}</div></div>
+        {data.reste_mois_courant > 0 && <div><div className="l">À payer ce mois</div><div className="v" style={{ color: "var(--gold-ink, #8a6d00)" }}>{fcfa(data.reste_mois_courant)}</div></div>}
         <div><div className="l">Reste sur l'année</div><div className="v">{fcfa(data.reste_annee)}</div></div>
       </div>
       <div className="card-body" style={{ borderTop: "1px solid var(--line)" }}>
@@ -64,15 +65,15 @@ function Situation({ inscription, peutEncaisser, onEncaisser }) {
         <h4 className="enc-h">Mensualités {inscription.annee} — détail mois par mois</h4>
         {inscription.gratuit ? <p className="small muted">Mensualités offertes pour cette année : aucun mois à payer.</p> : <>
           <div className="mois-legende">
-            <span><i className="paid" />Payé</span><span><i className="partial" />Payé en partie</span><span><i className="late" />En retard (mois passé non payé)</span>
+            <span><i className="paid" />Payé</span><span><i className="partial" />Payé en partie</span><span><i className="late" />En retard (mois terminé non payé)</span><span><i className="current" />Mois en cours</span>
             <span><i className="upcoming" />À venir</span><span><i className="free" />Retiré / rien à payer</span>
           </div>
           <div className="mois-grid">
             {mois.map((l) => {
               const retire = retires.includes(l.mois);
-              const st = retire ? "free" : l.du === 0 ? "free" : l.paye >= l.du ? "paid" : l.paye ? "partial" : l.mois <= cur ? "late" : "upcoming";
+              const st = retire ? "free" : l.du === 0 ? "free" : l.paye >= l.du ? "paid" : l.mois < cur ? (l.paye ? "partial" : "late") : l.mois === cur ? "current" : l.paye ? "partial" : "upcoming";
               const reste = Math.max(l.du - l.paye, 0);
-              const etat = { paid: "Payé", partial: "Payé en partie", late: "En retard", upcoming: "À venir", free: retire ? "Retiré de la scolarité" : l.mois.endsWith("-06") ? "Juin : réparti sur janvier et février" : "Rien à payer" }[st];
+              const etat = { paid: "Payé", partial: "Payé en partie", late: "En retard", current: l.paye ? `Mois en cours · reste ${fcfa(Math.max(l.du - l.paye, 0))}` : "À payer ce mois", upcoming: "À venir", free: retire ? "Retiré de la scolarité" : l.mois.endsWith("-06") ? "Juin : réparti sur janvier et février" : "Rien à payer" }[st];
               return (
                 <div key={l.mois} className={`mois-carte ${st}`}>
                   <div className="mc-head"><strong>{moisLong(l.mois)}</strong><span className="mc-etat">{st === "paid" && <Check size={12} />}{etat}</span></div>

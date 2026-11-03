@@ -542,7 +542,9 @@ route("GET", "/dashboard", async (ctx) => {
   ]);
   let impayes = null;
   if (voitFinances) {
-    const r = await one(`select coalesce(sum(reste),0) as total, count(*) filter (where reste > 0) as eleves from (${SQL_IMPAYES}) x`, [annee, new Date().toISOString().slice(0, 10)]);
+    // Retards = jusqu'au mois précédent (le mois en cours n'est pas encore en retard).
+    const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1);
+    const r = await one(`select coalesce(sum(reste),0) as total, count(*) filter (where reste > 0) as eleves from (${SQL_IMPAYES}) x`, [annee, d.toISOString().slice(0, 10)]);
     impayes = r;
   }
   return {
@@ -784,8 +786,10 @@ const situation = async (inscriptionId, exclure = 0) => {
   const mois = new Date().toISOString().slice(0, 7);
   const totalDu = lignes.reduce((t, l) => t + l.du, 0);
   const totalPaye = lignes.filter((l) => l.groupe !== "autre").reduce((t, l) => t + Math.min(l.paye, l.du), 0);
-  const echu = lignes.filter((l) => l.groupe === "frais" || (l.groupe === "mois" && l.mois <= mois)).reduce((t, l) => t + Math.max(l.du - l.paye, 0), 0);
-  return { inscription: ins, lignes, total_du: totalDu, total_paye: totalPaye, reste_annee: Math.max(totalDu - totalPaye, 0), reste_echu: echu };
+  // En retard = frais d'inscription restants + mois déjà terminés. Le mois en cours se paie pendant le mois : il n'est pas en retard.
+  const echu = lignes.filter((l) => l.groupe === "frais" || (l.groupe === "mois" && l.mois < mois)).reduce((t, l) => t + Math.max(l.du - l.paye, 0), 0);
+  const courant = lignes.filter((l) => l.groupe === "mois" && l.mois === mois).reduce((t, l) => t + Math.max(l.du - l.paye, 0), 0);
+  return { inscription: ins, lignes, total_du: totalDu, total_paye: totalPaye, reste_annee: Math.max(totalDu - totalPaye, 0), reste_echu: echu, reste_mois_courant: courant };
 };
 
 // Retirer (ou rétablir) un mois de la scolarité d'un élève : il n'est plus dû, donc plus d'arriéré.

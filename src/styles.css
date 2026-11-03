@@ -614,7 +614,7 @@ table.table { width: 100%; border-collapse: separate; border-spacing: 0; }
 .mode.on.m-orange_money { border-color: #f47b20; color: #c75d0e; background: #fff1e6; box-shadow: inset 0 0 0 1px #f47b20; }
 
 /* ── Situation financière (fiche élève) ── */
-.sit-head { display: grid; grid-template-columns: repeat(4, 1fr); }
+.sit-head { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .sit-head > div { padding: 18px 22px; }
 .sit-head > div + div { border-left: 1px solid var(--line); }
 .sit-head .l { font-size: 12px; color: var(--muted); font-weight: 700; }
@@ -1600,3 +1600,4 @@ tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--surf
 .eg-mois-liste button { display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); font-weight: 700; font-size: 13px; color: var(--ink-2); cursor: pointer; }
 .eg-mois-liste button.on { background: var(--teal); border-color: var(--teal); color: #fff; }
 .eg-montant .xs { white-space: nowrap; }
+.mois-legende .current, .mois-carte.current { --mc: var(--gold, #d9a400); }
