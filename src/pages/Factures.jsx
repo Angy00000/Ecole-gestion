@@ -11,6 +11,15 @@ import Partager from "../components/Partager";
 
 const moisDe = (a) => { const out = []; if (!a) return out; const d = new Date(a.debut); d.setDate(1); const f = new Date(a.fin); while (d <= f) { out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); d.setMonth(d.getMonth() + 1); } return out; };
 
+// « Mois seul » : uniquement la mensualité du mois, sans les retards ni les frais d'inscription.
+export const selonContenu = (r, seul) => (seul ? { ...r, details_retards: [], details_frais: [], arrieres: 0, frais_reste: 0, total: r.reste_mois } : r);
+const ContenuFacture = ({ seul, onChange }) => (
+  <div className="seg" role="radiogroup" aria-label="Contenu de la facture">
+    <button className={!seul ? "on" : ""} onClick={() => onChange(false)} title="Mensualité du mois + mois en retard + frais d'inscription restants">Tout ce qui est dû</button>
+    <button className={seul ? "on" : ""} onClick={() => onChange(true)} title="Seulement la mensualité du mois">Mois seul</button>
+  </div>
+);
+
 export const messageFacture = (r, etab, mois) => {
   const L = [];
   if (r.reste_mois) L.push(`- Mensualité ${moisLong(mois)} : ${fcfa(r.reste_mois)}${r.paye_mois ? ` (payé ${fcfa(r.paye_mois)} sur ${fcfa(r.du_mois)})` : ""}`);
@@ -30,11 +39,14 @@ export default function Factures() {
   const [m, setM] = useState(def);
   const [classe, setClasse] = useState("");
   const [tous, setTous] = useState(false);
+  const [seul, setSeul] = useState(false);
   const [q, setQ] = useState("");
   const classes = useQuery({ queryKey: ["classes", s.annee?.id], queryFn: () => api.get("/classes", { annee_id: s.annee?.id }) });
   const { data, isLoading, error } = useQuery({ queryKey: ["factures", m, classe, s.annee?.id], queryFn: () => api.get("/factures", { mois: m, classe_id: classe, annee_id: s.annee?.id }), enabled: !!m });
-  const rows = (data?.rows || []).filter((r) => (tous || r.total > 0) && (!q || `${r.nom} ${r.prenom} ${r.matricule}`.toLowerCase().includes(q.toLowerCase())));
-  const imprimer = (eleve) => nav(`/factures/imprimer?mois=${m}${classe ? `&classe=${classe}` : ""}${eleve ? `&eleve=${eleve}` : ""}${tous ? "&tous=1" : ""}`);
+  const rows = (data?.rows || []).map((r) => selonContenu(r, seul)).filter((r) => (tous || r.total > 0) && (!q || `${r.nom} ${r.prenom} ${r.matricule}`.toLowerCase().includes(q.toLowerCase())));
+  const imprimer = (eleve) => nav(`/factures/imprimer?mois=${m}${classe ? `&classe=${classe}` : ""}${eleve ? `&eleve=${eleve}` : ""}${tous ? "&tous=1" : ""}${seul ? "&seul=1" : ""}`);
+  const totalVue = seul ? (data?.rows || []).reduce((t, r) => t + r.reste_mois, 0) : data?.total;
+  const aPayerVue = seul ? (data?.rows || []).filter((r) => r.reste_mois > 0).length : data?.a_payer;
 
   return (
     <>
@@ -43,14 +55,15 @@ export default function Factures() {
       </PageHead>
       {data && (
         <div className="dash" style={{ marginBottom: 22 }}>
-          <div className="card kpi c4"><div className="top"><span className="label">Factures à remettre</span><span className="ic teal"><FileText size={20} /></span></div><div className="value">{data.a_payer}</div><div className="sub">élèves qui ont un montant à payer</div></div>
-          <div className="card kpi c8"><div className="top"><span className="label">Montant total facturé pour {moisLong(m)}</span></div><div className="value">{nombre(data.total)}<small>F</small></div><div className="sub">mensualité du mois + retards + frais d'inscription restants</div></div>
+          <div className="card kpi c4"><div className="top"><span className="label">Factures à remettre</span><span className="ic teal"><FileText size={20} /></span></div><div className="value">{aPayerVue}</div><div className="sub">élèves qui ont un montant à payer</div></div>
+          <div className="card kpi c8"><div className="top"><span className="label">Montant total facturé pour {moisLong(m)}</span></div><div className="value">{nombre(totalVue)}<small>F</small></div><div className="sub">{seul ? `mensualité de ${moisLong(m)} seulement` : "mensualité du mois + retards + frais d'inscription restants"}</div></div>
         </div>
       )}
       <div className="card">
         <div className="toolbar">
           <Select value={m} onChange={(e) => setM(e.target.value)} aria-label="Mois">{(moisOk.length ? moisOk : mois.slice(0, 1)).map((x) => <option key={x} value={x}>Facture de {moisLong(x)}</option>)}</Select>
           <Select value={classe} onChange={(e) => setClasse(e.target.value)} aria-label="Classe"><option value="">Toutes les classes</option>{classes.data?.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}</Select>
+          <ContenuFacture seul={seul} onChange={setSeul} />
           <div className="with-icon"><Search size={18} /><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un élève…" /></div>
           <span className="spacer" />
           <label className="check small"><input type="checkbox" checked={tous} onChange={(e) => setTous(e.target.checked)} />Inclure les élèves à jour</label>
@@ -60,14 +73,14 @@ export default function Factures() {
         ) : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Élève</th><th>Classe</th><th className="r">Mois</th><th className="r hide-m">Retards</th><th className="r hide-m">Frais d'entrée</th><th className="r">Total</th><th /></tr></thead>
+              <thead><tr><th>Élève</th><th>Classe</th><th className="r">Mois</th>{!seul && <><th className="r hide-m">Retards</th><th className="r hide-m">Frais d'entrée</th></>}<th className="r">Total</th><th /></tr></thead>
               <tbody>{rows.map((r) => (
                 <tr key={r.inscription_id}>
                   <td><div className="person"><span className={`avatar ${r.sexe || ""}`}>{initiales(r.prenom, r.nom)}</span><div><strong>{r.nom} {r.prenom}</strong><span>{r.numero}</span></div></div></td>
                   <td><span className={`chip ${r.cycle}`}>{r.classe}</span></td>
                   <td className="r num">{r.reste_mois ? fcfa(r.reste_mois) : <span className="muted">—</span>}</td>
-                  <td className="r num hide-m">{r.arrieres ? <span style={{ color: "var(--coral)" }}>{fcfa(r.arrieres)}</span> : <span className="muted">—</span>}</td>
-                  <td className="r num hide-m">{r.frais_reste ? fcfa(r.frais_reste) : <span className="muted">—</span>}</td>
+                  {!seul && <><td className="r num hide-m">{r.arrieres ? <span style={{ color: "var(--coral)" }}>{fcfa(r.arrieres)}</span> : <span className="muted">—</span>}</td>
+                  <td className="r num hide-m">{r.frais_reste ? fcfa(r.frais_reste) : <span className="muted">—</span>}</td></>}
                   <td className="r amount">{fcfa(r.total)}</td>
                   <td className="r" style={{ whiteSpace: "nowrap" }}>
                     {r.telephone && r.total > 0 && <a className="btn sm wa" href={`https://wa.me/${telWa(r.telephone)}?text=${encodeURIComponent(messageFacture(r, s.etablissement, m))}`} target="_blank" rel="noreferrer" title="Envoyer par WhatsApp"><MessageCircle size={15} /></a>}
@@ -121,18 +134,20 @@ function Facture({ r, mois, etab }) {
 export function FacturesImpression() {
   const s = useSession();
   const nav = useNav();
-  const [p] = useSearchParams();
-  const mois = p.get("mois"), tous = p.get("tous") === "1";
+  const [p, setP] = useSearchParams();
+  const mois = p.get("mois"), tous = p.get("tous") === "1", seul = p.get("seul") === "1";
+  const changerSeul = (v) => { const n = new URLSearchParams(p); if (v) n.set("seul", "1"); else n.delete("seul"); setP(n, { replace: true }); };
   const { data, isLoading, error } = useQuery({ queryKey: ["factures", mois, p.get("classe") || "", p.get("eleve") || "", s.annee?.id], queryFn: () => api.get("/factures", { mois, classe_id: p.get("classe"), eleve_id: p.get("eleve"), annee_id: s.annee?.id }) });
   if (isLoading) return <Spinner />;
   if (error) return <div style={{ padding: 32 }}><ErrorBox error={error} /></div>;
-  const rows = data.rows.filter((r) => tous || p.get("eleve") || r.total > 0);
+  const rows = data.rows.map((r) => selonContenu(r, seul)).filter((r) => tous || p.get("eleve") || r.total > 0);
   return (
     <div className="print-page">
       <style>{"@page { size: A5 portrait; margin: 0; }"}</style>
       <div className="print-bar">
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{rows.length} facture{rows.length > 1 ? "s" : ""}</strong> — {moisLong(mois)}</span>
+        <ContenuFacture seul={seul} onChange={changerSeul} />
         {rows.length > 0 && <Partager format="A5" nom={rows.length === 1 ? `Facture-${mois}-${rows[0].nom}-${rows[0].prenom}` : `Factures-${mois}`} telephone={rows.length === 1 ? rows[0].telephone : null} message={rows.length === 1 ? messageFacture(rows[0], s.etablissement, mois) : `Factures ${moisLong(mois)} — ${s.etablissement?.nom}`} />}
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
