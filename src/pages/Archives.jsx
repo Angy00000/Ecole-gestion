@@ -1,29 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Archive, FileText, Upload, Camera, Download, ExternalLink, Eye, Search, Pencil, Trash2, Plus, Paperclip, AlertTriangle, CalendarClock, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { getToken } from "../lib/api";
+import { api } from "../lib/api";
 import { date, today } from "../lib/format";
 import { Modal, Field, Input, Select, Textarea, Spinner, ErrorBox, Empty, Confirm, PageHead, useToast } from "../components/ui";
-
-// Les archives ont leur propre petit service (/api/archives), avec la même session.
-// Jamais de « / » final (/api/archives/) : Vercel ne le redirige pas et répond 404.
-const BASE = /^https?:$/.test(location.protocol) ? "/api/archives" : "https://ecole-gestion-eta.vercel.app/api/archives";
-async function appel(method, path, body) {
-  let res;
-  try {
-    res = await fetch(BASE + path, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` }, body: body ? JSON.stringify(body) : undefined });
-  } catch { throw new Error("Pas de connexion internet. Les archives ont besoin d'internet : vérifiez le réseau puis réessayez."); }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
-  return data;
-}
-const qs = (p) => { const e = Object.entries(p || {}).filter(([, v]) => v); return e.length ? "?" + new URLSearchParams(e) : ""; };
-const api = {
-  get: (path, p) => appel("GET", path.replace(/^\/archives/, "") + qs(p)),
-  post: (path, b) => appel("POST", path.replace(/^\/archives/, ""), b),
-  put: (path, b) => appel("PUT", path.replace(/^\/archives/, ""), b),
-  del: (path) => appel("DELETE", path.replace(/^\/archives/, "")),
-};
 
 // Types de documents officiels (mêmes codes que le serveur).
 export const TYPES_ARCHIVE = {

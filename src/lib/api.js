@@ -41,7 +41,8 @@ async function request(method, path, body, apercu) {
     try {
       const data = await direct(method, path, body);
       marquerHorsLigne(false);
-      if (method === "GET" && getToken()) garder(path, data);
+      // Les archives officielles (scans) ne sont jamais copiées sur l'appareil.
+      if (method === "GET" && getToken() && !path.startsWith("/archives")) garder(path, data);
       return data;
     } catch (e) {
       if (e.status !== 0) throw e;

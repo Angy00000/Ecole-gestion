@@ -5,14 +5,6 @@
       "destination": "/api/v2?__p=:path*"
     },
     {
-      "source": "/api/archives",
-      "destination": "https://br-dawn-art-b2psp579-archives.compute.c-6.eu-central-1.aws.neon.tech/"
-    },
-    {
-      "source": "/api/archives/:path*",
-      "destination": "https://br-dawn-art-b2psp579-archives.compute.c-6.eu-central-1.aws.neon.tech/:path*"
-    },
-    {
       "source": "/((?!api/|assets/|logo|icon-|manifest|sw\\.js).*)",
       "destination": "/index.html"
     }
