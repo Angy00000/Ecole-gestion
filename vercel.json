@@ -28,5 +28,22 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/parents",
+      "destination": "https://easyschool-sn.vercel.app/parents?ecole=esjbm",
+      "permanent": false
+    },
+    {
+      "source": "/parents/:rest*",
+      "destination": "https://easyschool-sn.vercel.app/parents?ecole=esjbm",
+      "permanent": false
+    },
+    {
+      "source": "/:path((?!api/|sw\\.js).*)",
+      "destination": "https://easyschool-sn.vercel.app/?ecole=esjbm",
+      "permanent": false
+    }
   ]
 }

@@ -2394,6 +2394,8 @@ route("GET", "/", async () => {
 export default {
   async fetch(request) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+    // ESJBM utilise désormais Easy School : cette ancienne application n'enregistre plus rien.
+    return json({ error: "Le logiciel de l'école a déménagé : utilisez maintenant https://easyschool-sn.vercel.app/?ecole=esjbm (mêmes identifiants). Rechargez la page." }, 410);
     const url = new URL(request.url);
     // Vercel : /api/v2/xxx est réécrit en /api/v2?__p=xxx (voir vercel.json).
     const rewritten = url.searchParams.get("__p");
