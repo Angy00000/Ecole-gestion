@@ -16,3 +16,7 @@ export const CONTRATS = { cdi: "CDI", cdd: "CDD", vacataire: "Vacataire", stagia
 export const TYPES_ABS = { absence: "Absence", retard: "Retard", conge: "Congé", permission: "Permission", maladie: "Maladie", formation: "Formation" };
 export const COULEUR_ABS = { absence: "coral", retard: "gold", conge: "teal", permission: "teal", maladie: "rose", formation: "green" };
 export const service = (p) => SERVICES[p?.service] || SERVICES.autre;
+// Services en plus du service principal (une personne peut être dans plusieurs services).
+export const autresServices = (p) => String(p?.autres_services || "").split(",").filter((x) => x && x !== p?.service && SERVICES[x]);
+export const tousServices = (p) => [p?.service || "autre", ...autresServices(p)];
+export const dansService = (p, k) => tousServices(p).includes(k);

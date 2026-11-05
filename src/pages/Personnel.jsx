@@ -10,7 +10,7 @@ import { initiales, date, fcfa, today, MODES } from "../lib/format";
 import { Modal, Field, Input, Select, Money, Textarea, Spinner, ErrorBox, Empty, Confirm, PageHead, useToast } from "../components/ui";
 import Partager from "../components/Partager";
 import { EnTete } from "./Documents";
-import { SERVICES, CONTRATS, TYPES_ABS, COULEUR_ABS, service } from "../lib/personnel";
+import { SERVICES, CONTRATS, TYPES_ABS, COULEUR_ABS, service, autresServices, dansService } from "../lib/personnel";
 
 const MOIS_L = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const moisLib = (m) => { const [y, mo] = String(m).slice(0, 7).split("-"); return `${MOIS_L[Number(mo) - 1]} ${y}`; };
@@ -27,12 +27,14 @@ function PersonnelForm({ p, onClose, serviceDefaut }) {
   const [v, setV] = useState({ nom: "", prenom: "", sexe: "", service: serviceDefaut || "enseignant", poste: "", contrat: "", telephone: "", email: "", adresse: "", specialite: "", diplome: "", salaire: null, statut: "actif", horaires: "", contact_urgence: "", observations: "", ...(p || {}), date_embauche: p?.date_embauche?.slice(0, 10) || "" });
   const [error, setError] = useState(null);
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
-  const ens = v.service === "enseignant";
+  const autres = autresServices(v);
+  const ens = v.service === "enseignant" || autres.includes("enseignant");
+  const basculerAutre = (k) => setV({ ...v, autres_services: (autres.includes(k) ? autres.filter((x) => x !== k) : [...autres, k]).join(",") });
   const save = async () => {
     setError(null);
     try {
       const d = { nom: v.nom, prenom: v.prenom, sexe: v.sexe || null, service: v.service, poste: v.poste, contrat: v.contrat || null, telephone: v.telephone, email: v.email, adresse: v.adresse,
-        specialite: v.specialite, diplome: v.diplome, date_embauche: v.date_embauche || null, statut: v.statut, horaires: v.horaires, contact_urgence: v.contact_urgence, observations: v.observations };
+        specialite: v.specialite, diplome: v.diplome, date_embauche: v.date_embauche || null, statut: v.statut, horaires: v.horaires, contact_urgence: v.contact_urgence, observations: v.observations, autres_services: autres.join(",") };
       if (s.peut("finances.lire")) d.salaire = v.salaire || null;
       if (ens) d.classe_id = v.classe_id ? Number(v.classe_id) : null;
       if (p) await api.put(`/enseignants/${p.id}`, d); else await api.post("/enseignants", d);
@@ -49,7 +51,12 @@ function PersonnelForm({ p, onClose, serviceDefaut }) {
         <ErrorBox error={error} />
         <Field label="Service">
           <div className="perso-services">{Object.entries(SERVICES).map(([k, x]) => (
-            <button key={k} type="button" className={v.service === k ? "on" : ""} onClick={() => setV({ ...v, service: k })}><span>{x.ic}</span>{x.nom}</button>
+            <button key={k} type="button" className={v.service === k ? "on" : ""} onClick={() => setV({ ...v, service: k, autres_services: autres.filter((y) => y !== k).join(",") })}><span>{x.ic}</span>{x.nom}</button>
+          ))}</div>
+        </Field>
+        <Field label="Fait aussi partie de" hint="Facultatif — pour une personne qui a plusieurs rôles (ex. surveillant qui est aussi dans l'administration). Elle apparaîtra dans chaque service, sans doublon de fiche ni de salaire.">
+          <div className="perso-autres">{Object.entries(SERVICES).filter(([k]) => k !== v.service && k !== "autre").map(([k, x]) => (
+            <button key={k} type="button" className={autres.includes(k) ? "on" : ""} onClick={() => basculerAutre(k)}>{autres.includes(k) ? "✓ " : "+ "}{x.nom}</button>
           ))}</div>
         </Field>
         <div className="grid g3">
@@ -153,9 +160,9 @@ function Equipe({ personnel }) {
   const [del, setDel] = useState(null);
   const peut = s.peut("enseignants.ecrire");
   const q = f.q.trim().toLowerCase();
-  const rows = personnel.filter((x) => (f.tous || x.statut === "actif") && (!f.service || (x.service || "autre") === f.service)
+  const rows = personnel.filter((x) => (f.tous || x.statut === "actif") && (!f.service || dansService(x, f.service))
     && (!q || `${x.prenom} ${x.nom} ${x.poste || ""} ${x.telephone || ""}`.toLowerCase().includes(q)));
-  const compte = useMemo(() => Object.fromEntries(Object.keys(SERVICES).map((k) => [k, personnel.filter((x) => x.statut === "actif" && (x.service || "autre") === k).length])), [personnel]);
+  const compte = useMemo(() => Object.fromEntries(Object.keys(SERVICES).map((k) => [k, personnel.filter((x) => x.statut === "actif" && dansService(x, k)).length])), [personnel]);
   const supprimer = async () => {
     try { await api.del(`/enseignants/${del.id}`); toast("Fiche supprimée"); ["personnel", "enseignants"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); } catch (e) { toast(e.message, "error"); }
     setDel(null);
@@ -180,7 +187,7 @@ function Equipe({ personnel }) {
           Enregistrez toute l'équipe : direction, secrétariat, enseignants, infirmière, cantine, nounous, entretien, gardien, chauffeur…
         </Empty></div>
       ) : Object.entries(SERVICES).map(([k, x]) => {
-        const l = rows.filter((r) => (r.service || "autre") === k);
+        const l = rows.filter((r) => dansService(r, k));
         if (!l.length) return null;
         return (
           <section key={k} className="perso-groupe">
@@ -197,6 +204,8 @@ function Equipe({ personnel }) {
                   <div className="t"><strong>{e.prenom} {e.nom}</strong><span>{e.poste || (k === "enseignant" ? e.specialite || "Enseignant" : x.poste.split(",")[0])}{e.statut !== "actif" ? " · parti" : ""}</span></div>
                 </div>
                 <div className="perso-badges">
+                  {(e.service || "autre") !== k && <span className="badge teal">Principal : {SERVICES[e.service]?.nom || "Autres"}</span>}
+                  {(e.service || "autre") === k && autresServices(e).map((a) => <span key={a} className="badge">Aussi : {SERVICES[a].nom}</span>)}
                   {e.absent_aujourdhui && <span className="badge coral">Absent(e) aujourd'hui</span>}
                   {e.contrat && <span className="badge">{CONTRATS[e.contrat] || e.contrat}</span>}
                   {Number(e.absences_mois) > 0 && <span className="badge gold">{e.absences_mois} absence{e.absences_mois > 1 ? "s" : ""} ce mois</span>}
@@ -421,7 +430,7 @@ export function PersonnelImpression() {
         {Object.entries(SERVICES).map(([k, x]) => { const g = l.filter((r) => (r.service || "autre") === k); return g.length ? (
           <div key={k} className="etat-classe"><h3>{x.nom}<span>{g.length}</span></h3>
             <table className="b-table d-list"><thead><tr><th>N°</th><th>Prénom et nom</th><th>Poste</th><th>Téléphone</th><th>Contrat</th><th>Depuis</th></tr></thead>
-              <tbody>{g.map((r, i) => <tr key={r.id}><td>{i + 1}</td><td><strong>{r.prenom} {r.nom}</strong></td><td>{r.poste || r.classes_titulaire || ""}</td><td className="nw">{r.telephone || ""}</td><td className="nw">{CONTRATS[r.contrat] || ""}</td><td className="nw">{r.date_embauche ? date(r.date_embauche) : ""}</td></tr>)}</tbody></table>
+              <tbody>{g.map((r, i) => <tr key={r.id}><td>{i + 1}</td><td><strong>{r.prenom} {r.nom}</strong></td><td>{r.poste || r.classes_titulaire || ""}{autresServices(r).length ? <small style={{ display: "block", color: "#666" }}>aussi : {autresServices(r).map((a) => SERVICES[a].nom).join(", ")}</small> : null}</td><td className="nw">{r.telephone || ""}</td><td className="nw">{CONTRATS[r.contrat] || ""}</td><td className="nw">{r.date_embauche ? date(r.date_embauche) : ""}</td></tr>)}</tbody></table>
           </div>) : null; })}
         <div className="d-sign"><p>Fait à {etab.ville || "Malika"}, le {date(today())}</p><p className="d-sign-t">La Direction</p></div>
       </article>

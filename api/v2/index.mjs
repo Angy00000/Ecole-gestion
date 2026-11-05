@@ -1775,7 +1775,15 @@ route("GET", "/rapport", async (ctx) => {
 });
 
 // ═══ PÉDAGOGIE ═════════════════════════════════════════════════════════════
-const COLS_ENS = ["nom", "prenom", "sexe", "telephone", "email", "adresse", "specialite", "diplome", "date_embauche", "salaire", "statut", "observations", "service", "poste", "contrat", "horaires", "contact_urgence"];
+const COLS_ENS = ["nom", "prenom", "sexe", "telephone", "email", "adresse", "specialite", "diplome", "date_embauche", "salaire", "statut", "observations", "service", "poste", "contrat", "horaires", "contact_urgence", "autres_services"];
+// Services en plus du service principal (ex. surveillant qui fait aussi partie de l'administration), stockés « a,b ».
+const nettoyerServices = (d) => {
+  if (!("autres_services" in d)) return;
+  const l = [...new Set((Array.isArray(d.autres_services) ? d.autres_services : String(d.autres_services || "").split(",")).map((x) => String(x).trim()))]
+    .filter((x) => SERVICES_PERSO.includes(x) && x !== d.service);
+  d.autres_services = l.length ? l.join(",") : null;
+};
+const estEnseignantSql = "(coalesce(e.service, 'enseignant')='enseignant' or ',' || coalesce(e.autres_services, '') || ',' like '%,enseignant,%')";
 route("GET", "/enseignants", async (ctx) => {
   exige(ctx, "pedagogie.lire");
   const annee = await anneeCourante(ctx.query.annee_id);
@@ -1785,7 +1793,7 @@ route("GET", "/enseignants", async (ctx) => {
       (select count(*) from app.emploi_temps t join app.classes c on c.id=t.classe_id and c.annee_id=$1 where t.enseignant_id=e.id) as creneaux,
       (select c.id from app.classes c where c.titulaire_id=e.id and c.annee_id=$1 order by c.ordre limit 1) as classe_id,
       (select u.email from app.utilisateurs u where u.id=e.utilisateur_id) as compte
-    from app.enseignants e where coalesce(e.service, 'enseignant')='enseignant' order by e.statut, e.nom, e.prenom`, [annee]).then((rows) => peut(ctx.user, "finances.lire") ? rows : rows.map(({ salaire, ...x }) => x));
+    from app.enseignants e where ${estEnseignantSql} order by e.statut, e.nom, e.prenom`, [annee]).then((rows) => peut(ctx.user, "finances.lire") ? rows : rows.map(({ salaire, ...x }) => x));
 });
 // École primaire : un enseignant titulaire par classe.
 const affecterClasse = async (ensId, classeId) => {
@@ -1799,6 +1807,7 @@ route("POST", "/enseignants", async (ctx) => {
   requis(d, [["nom", "Le nom"], ["prenom", "Le prénom"]]);
   d.nom = d.nom.trim().toUpperCase();
   if (d.service && !SERVICES_PERSO.includes(d.service)) d.service = "autre";
+  nettoyerServices(d);
   const r = await one(...insertSql("app.enseignants", d));
   if ("classe_id" in ctx.body) await affecterClasse(r.id, ctx.body.classe_id);
   await journal(ctx, "creation", "enseignant", r.id, { nom: `${r.prenom} ${r.nom}` });
@@ -1809,7 +1818,9 @@ route("PUT", "/enseignants/:id", async (ctx) => {
   const d = pick(ctx.body, COLS_ENS);
   if (d.nom) d.nom = d.nom.trim().toUpperCase();
   if (d.service && !SERVICES_PERSO.includes(d.service)) d.service = "autre";
-  if (d.service && d.service !== "enseignant") ctx.body.classe_id = null; // seul un enseignant est titulaire d'une classe
+  nettoyerServices(d);
+  // seul un enseignant (service principal ou en plus) est titulaire d'une classe
+  if (d.service && d.service !== "enseignant" && !String(d.autres_services || "").split(",").includes("enseignant")) ctx.body.classe_id = null;
   const r = Object.keys(d).length ? await one(...updateSql("app.enseignants", ctx.params.id, d)) : { id: Number(ctx.params.id) };
   if ("classe_id" in ctx.body) await affecterClasse(r.id, ctx.body.classe_id);
   await journal(ctx, "modification", "enseignant", r.id);
