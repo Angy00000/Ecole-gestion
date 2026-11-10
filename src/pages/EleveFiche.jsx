@@ -145,6 +145,11 @@ function InscriptionModal({ eleve, inscription, onClose }) {
   const annee = edition ? inscription.annee_id : s.annee?.id;
   const chCantine = edition && v.cantine !== !!inscription.cantine;
   const chSoir = edition && v.cours_soir !== !!inscription.cours_soir;
+  // Mois de début d'un service déjà actif (ex. cantine oubliée à l'inscription : la faire commencer plus tôt)
+  const debutOrig = { cantine: inscription?.cantine_debut?.slice(0, 7) || "", soir: inscription?.cours_soir_debut?.slice(0, 7) || "" };
+  const [debut, setDebut] = useState(debutOrig);
+  const reglerCantine = edition && inscription.cantine && v.cantine && !chCantine;
+  const reglerSoir = edition && inscription.cours_soir && v.cours_soir && !chSoir;
   const ajouts = edition ? [!inscription.uniforme && v.uniforme && "Uniforme", !inscription.tenue_sport && v.tenue_sport && "Tenue de sport", !inscription.cantine && v.cantine && "Droit cantine"].filter(Boolean) : [];
   const classes = useQuery({ queryKey: ["classes", annee], queryFn: () => api.get("/classes", { annee_id: annee }) });
 
@@ -155,6 +160,8 @@ function InscriptionModal({ eleve, inscription, onClose }) {
         const d = `${aPartir}-01`, x = { ...v };
         if (chCantine) Object.assign(x, v.cantine ? { cantine_debut: d, cantine_fin: null } : { cantine_fin: d });
         if (chSoir) Object.assign(x, v.cours_soir ? { cours_soir_debut: d, cours_soir_fin: null } : { cours_soir_fin: d });
+        if (reglerCantine && debut.cantine !== debutOrig.cantine) x.cantine_debut = debut.cantine ? `${debut.cantine}-01` : null;
+        if (reglerSoir && debut.soir !== debutOrig.soir) x.cours_soir_debut = debut.soir ? `${debut.soir}-01` : null;
         await api.put(`/inscriptions/${inscription.id}`, x);
       }
       else await api.post(`/eleves/${eleve.id}/inscriptions`, { ...v, annee_id: annee, type: "reinscription" });
@@ -191,6 +198,22 @@ function InscriptionModal({ eleve, inscription, onClose }) {
           {(v.cantine || !(classes.data?.find((c) => c.id === Number(v.classe_id))?.mensualite_cantine === 0 || classes.data?.find((c) => c.id === Number(v.classe_id))?.cantine_dispo === false)) && <label className="switch-card"><input type="checkbox" checked={v.cantine} onChange={(e) => setV({ ...v, cantine: e.target.checked })} /><strong>Cantine</strong></label>}
           {(classes.data?.find((c) => c.id === Number(v.classe_id))?.cours_soir > 0 || classes.data?.find((c) => c.id === Number(v.classe_id))?.cours_soir_dispo) && <label className="switch-card"><input type="checkbox" checked={v.cours_soir} onChange={(e) => setV({ ...v, cours_soir: e.target.checked })} /><strong>Cours du soir</strong></label>}
         </div>
+        {(reglerCantine || reglerSoir) && (
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+            {reglerCantine && <Field label="Cantine facturée à partir de" hint="Pour corriger un oubli : choisir le premier mois où l'élève mange à la cantine.">
+              <Select value={debut.cantine} onChange={(e) => setDebut({ ...debut, cantine: e.target.value })}>
+                <option value="">Dès l'inscription</option>
+                {moisDeLAnnee(inscription).map((m) => <option key={m} value={m}>{moisLong(m)}</option>)}
+              </Select>
+            </Field>}
+            {reglerSoir && <Field label="Cours du soir facturés à partir de">
+              <Select value={debut.soir} onChange={(e) => setDebut({ ...debut, soir: e.target.value })}>
+                <option value="">Dès l'inscription</option>
+                {moisDeLAnnee(inscription).map((m) => <option key={m} value={m}>{moisLong(m)}</option>)}
+              </Select>
+            </Field>}
+          </div>
+        )}
         {(chCantine || chSoir) && (
           <div className="alert info" style={{ display: "grid", gap: 8 }}>
             <strong>Changement en cours d'année</strong>
