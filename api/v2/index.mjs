@@ -352,7 +352,8 @@ route("GET", "/parents/codes", async (ctx) => {
   const annee = await anneeCourante(ctx.query.annee_id);
   const p = [annee]; let w = "";
   if (ctx.query.classe_id) { p.push(ctx.query.classe_id); w = ` and i.classe_id=$${p.length}`; }
-  return q(`select e.id, e.matricule, e.prenom, e.nom, e.code_parent, c.nom as classe, c.ordre
+  return q(`select e.id, e.matricule, e.prenom, e.nom, e.code_parent, c.nom as classe, c.ordre,
+      coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone
     from app.inscriptions i join app.eleves e on e.id=i.eleve_id join app.classes c on c.id=i.classe_id
     where i.annee_id=$1 and i.statut='active'${w} order by c.ordre, e.nom, e.prenom`, p);
 });

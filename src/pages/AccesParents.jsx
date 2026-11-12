@@ -14,7 +14,7 @@ export const messageAcces = (e, etab) =>
 
 function Carte({ e, etab, annee }) {
   return (
-    <div className="carte-acces">
+    <div className="carte-acces" data-dest={`c${e.id}`}>
       <div className="ca-top"><img src="/logo.png" alt="" /><div><strong>Espace parents</strong><span>{etab.nom} · {annee}</span></div></div>
       <div className="ca-nom">{e.prenom} {e.nom} <span style={{ fontWeight: 400, color: "#4a6168" }}>· {e.classe}</span></div>
       <div className="ca-codes"><div><span>Matricule</span><b>{e.matricule}</b></div><div><span>Code parent</span><b>{e.code_parent}</b></div></div>
@@ -42,7 +42,9 @@ export function CartesAccesImpression() {
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>Cartes d'accès parents</strong> — {rows.length} élève{rows.length > 1 ? "s" : ""}</span>
         {!eleve && <div style={{ width: 200 }}><Select value={classe} onChange={(e) => setP(e.target.value ? { classe: e.target.value } : {})}><option value="">Toutes les classes</option>{classes.data?.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}</Select></div>}
-        <Partager format="A4" nom="Cartes-acces-parents" message="Cartes d'accès à l'Espace parents" />
+        <Partager format="A4" nom={rows.length === 1 ? `Carte-acces-${rows[0].nom}-${rows[0].prenom}` : "Cartes-acces-parents"} telephone={rows.length === 1 ? rows[0].telephone : null} eleveId={rows.length === 1 ? rows[0].id : null}
+          message={rows.length === 1 ? messageAcces(rows[0], s.etablissement) : "Cartes d'accès à l'Espace parents"}
+          destinataires={rows.map((e) => ({ cle: `c${e.id}`, nom: `${e.nom} ${e.prenom} · ${e.classe}`, telephone: e.telephone, eleve_id: e.id, fichier: `Carte-acces-${e.nom}-${e.prenom}`, message: messageAcces(e, s.etablissement) }))} />
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       <div className="tickets">{pages.map((pg, i) => (

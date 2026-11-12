@@ -141,7 +141,7 @@ export function EmploiImpression() {
       <div className="print-bar">
         <button className="btn" onClick={() => nav("/emploi")}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{titre}</strong> — {liste.length} page{liste.length > 1 ? "s" : ""}</span>
-        <Partager format="A4L" nom={`${titre}-${s.annee?.libelle || ""}`} message={`${titre} — ${s.etablissement?.nom}`} />
+        <Partager format="A4L" nom={`${titre}-${s.annee?.libelle || ""}`} message={`Bonjour, ${s.etablissement?.nom} vous envoie : ${titre}.`} parents={{ classeId }} />
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       <div className="tickets">{liste.map((c) => <PageEdt key={c.id} classe={c} data={edt.data.filter((x) => x.classe_id === c.id)} etab={s.etablissement} annee={s.annee?.libelle} />)}</div>

@@ -417,7 +417,7 @@ export function ViergesImpression() {
           <button className="btn primary" onClick={() => enregistrerPage(lirePages())}>Enregistrer</button>
         </>}
         {texteSimple && s.peut("etablissement.ecrire") && <button className="btn" onClick={() => setEditInfos(doc === "tarifs" ? etab.fiche_infos || INFOS_DEFAUT : etab.textes?.[doc] || TEXTES[doc].texte)}><Pencil size={17} />Modifier le texte</button>}
-        {!surPage && <Partager format={d.format} nom={`${d.titre}-vierge`} message={`${d.titre} — ${etab.nom}`} />}
+        {!surPage && <Partager format={d.format} nom={`${d.titre}-vierge`} message={`Bonjour, ${etab.nom} vous envoie : ${d.titre}.`} parents={{}} />}
         {!surPage && <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>}
       </div>
       {editInfos != null && (

@@ -137,7 +137,7 @@ export function ListeFournituresImpression() {
       <div className="print-bar">
         <button className="btn" onClick={() => nav("/fournitures?tab=classes")}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{titre}</strong></span>
-        <Partager format="A4" nom={titre} message={`${titre} — ${etab.nom}`} />
+        <Partager format="A4" nom={titre} message={`Bonjour, ${etab.nom} vous envoie : ${titre}.`} parents={{ classeId }} />
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       <div className="tickets">
