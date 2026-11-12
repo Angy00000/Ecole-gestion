@@ -84,14 +84,17 @@ const DROITS = {
   admin:      ["*"],
   direction:  ["eleves.lire", "eleves.ecrire", "eleves.supprimer", "classes.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire",
                "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire",
-               "pedagogie.lire", "pedagogie.ecrire", "enseignants.ecrire", "absences.ecrire", "evenements.lire", "evenements.ecrire", "personnel.lire"],
+               "pedagogie.lire", "pedagogie.ecrire", "enseignants.ecrire", "absences.ecrire", "evenements.lire", "evenements.ecrire", "personnel.lire",
+               "infirmerie.lire", "infirmerie.ecrire"],
   comptable:  ["eleves.lire", "finances.lire", "finances.encaisser", "depenses.lire", "depenses.ecrire", "evenements.lire", "personnel.lire"],
-  secretaire: ["eleves.lire", "eleves.ecrire", "pedagogie.lire", "absences.ecrire", "evenements.lire", "evenements.ecrire", "personnel.lire"],
+  secretaire: ["eleves.lire", "eleves.ecrire", "pedagogie.lire", "absences.ecrire", "evenements.lire", "evenements.ecrire", "personnel.lire", "infirmerie.lire", "infirmerie.ecrire"],
   professeur: ["eleves.lire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire"],
+  // Infirmerie : passages à l'infirmerie et fiches santé, sans argent ni pédagogie
+  infirmier:  ["eleves.lire", "infirmerie.lire", "infirmerie.ecrire"],
 };
 const CODES_DROITS = ["eleves.lire", "eleves.ecrire", "eleves.supprimer", "classes.ecrire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire", "enseignants.ecrire",
-  "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire", "utilisateurs", "evenements.lire", "evenements.ecrire", "personnel.lire"];
-const LIBELLES_ROLES = { admin: "Administrateur", direction: "Direction", comptable: "Comptable", secretaire: "Secrétariat", professeur: "Enseignant" };
+  "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire", "utilisateurs", "evenements.lire", "evenements.ecrire", "personnel.lire", "infirmerie.lire", "infirmerie.ecrire"];
+const LIBELLES_ROLES = { admin: "Administrateur", direction: "Direction", comptable: "Comptable", secretaire: "Secrétariat", professeur: "Enseignant", infirmier: "Infirmerie" };
 // Rôles créés ou modifiés dans Paramètres (table app.roles), rechargés toutes les 30 s.
 let ROLES_PERSO = {}, ROLES_AT = 0;
 const chargerRoles = async (force) => {
@@ -1738,6 +1741,106 @@ route("DELETE", "/recettes/:id", async (ctx) => {
   exige(ctx, "depenses.ecrire");
   const r = await one("delete from app.recettes where id=$1 returning id, libelle, montant", [ctx.params.id]);
   await journal(ctx, "suppression", "recette", Number(ctx.params.id), r);
+  return { ok: true };
+});
+
+// ── Infirmerie : fiches santé et passages ──
+const COLS_SANTE = ["groupe_sanguin", "allergies", "maladies", "traitements", "vaccins", "medecin", "urgence_nom", "urgence_telephone", "remarques"];
+const COLS_PASSAGE = ["eleve_id", "date_passage", "heure", "motif", "symptomes", "temperature", "soins", "medicaments", "suite", "parents_prevenus", "note"];
+const SUITES = ["classe", "repos", "maison", "hopital"];
+const verifierPassage = (d) => {
+  if (d.suite != null && !SUITES.includes(d.suite)) fail(400, "Suite donnée inconnue.");
+  if (d.temperature != null && d.temperature !== "" && !(Number(d.temperature) >= 30 && Number(d.temperature) <= 45)) fail(400, "La température doit être entre 30 et 45 °C.");
+};
+const SQL_PASSAGES = `select p.*, e.nom, e.prenom, e.matricule, e.sexe, c.nom as classe, c.cycle,
+    coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
+    nullif(trim(coalesce(s.allergies,'')), '') as allergies,
+    u.prenom || ' ' || u.nom as saisi_par_nom
+  from app.infirmerie_passages p join app.eleves e on e.id=p.eleve_id
+  left join app.inscriptions i on i.eleve_id=e.id and i.annee_id=p.annee_id
+  left join app.classes c on c.id=i.classe_id
+  left join app.sante_eleves s on s.eleve_id=e.id
+  left join app.utilisateurs u on u.id=p.saisi_par`;
+route("GET", "/infirmerie", async (ctx) => {
+  exige(ctx, "infirmerie.lire");
+  const { du, au, suite, classe_id } = ctx.query;
+  const where = ["1=1"]; const p = [];
+  if (du) { p.push(du); where.push(`p.date_passage >= $${p.length}`); }
+  if (au) { p.push(au); where.push(`p.date_passage <= $${p.length}`); }
+  if (suite) { p.push(suite); where.push(`p.suite = $${p.length}`); }
+  if (classe_id) { p.push(classe_id); where.push(`i.classe_id = $${p.length}`); }
+  const w = where.join(" and ");
+  const [rows, motifs, [st], [jour], [alertes]] = await tx([
+    [`${SQL_PASSAGES} where ${w} order by p.date_passage desc, p.heure desc nulls last, p.id desc limit 500`, p],
+    [`select lower(trim(p.motif)) as motif, count(*)::int as nombre from app.infirmerie_passages p join app.eleves e on e.id=p.eleve_id
+        left join app.inscriptions i on i.eleve_id=e.id and i.annee_id=p.annee_id where ${w} group by 1 order by 2 desc limit 6`, p],
+    [`select count(*)::int as total, count(distinct p.eleve_id)::int as eleves,
+        count(*) filter (where p.suite in ('maison','hopital'))::int as renvoyes,
+        count(*) filter (where not p.parents_prevenus and p.suite in ('maison','hopital'))::int as sans_parents
+      from app.infirmerie_passages p join app.eleves e on e.id=p.eleve_id left join app.inscriptions i on i.eleve_id=e.id and i.annee_id=p.annee_id where ${w}`, p],
+    ["select count(*)::int as n from app.infirmerie_passages where date_passage = current_date"],
+    [`select count(*)::int as n from app.sante_eleves s join app.eleves e on e.id=s.eleve_id
+        where e.statut='actif' and (nullif(trim(coalesce(s.allergies,'')),'') is not null or nullif(trim(coalesce(s.maladies,'')),'') is not null)`],
+  ]);
+  return { rows, motifs, stats: { ...st, aujourdhui: jour.n, alertes: alertes.n } };
+});
+// Élèves à surveiller : allergies, maladies ou traitements connus
+route("GET", "/infirmerie/alertes", async (ctx) => {
+  exige(ctx, "infirmerie.lire");
+  const annee = await anneeCourante(ctx.query.annee_id);
+  return q(`select s.*, e.id, e.nom, e.prenom, e.matricule, e.sexe, c.nom as classe, c.cycle,
+      coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone
+    from app.sante_eleves s join app.eleves e on e.id=s.eleve_id and e.statut='actif'
+    left join app.inscriptions i on i.eleve_id=e.id and i.annee_id=$1
+    left join app.classes c on c.id=i.classe_id
+    where coalesce(trim(s.allergies),'') <> '' or coalesce(trim(s.maladies),'') <> '' or coalesce(trim(s.traitements),'') <> ''
+    order by c.ordre nulls last, e.nom, e.prenom`, [annee]);
+});
+route("GET", "/eleves/:id/sante", async (ctx) => {
+  exige(ctx, "infirmerie.lire");
+  const [[fiche], passages] = await tx([
+    ["select s.*, u.prenom || ' ' || u.nom as maj_par_nom from app.sante_eleves s left join app.utilisateurs u on u.id=s.maj_par where s.eleve_id=$1", [ctx.params.id]],
+    [`${SQL_PASSAGES} where p.eleve_id=$1 order by p.date_passage desc, p.id desc limit 200`, [ctx.params.id]],
+  ]);
+  return { fiche: fiche || null, passages };
+});
+route("PUT", "/eleves/:id/sante", async (ctx) => {
+  exige(ctx, "infirmerie.ecrire");
+  const d = pick(ctx.body, COLS_SANTE);
+  const cols = Object.keys(d);
+  const vals = cols.map((k) => d[k]);
+  const r = await one(`insert into app.sante_eleves (eleve_id, ${[...cols, "maj_par"].join(", ")}, updated_at)
+      values ($1, ${cols.map((_, i) => `$${i + 2}`).concat(`$${cols.length + 2}`).join(", ")}, now())
+    on conflict (eleve_id) do update set ${cols.map((k) => `${k}=excluded.${k}`).concat("maj_par=excluded.maj_par", "updated_at=now()").join(", ")}
+    returning *`, [ctx.params.id, ...vals, ctx.user.id]);
+  await journal(ctx, "modification", "fiche_sante", Number(ctx.params.id), { champs: cols });
+  return r;
+});
+route("POST", "/infirmerie", async (ctx) => {
+  exige(ctx, "infirmerie.ecrire");
+  const d = pick(ctx.body, COLS_PASSAGE);
+  requis(d, [["eleve_id", "L'élève"], ["motif", "Le motif"]]);
+  verifierPassage(d);
+  d.saisi_par = ctx.user.id;
+  d.annee_id = await anneeCourante(ctx.body.annee_id);
+  const r = await one(...insertSql("app.infirmerie_passages", d));
+  await journal(ctx, "creation", "passage_infirmerie", r.id, { eleve_id: r.eleve_id, date: r.date_passage, suite: r.suite });
+  return r;
+});
+route("PUT", "/infirmerie/:id", async (ctx) => {
+  exige(ctx, "infirmerie.ecrire");
+  const d = pick(ctx.body, COLS_PASSAGE.filter((k) => k !== "eleve_id"));
+  verifierPassage(d);
+  const r = await one(...updateSql("app.infirmerie_passages", ctx.params.id, d));
+  if (!r) fail(404, "Passage introuvable.");
+  await journal(ctx, "modification", "passage_infirmerie", r.id, { eleve_id: r.eleve_id, suite: r.suite });
+  return r;
+});
+route("DELETE", "/infirmerie/:id", async (ctx) => {
+  exige(ctx, "infirmerie.ecrire");
+  const r = await one("delete from app.infirmerie_passages where id=$1 returning id, eleve_id, date_passage", [ctx.params.id]);
+  if (!r) fail(404, "Passage introuvable.");
+  await journal(ctx, "suppression", "passage_infirmerie", r.id, r);
   return { ok: true };
 });
 

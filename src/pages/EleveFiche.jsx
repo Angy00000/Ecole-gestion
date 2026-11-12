@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt, PlusCircle, ArrowRightLeft, KeyRound, RotateCcw } from "lucide-react";
+import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt, PlusCircle, ArrowRightLeft, KeyRound, RotateCcw, HeartPulse, Stethoscope } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateLongue, age, initiales } from "../lib/format";
 import { Spinner, ErrorBox, Empty, Modal, Field, Select, Input, Confirm, useToast } from "../components/ui";
 import EleveForm from "./EleveForm";
 import { AccesParentModal } from "./AccesParents";
+import { SanteEleve, PassageForm } from "./Infirmerie";
 import Encaissement from "../components/Encaissement";
 import TarifScolarite, { BadgeFormule, ReductionInscription } from "../components/TarifScolarite";
 import { moisNom, moisLong, libelleLigne, TYPES_COURTS } from "../lib/format";
@@ -295,6 +296,7 @@ export default function EleveFiche() {
   const [enc, setEnc] = useState(false);
   const [docs, setDocs] = useState(false);
   const [acces, setAcces] = useState(false);
+  const [infirm, setInfirm] = useState(false);
   const { data, isLoading, error } = useQuery({ queryKey: ["eleve", id], queryFn: () => api.get(`/eleves/${id}`) });
 
   if (isLoading) return <Spinner />;
@@ -323,7 +325,8 @@ export default function EleveFiche() {
 
   const tabs = [["identite", "Identité et parents", null, User], ["scolarite", "Scolarité", inscriptions.length, School],
     ...(s.peut("finances.lire") ? [["paiements", "Paiements", paiements.length, Receipt]] : []),
-    ...(s.peut("pedagogie.lire") ? [["absences", "Absences", absences.filter((a) => a.annee_id === s.annee?.id).length, CalendarCheck2]] : [])];
+    ...(s.peut("pedagogie.lire") ? [["absences", "Absences", absences.filter((a) => a.annee_id === s.annee?.id).length, CalendarCheck2]] : []),
+    ...(s.peut("infirmerie.lire") ? [["sante", "Santé", null, HeartPulse]] : [])];
 
   return (
     <div className="stack" style={{ marginTop: 14 }}>
@@ -365,6 +368,7 @@ export default function EleveFiche() {
             {s.peut("eleves.ecrire") && courante && <button className="btn" onClick={() => setInsc(courante)}><PlusCircle size={17} />Cantine, uniforme…</button>}
             {s.peut("eleves.ecrire") && !courante && <button className="btn primary" onClick={() => setInsc("new")}><RefreshCcw size={17} />Réinscrire</button>}
             {s.peut("finances.encaisser") && courante && <button className="btn primary" onClick={() => setEnc(true)}><Wallet size={17} />Encaisser</button>}
+            {s.peut("infirmerie.ecrire") && <button className="btn" onClick={() => setInfirm(true)}><Stethoscope size={17} /><span className="hide-m">Infirmerie</span></button>}
             {s.peut("eleves.ecrire") && <button className="btn" onClick={() => setEdit(true)}><Pencil size={17} />Modifier</button>}
             {s.peut("eleves.supprimer") && e.statut === "sorti" && <button className="btn primary" onClick={reactiver}><RotateCcw size={17} />Réactiver l'élève</button>}
             {s.peut("eleves.supprimer") && e.statut !== "sorti" && <button className="btn danger icon" onClick={() => setDel(true)} aria-label="Supprimer l'élève"><Trash2 size={17} /></button>}
@@ -482,6 +486,8 @@ export default function EleveFiche() {
         </div>
       )}
 
+      {tab === "sante" && <SanteEleve eleve={{ ...e, classe: courante?.classe }} />}
+      {infirm && <PassageForm eleve={{ ...e, classe: courante?.classe }} onClose={() => setInfirm(false)} />}
       {acces && courante && <AccesParentModal eleve={e} classe={courante.classe} telephone={e.mere_telephone || e.pere_telephone || e.tuteur_telephone} onClose={() => setAcces(false)} />}
       {enc && courante && <Encaissement inscriptionId={courante.id} eleve={e} onClose={() => setEnc(false)} onSaved={(r) => { setEnc(false); nav(`/recus/${r.id}`); }} />}
       {edit && <EleveForm eleve={e} onClose={() => setEdit(false)} onSaved={() => setEdit(false)} />}

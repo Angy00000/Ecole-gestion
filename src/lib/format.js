@@ -29,6 +29,7 @@ export const ROLES = {
   comptable: "Comptable",
   secretaire: "Secrétariat",
   professeur: "Enseignant",
+  infirmier: "Infirmerie",
 };
 export const CYCLES = { garderie: "Garderie", prescolaire: "Préscolaire", elementaire: "Élémentaire" };
 

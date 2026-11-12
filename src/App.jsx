@@ -35,6 +35,7 @@ import Factures, { FacturesImpression } from "./pages/Factures";
 import Evenements, { EvenementFiche } from "./pages/Evenements";
 import EvenementSupports from "./pages/EvenementSupports";
 import Archives from "./pages/Archives";
+import Infirmerie from "./pages/Infirmerie";
 
 export default function App() {
   const s = useSession();
@@ -92,6 +93,7 @@ export default function App() {
           {s.peut("evenements.lire") && <Route path="evenements" element={<Evenements />} />}
           {s.peut("evenements.lire") && <Route path="evenements/:id" element={<EvenementFiche />} />}
           {s.peut("depenses.lire") && <Route path="recettes" element={<Recettes />} />}
+          {s.peut("infirmerie.lire") && <Route path="infirmerie" element={<Infirmerie />} />}
           {s.peut("finances.lire") && <Route path="rapports" element={<Rapports />} />}
           {s.peut("finances.lire") && <Route path="services/:type" element={<Service />} />}
           {s.peut("finances.lire") && <Route path="fournitures" element={<Fournitures />} />}
