@@ -1746,22 +1746,193 @@ route("DELETE", "/recettes/:id", async (ctx) => {
 });
 
 // ── Infirmerie : fiches santé et passages ──
-const COLS_SANTE = ["groupe_sanguin", "allergies", "maladies", "traitements", "vaccins", "medecin", "urgence_nom", "urgence_telephone", "remarques"];
+const COLS_SANTE = ["groupe_sanguin", "allergies", "maladies", "traitements", "vaccins", "medecin", "urgence_nom", "urgence_telephone", "remarques",
+  "autorisation_medicaments", "medicaments_autorises", "autorisation_date", "autorisation_par"];
 const COLS_PASSAGE = ["eleve_id", "date_passage", "heure", "motif", "symptomes", "temperature", "soins", "medicaments", "suite", "parents_prevenus", "note"];
 const SUITES = ["classe", "repos", "maison", "hopital"];
 const verifierPassage = (d) => {
   if (d.suite != null && !SUITES.includes(d.suite)) fail(400, "Suite donnée inconnue.");
   if (d.temperature != null && d.temperature !== "" && !(Number(d.temperature) >= 30 && Number(d.temperature) <= 45)) fail(400, "La température doit être entre 30 et 45 °C.");
 };
+// Stock d'un produit = entrées − sorties − périmés ± ajustements ; péremption = lot non retiré le plus proche
+const SQL_STOCK_INF = `select p.*,
+    coalesce((select sum(case m.type when 'entree' then m.quantite when 'ajustement' then m.quantite else -m.quantite end)
+      from app.infirmerie_mouvements m where m.produit_id=p.id), 0)::int as stock,
+    (select min(m.peremption) from app.infirmerie_mouvements m where m.produit_id=p.id and m.type='entree' and not m.retire and m.peremption is not null) as peremption,
+    (select max(m.date_mvt) from app.infirmerie_mouvements m where m.produit_id=p.id and m.type='entree') as dernier_achat
+  from app.infirmerie_produits p`;
 const SQL_PASSAGES = `select p.*, e.nom, e.prenom, e.matricule, e.sexe, c.nom as classe, c.cycle,
     coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
-    nullif(trim(coalesce(s.allergies,'')), '') as allergies,
-    u.prenom || ' ' || u.nom as saisi_par_nom
+    nullif(trim(coalesce(s.allergies,'')), '') as allergies, s.autorisation_medicaments,
+    u.prenom || ' ' || u.nom as saisi_par_nom,
+    coalesce((select json_agg(json_build_object('produit_id', m.produit_id, 'nom', pr.nom, 'unite', pr.unite, 'quantite', m.quantite) order by m.id)
+      from app.infirmerie_mouvements m join app.infirmerie_produits pr on pr.id=m.produit_id where m.passage_id=p.id), '[]'::json) as produits
   from app.infirmerie_passages p join app.eleves e on e.id=p.eleve_id
   left join app.inscriptions i on i.eleve_id=e.id and i.annee_id=p.annee_id
   left join app.classes c on c.id=i.classe_id
   left join app.sante_eleves s on s.eleve_id=e.id
   left join app.utilisateurs u on u.id=p.saisi_par`;
+// Médicaments donnés pendant un passage : sorties de stock liées au passage
+const verifierProduits = async (produits, passageId) => {
+  if (!Array.isArray(produits)) return [];
+  const lignes = produits.map((x) => ({ produit_id: Number(x.produit_id), quantite: Math.round(Number(x.quantite)) })).filter((x) => x.produit_id && x.quantite);
+  if (lignes.some((x) => !(x.quantite > 0))) fail(400, "La quantité doit être positive.");
+  if (!lignes.length) return [];
+  const ids = [...new Set(lignes.map((x) => x.produit_id))];
+  const stocks = await q(`select x.id, x.nom, x.unite, x.stock + coalesce((select sum(m.quantite) from app.infirmerie_mouvements m where m.produit_id=x.id and m.passage_id=$2), 0) as dispo
+    from (${SQL_STOCK_INF} where p.id = any($1::int[])) x`, [`{${ids.join(",")}}`, passageId || 0]);
+  for (const id of ids) {
+    const st = stocks.find((x) => x.id === id);
+    if (!st) fail(400, "Produit inconnu.");
+    const besoin = lignes.filter((x) => x.produit_id === id).reduce((t, x) => t + x.quantite, 0);
+    if (besoin > Number(st.dispo)) fail(400, `Stock insuffisant pour ${st.nom} : il en reste ${st.dispo} ${st.unite}.`);
+  }
+  return lignes;
+};
+const enregistrerProduits = async (ctx, passageId, datePassage, lignes) => {
+  await tx([
+    ["delete from app.infirmerie_mouvements where passage_id=$1", [passageId]],
+    ...lignes.map((x) => [`insert into app.infirmerie_mouvements (produit_id, type, quantite, date_mvt, passage_id, saisi_par) values ($1,'sortie',$2,$3,$4,$5)`,
+      [x.produit_id, x.quantite, String(datePassage).slice(0, 10), passageId, ctx.user.id]]),
+  ]);
+};
+
+// ── Stock de l'infirmerie ──
+const FORMES = ["comprime", "sirop", "pommade", "gouttes", "injectable", "pansement", "materiel", "autre"];
+const COLS_PRODUIT = ["nom", "forme", "unite", "seuil", "note", "actif"];
+route("GET", "/infirmerie/produits", async (ctx) => {
+  exige(ctx, "infirmerie.lire");
+  const tous = ctx.query.tous === "1";
+  return q(`select x.*, (x.stock <= x.seuil) as bas, (x.peremption is not null and x.peremption <= current_date + 30 and x.stock > 0) as perime_bientot
+    from (${SQL_STOCK_INF} ${tous ? "" : "where p.actif"}) x order by x.actif desc, lower(x.nom)`);
+});
+route("POST", "/infirmerie/produits", async (ctx) => {
+  exige(ctx, "infirmerie.ecrire");
+  const d = pick(ctx.body, COLS_PRODUIT);
+  requis(d, [["nom", "Le nom du produit"]]);
+  if (d.forme && !FORMES.includes(d.forme)) fail(400, "Forme inconnue.");
+  const r = await one(...insertSql("app.infirmerie_produits", d));
+  // Stock de départ (inventaire) : une entrée
+  const init = Math.round(Number(ctx.body.stock_initial) || 0);
+  if (init > 0) await q(`insert into app.infirmerie_mouvements (produit_id, type, quantite, peremption, note, saisi_par) values ($1,'entree',$2,$3,'Stock de départ',$4)`,
+    [r.id, init, ctx.body.peremption || null, ctx.user.id]);
+  await journal(ctx, "creation", "produit_infirmerie", r.id, { nom: r.nom });
+  return r;
+});
+route("PUT", "/infirmerie/produits/:id", async (ctx) => {
+  exige(ctx, "infirmerie.ecrire");
+  const d = pick(ctx.body, COLS_PRODUIT);
+  if (d.forme && !FORMES.includes(d.forme)) fail(400, "Forme inconnue.");
+  const r = await one(...updateSql("app.infirmerie_produits", ctx.params.id, d));
+  if (!r) fail(404, "Produit introuvable.");
+  await journal(ctx, "modification", "produit_infirmerie", r.id, { nom: r.nom });
+  return r;
+});
+route("DELETE", "/infirmerie/produits/:id", async (ctx) => {
+  exige(ctx, "infirmerie.ecrire");
+  const n = await one("select count(*)::int as n from app.infirmerie_mouvements where produit_id=$1", [ctx.params.id]);
+  // Un produit déjà utilisé est seulement retiré de la liste, pour garder l'historique.
+  const r = n?.n ? await one("update app.infirmerie_produits set actif=false where id=$1 returning id, nom", [ctx.params.id])
+    : await one("delete from app.infirmerie_produits where id=$1 returning id, nom", [ctx.params.id]);
+  if (!r) fail(404, "Produit introuvable.");
+  await journal(ctx, n?.n ? "archivage" : "suppression", "produit_infirmerie", r.id, { nom: r.nom });
+  return { ok: true, archive: !!n?.n };
+});
+route("GET", "/infirmerie/mouvements", async (ctx) => {
+  exige(ctx, "infirmerie.lire");
+  const { produit_id, du, au, type } = ctx.query;
+  const where = ["1=1"]; const p = [];
+  if (produit_id) { p.push(produit_id); where.push(`m.produit_id=$${p.length}`); }
+  if (du) { p.push(du); where.push(`m.date_mvt >= $${p.length}`); }
+  if (au) { p.push(au); where.push(`m.date_mvt <= $${p.length}`); }
+  if (type) { p.push(type); where.push(`m.type=$${p.length}`); }
+  return q(`select m.*, pr.nom as produit, pr.unite, e.nom || ' ' || e.prenom as eleve, u.prenom || ' ' || u.nom as saisi_par_nom
+    from app.infirmerie_mouvements m join app.infirmerie_produits pr on pr.id=m.produit_id
+    left join app.infirmerie_passages ps on ps.id=m.passage_id left join app.eleves e on e.id=ps.eleve_id
+    left join app.utilisateurs u on u.id=m.saisi_par
+    where ${where.join(" and ")} order by m.date_mvt desc, m.id desc limit 500`, p);
+});
+// Entrée (achat, don), sortie hors passage, produits périmés retirés, correction d'inventaire
+route("POST", "/infirmerie/mouvements", async (ctx) => {
+  exige(ctx, "infirmerie.ecrire");
+  const b = ctx.body;
+  const type = b.type;
+  if (!["entree", "sortie", "perime", "ajustement"].includes(type)) fail(400, "Type de mouvement inconnu.");
+  const produit = await one(`select x.* from (${SQL_STOCK_INF}) x where x.id=$1`, [b.produit_id]);
+  if (!produit) fail(400, "Choisissez un produit.");
+  let qte = Math.round(Number(b.quantite));
+  if (type === "ajustement") {
+    // On saisit le stock compté ; on enregistre la différence.
+    const compte = Math.round(Number(b.stock_compte));
+    if (!(compte >= 0)) fail(400, "Indiquez le stock compté.");
+    qte = compte - produit.stock;
+    if (!qte) fail(400, "Le stock compté est déjà celui du logiciel : rien à corriger.");
+  } else {
+    if (!(qte > 0)) fail(400, "La quantité doit être positive.");
+    if (type !== "entree" && qte > produit.stock) fail(400, `Il ne reste que ${produit.stock} ${produit.unite} de ${produit.nom}.`);
+  }
+  const prix = b.prix_total ? Math.round(Number(b.prix_total)) : null;
+  if (prix != null && !(prix > 0)) fail(400, "Le prix doit être positif.");
+  const date = b.date_mvt || new Date().toISOString().slice(0, 10);
+  let depense = null;
+  // Achat : enregistré aussi dans les Dépenses de l'école (catégorie Infirmerie)
+  if (type === "entree" && prix && b.depense) {
+    depense = await one(`insert into app.depenses (date_depense, categorie, libelle, montant, mode, beneficiaire, reference, note, saisi_par, annee_id)
+      values ($1,'infirmerie',$2,$3,$4,$5,$6,'Achat infirmerie',$7,$8) returning id`,
+      [date, `Infirmerie : ${produit.nom} (${qte} ${produit.unite})`, prix, MODES.includes(b.mode) ? b.mode : "especes", b.fournisseur || null, b.reference || null, ctx.user.id, await anneeCourante()]);
+    await journal(ctx, "creation", "depense", depense.id, { libelle: `Infirmerie : ${produit.nom}`, montant: prix });
+  }
+  const r = await one(`insert into app.infirmerie_mouvements (produit_id, type, quantite, date_mvt, peremption, lot, prix_total, fournisseur, note, depense_id, saisi_par)
+    values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
+    [produit.id, type, qte, date, type === "entree" ? b.peremption || null : null, b.lot || null, type === "entree" ? prix : null, b.fournisseur || null, b.note || null, depense?.id || null, ctx.user.id]);
+  // Produits périmés retirés : les lots dépassés ne sont plus signalés
+  if (type === "perime") await q("update app.infirmerie_mouvements set retire=true where produit_id=$1 and type='entree' and peremption <= current_date + 30", [produit.id]);
+  await journal(ctx, "creation", "mouvement_infirmerie", r.id, { produit: produit.nom, type, quantite: qte, depense: depense?.id });
+  return r;
+});
+route("DELETE", "/infirmerie/mouvements/:id", async (ctx) => {
+  exige(ctx, "infirmerie.ecrire");
+  const m = await one("select * from app.infirmerie_mouvements where id=$1", [ctx.params.id]);
+  if (!m) fail(404, "Mouvement introuvable.");
+  if (m.passage_id) fail(400, "Ce médicament a été donné lors d'un passage : modifiez le passage.");
+  await tx([
+    ["delete from app.infirmerie_mouvements where id=$1", [m.id]],
+    ...(m.depense_id ? [["delete from app.depenses where id=$1", [m.depense_id]]] : []),
+  ]);
+  await journal(ctx, "suppression", "mouvement_infirmerie", m.id, { produit_id: m.produit_id, type: m.type, quantite: m.quantite, depense: m.depense_id });
+  return { ok: true };
+});
+
+// ── Rapport de l'infirmerie sur une période ──
+route("GET", "/infirmerie/rapport", async (ctx) => {
+  exige(ctx, "infirmerie.lire");
+  const du = ctx.query.du || "2000-01-01", au = ctx.query.au || "2999-12-31";
+  const P = [du, au];
+  const base = `from app.infirmerie_passages p join app.eleves e on e.id=p.eleve_id
+    left join app.inscriptions i on i.eleve_id=e.id and i.annee_id=p.annee_id left join app.classes c on c.id=i.classe_id
+    where p.date_passage between $1 and $2`;
+  const [[tot], mois, classes, motifs, suites, eleves, produits, [achats], stock] = await tx([
+    [`select count(*)::int as passages, count(distinct p.eleve_id)::int as eleves,
+        count(*) filter (where p.suite='maison')::int as maison, count(*) filter (where p.suite='hopital')::int as hopital,
+        count(*) filter (where p.parents_prevenus)::int as parents_prevenus,
+        round(avg(p.temperature) filter (where p.temperature >= 37.5), 1) as fievre_moy, count(*) filter (where p.temperature >= 38)::int as fievres ${base}`, P],
+    [`select to_char(p.date_passage,'YYYY-MM') as mois, count(*)::int as n ${base} group by 1 order by 1`, P],
+    [`select coalesce(c.nom,'—') as classe, count(*)::int as n, count(distinct p.eleve_id)::int as eleves ${base} group by c.nom, c.ordre order by c.ordre nulls last`, P],
+    [`select initcap(lower(trim(p.motif))) as motif, count(*)::int as n ${base} group by 1 order by 2 desc limit 10`, P],
+    [`select p.suite, count(*)::int as n ${base} group by 1 order by 2 desc`, P],
+    [`select e.nom || ' ' || e.prenom as eleve, c.nom as classe, count(*)::int as n ${base} group by e.id, e.nom, e.prenom, c.nom having count(*) >= 3 order by 3 desc limit 15`, P],
+    [`select pr.nom, pr.unite, sum(m.quantite) filter (where m.type='sortie')::int as donnes, sum(m.quantite) filter (where m.type='entree')::int as entres,
+        sum(m.quantite) filter (where m.type='perime')::int as perimes
+      from app.infirmerie_mouvements m join app.infirmerie_produits pr on pr.id=m.produit_id
+      where m.date_mvt between $1 and $2 group by pr.id, pr.nom, pr.unite order by 3 desc nulls last, 1`, P],
+    [`select coalesce(sum(prix_total),0)::int as montant, count(*) filter (where prix_total is not null)::int as nombre
+      from app.infirmerie_mouvements where type='entree' and date_mvt between $1 and $2`, P],
+    [`select x.nom, x.unite, x.stock, x.seuil, x.peremption from (${SQL_STOCK_INF} where p.actif) x
+      where x.stock <= x.seuil or (x.peremption <= current_date + 30 and x.stock > 0) order by x.stock - x.seuil`],
+  ]);
+  return { du: ctx.query.du || null, au: ctx.query.au || null, totaux: tot, mois, classes, motifs, suites, eleves_frequents: eleves, produits, achats, alertes_stock: stock };
+});
+
 route("GET", "/infirmerie", async (ctx) => {
   exige(ctx, "infirmerie.lire");
   const { du, au, suite, classe_id } = ctx.query;
@@ -1771,7 +1942,7 @@ route("GET", "/infirmerie", async (ctx) => {
   if (suite) { p.push(suite); where.push(`p.suite = $${p.length}`); }
   if (classe_id) { p.push(classe_id); where.push(`i.classe_id = $${p.length}`); }
   const w = where.join(" and ");
-  const [rows, motifs, [st], [jour], [alertes]] = await tx([
+  const [rows, motifs, [st], [jour], [alertes], [stk]] = await tx([
     [`${SQL_PASSAGES} where ${w} order by p.date_passage desc, p.heure desc nulls last, p.id desc limit 500`, p],
     [`select lower(trim(p.motif)) as motif, count(*)::int as nombre from app.infirmerie_passages p join app.eleves e on e.id=p.eleve_id
         left join app.inscriptions i on i.eleve_id=e.id and i.annee_id=p.annee_id where ${w} group by 1 order by 2 desc limit 6`, p],
@@ -1782,8 +1953,10 @@ route("GET", "/infirmerie", async (ctx) => {
     ["select count(*)::int as n from app.infirmerie_passages where date_passage = current_date"],
     [`select count(*)::int as n from app.sante_eleves s join app.eleves e on e.id=s.eleve_id
         where e.statut='actif' and (nullif(trim(coalesce(s.allergies,'')),'') is not null or nullif(trim(coalesce(s.maladies,'')),'') is not null)`],
+    [`select count(*) filter (where x.stock <= x.seuil)::int as bas, count(*) filter (where x.peremption <= current_date + 30 and x.stock > 0)::int as peremption
+        from (${SQL_STOCK_INF} where p.actif) x`],
   ]);
-  return { rows, motifs, stats: { ...st, aujourdhui: jour.n, alertes: alertes.n } };
+  return { rows, motifs, stats: { ...st, aujourdhui: jour.n, alertes: alertes.n, stock_bas: stk?.bas || 0, peremption: stk?.peremption || 0 } };
 });
 // Élèves à surveiller : allergies, maladies ou traitements connus
 route("GET", "/infirmerie/alertes", async (ctx) => {
@@ -1824,7 +1997,9 @@ route("POST", "/infirmerie", async (ctx) => {
   verifierPassage(d);
   d.saisi_par = ctx.user.id;
   d.annee_id = await anneeCourante(ctx.body.annee_id);
+  const lignes = await verifierProduits(ctx.body.produits, null);
   const r = await one(...insertSql("app.infirmerie_passages", d));
+  await enregistrerProduits(ctx, r.id, r.date_passage, lignes);
   await journal(ctx, "creation", "passage_infirmerie", r.id, { eleve_id: r.eleve_id, date: r.date_passage, suite: r.suite });
   return r;
 });
@@ -1832,8 +2007,10 @@ route("PUT", "/infirmerie/:id", async (ctx) => {
   exige(ctx, "infirmerie.ecrire");
   const d = pick(ctx.body, COLS_PASSAGE.filter((k) => k !== "eleve_id"));
   verifierPassage(d);
+  const lignes = Array.isArray(ctx.body.produits) ? await verifierProduits(ctx.body.produits, Number(ctx.params.id)) : null;
   const r = await one(...updateSql("app.infirmerie_passages", ctx.params.id, d));
   if (!r) fail(404, "Passage introuvable.");
+  if (lignes) await enregistrerProduits(ctx, r.id, r.date_passage, lignes);
   await journal(ctx, "modification", "passage_infirmerie", r.id, { eleve_id: r.eleve_id, suite: r.suite });
   return r;
 });

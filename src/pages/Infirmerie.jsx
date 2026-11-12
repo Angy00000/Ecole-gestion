@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Stethoscope, Search, HeartPulse, ShieldAlert, House, MessageCircle, Thermometer, CalendarDays, Users } from "lucide-react";
+import { Plus, Pencil, Trash2, Stethoscope, Search, HeartPulse, ShieldAlert, House, MessageCircle, Thermometer, CalendarDays, Users, Pill, X, FileBarChart } from "lucide-react";
+import { Stock } from "./InfirmerieStock";
+import { Rapport } from "./InfirmerieRapport";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { date, dateLongue, today, initiales, moisNom, telWa } from "../lib/format";
@@ -13,7 +15,8 @@ export const SuiteBadge = ({ suite }) => <span className={`badge ${SUITE_BADGE[s
 const MOTIFS = ["Maux de tête", "Maux de ventre", "Fièvre", "Blessure / chute", "Vomissements", "Toux / rhume", "Saignement de nez", "Douleur dentaire", "Malaise", "Piqûre d'insecte"];
 const GROUPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const heureMaintenant = () => new Date().toTimeString().slice(0, 5);
-const INVALIDER = ["infirmerie", "sante", "infirmerie-alertes"];
+const INVALIDER = ["infirmerie", "sante", "infirmerie-alertes", "infirmerie-produits", "infirmerie-mouvements", "infirmerie-rapport"];
+export const AUTORISATION = { oui: "Les parents autorisent les médicaments", non: "Les parents n'autorisent PAS les médicaments" };
 
 // Message WhatsApp aux parents après un passage à l'infirmerie
 export const messageParents = (etab, p) => {
@@ -56,15 +59,23 @@ function ChoixEleve({ onPick }) {
 // Encadré d'alerte : allergies et maladies connues de l'élève
 function AlerteSante({ eleveId }) {
   const { data } = useQuery({ queryKey: ["sante", eleveId], queryFn: () => api.get(`/eleves/${eleveId}/sante`), enabled: !!eleveId });
-  const f = data?.fiche;
-  if (!f || !(f.allergies || f.maladies || f.traitements)) return null;
+  const f = data?.fiche || {};
+  const aut = f.autorisation_medicaments;
   return (
-    <div className="alert" style={{ margin: 0, display: "grid", gap: 4 }}>
-      <strong><ShieldAlert size={16} style={{ verticalAlign: "-3px", marginRight: 6 }} />À savoir avant de soigner</strong>
-      {f.allergies && <span className="small">Allergies : <strong>{f.allergies}</strong></span>}
-      {f.maladies && <span className="small">Maladies : {f.maladies}</span>}
-      {f.traitements && <span className="small">Traitement : {f.traitements}</span>}
-    </div>
+    <>
+      {(f.allergies || f.maladies || f.traitements) && (
+        <div className="alert" style={{ margin: 0, display: "grid", gap: 4 }}>
+          <strong><ShieldAlert size={16} style={{ verticalAlign: "-3px", marginRight: 6 }} />À savoir avant de soigner</strong>
+          {f.allergies && <span className="small">Allergies : <strong>{f.allergies}</strong></span>}
+          {f.maladies && <span className="small">Maladies : {f.maladies}</span>}
+          {f.traitements && <span className="small">Traitement : {f.traitements}</span>}
+        </div>
+      )}
+      {data && <div className={`alert ${aut === "oui" ? "info" : ""}`} style={{ margin: 0 }}>
+        <Pill size={15} style={{ verticalAlign: "-3px", marginRight: 6 }} />
+        {aut ? <><strong>{AUTORISATION[aut]}</strong>{aut === "oui" && f.medicaments_autorises ? ` : ${f.medicaments_autorises}` : ""}</> : <><strong>Autorisation des parents inconnue</strong> : ne donnez pas de médicament sans leur accord.</>}
+      </div>}
+    </>
   );
 }
 
@@ -77,12 +88,18 @@ export function PassageForm({ passage, eleve: eleveInit, onClose }) {
     : { date_passage: today(), heure: heureMaintenant(), motif: "", symptomes: "", temperature: "", soins: "", medicaments: "", suite: "classe", parents_prevenus: false, note: "" });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [lignes, setLignes] = useState(() => (passage?.produits || []).map((x) => ({ produit_id: String(x.produit_id), quantite: x.quantite })));
+  const produits = useQuery({ queryKey: ["infirmerie-produits"], queryFn: () => api.get("/infirmerie/produits") });
+  const sante = useQuery({ queryKey: ["sante", eleve?.id], queryFn: () => api.get(`/eleves/${eleve.id}/sante`), enabled: !!eleve?.id });
+  const autorise = sante.data?.fiche?.autorisation_medicaments;
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
+  const majLigne = (i, patch) => setLignes((l) => l.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const save = async () => {
     setError(null); setBusy(true);
     try {
       const d = { date_passage: v.date_passage, heure: v.heure, motif: v.motif, symptomes: v.symptomes, temperature: v.temperature === "" ? null : Number(String(v.temperature).replace(",", ".")),
-        soins: v.soins, medicaments: v.medicaments, suite: v.suite, parents_prevenus: v.parents_prevenus, note: v.note };
+        soins: v.soins, medicaments: v.medicaments, suite: v.suite, parents_prevenus: v.parents_prevenus, note: v.note,
+        produits: lignes.filter((x) => x.produit_id && Number(x.quantite) > 0).map((x) => ({ produit_id: Number(x.produit_id), quantite: Number(x.quantite) })) };
       if (passage) await api.put(`/infirmerie/${passage.id}`, d); else await api.post("/infirmerie", { ...d, eleve_id: eleve.id });
       toast(passage ? "Passage modifié" : `Passage de ${eleve.prenom} enregistré`);
       INVALIDER.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
@@ -120,7 +137,28 @@ export function PassageForm({ passage, eleve: eleveInit, onClose }) {
           </div>
           <Field label="Symptômes observés"><Input value={v.symptomes || ""} onChange={set("symptomes")} placeholder="Pâle, a vomi une fois…" /></Field>
           <Field label="Soins donnés"><Input value={v.soins || ""} onChange={set("soins")} placeholder="Plaie nettoyée, compresse froide, repos…" /></Field>
-          <Field label="Médicament donné" hint="Seulement avec l'accord des parents ou selon le protocole de l'école.">
+          <div>
+            <div className="small" style={{ fontWeight: 700, marginBottom: 6 }}>Médicaments et matériel donnés <span className="muted" style={{ fontWeight: 400 }}>(retirés du stock)</span></div>
+            <div className="stack" style={{ gap: 8 }}>
+              {lignes.map((l, i) => {
+                const pr = produits.data?.find((x) => String(x.id) === String(l.produit_id));
+                return (
+                  <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 90px auto", gap: 8, alignItems: "center" }}>
+                    <Select value={l.produit_id} onChange={(e) => majLigne(i, { produit_id: e.target.value })} aria-label="Produit">
+                      <option value="">Choisir…</option>
+                      {produits.data?.map((x) => <option key={x.id} value={x.id} disabled={x.stock <= 0 && String(x.id) !== String(l.produit_id)}>{x.nom} — {x.stock} {x.unite}</option>)}
+                    </Select>
+                    <Input type="number" min={1} value={l.quantite} onChange={(e) => majLigne(i, { quantite: e.target.value })} aria-label="Quantité" title={pr ? pr.unite : ""} />
+                    <button className="btn sm ghost icon" onClick={() => setLignes((x) => x.filter((_, j) => j !== i))} aria-label="Retirer"><X size={15} /></button>
+                  </div>
+                );
+              })}
+              <div><button className="btn sm" onClick={() => setLignes((x) => [...x, { produit_id: "", quantite: 1 }])} disabled={!produits.data?.length}><Plus size={14} />Ajouter un produit</button>
+                {produits.data && !produits.data.length && <span className="xs muted" style={{ marginLeft: 8 }}>Ajoutez d'abord vos produits dans l'onglet « Stock ».</span>}</div>
+              {lignes.some((x) => x.produit_id) && autorise !== "oui" && <div className="alert" style={{ margin: 0 }}>{autorise === "non" ? "Les parents n'autorisent pas les médicaments pour cet élève." : "L'autorisation des parents n'est pas enregistrée."} Vérifiez avant de donner un médicament.</div>}
+            </div>
+          </div>
+          <Field label="Autre médicament ou précision" hint="Seulement avec l'accord des parents ou selon le protocole de l'école.">
             <Input value={v.medicaments || ""} onChange={set("medicaments")} placeholder="Nom et dose" />
           </Field>
           <label className="switch-card"><input type="checkbox" checked={v.parents_prevenus} onChange={(e) => setV({ ...v, parents_prevenus: e.target.checked })} /><strong>Parents prévenus</strong></label>
@@ -135,14 +173,17 @@ export function PassageForm({ passage, eleve: eleveInit, onClose }) {
 export function FicheSanteForm({ eleve, fiche, onClose }) {
   const toast = useToast();
   const qc = useQueryClient();
-  const [v, setV] = useState(() => ({ groupe_sanguin: "", allergies: "", maladies: "", traitements: "", vaccins: "", medecin: "", urgence_nom: "", urgence_telephone: "", remarques: "", ...Object.fromEntries(Object.entries(fiche || {}).filter(([, x]) => x != null)) }));
+  const [v, setV] = useState(() => ({ groupe_sanguin: "", allergies: "", maladies: "", traitements: "", vaccins: "", medecin: "", urgence_nom: "", urgence_telephone: "", remarques: "",
+    autorisation_medicaments: "", medicaments_autorises: "", autorisation_date: "", autorisation_par: "",
+    ...Object.fromEntries(Object.entries(fiche || {}).filter(([, x]) => x != null).map(([k, x]) => [k, k === "autorisation_date" ? String(x).slice(0, 10) : x])) }));
   const [error, setError] = useState(null);
   const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
   const save = async () => {
     setError(null);
     try {
-      const { groupe_sanguin, allergies, maladies, traitements, vaccins, medecin, urgence_nom, urgence_telephone, remarques } = v;
-      await api.put(`/eleves/${eleve.id}/sante`, { groupe_sanguin, allergies, maladies, traitements, vaccins, medecin, urgence_nom, urgence_telephone, remarques });
+      const { groupe_sanguin, allergies, maladies, traitements, vaccins, medecin, urgence_nom, urgence_telephone, remarques, autorisation_medicaments, medicaments_autorises, autorisation_date, autorisation_par } = v;
+      await api.put(`/eleves/${eleve.id}/sante`, { groupe_sanguin, allergies, maladies, traitements, vaccins, medecin, urgence_nom, urgence_telephone, remarques,
+        autorisation_medicaments, medicaments_autorises, autorisation_date, autorisation_par });
       toast("Fiche santé enregistrée");
       INVALIDER.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       onClose();
@@ -165,6 +206,17 @@ export function FicheSanteForm({ eleve, fiche, onClose }) {
           <Field label="Téléphone d'urgence"><Input type="tel" value={v.urgence_telephone} onChange={set("urgence_telephone")} /></Field>
         </div>
         <Field label="Médecin ou structure de santé suivie"><Input value={v.medecin} onChange={set("medecin")} /></Field>
+        <div className="card" style={{ padding: 14, display: "grid", gap: 12, background: "var(--surface-2)" }}>
+          <strong className="small"><Pill size={15} style={{ verticalAlign: "-3px", marginRight: 6 }} />Autorisation des parents pour les médicaments</strong>
+          <div className="grid g2">
+            <Field label="Les parents autorisent les médicaments ?">
+              <Select value={v.autorisation_medicaments} onChange={set("autorisation_medicaments")}><option value="">Pas encore demandé</option><option value="oui">Oui</option><option value="non">Non</option></Select>
+            </Field>
+            <Field label="Date de l'accord"><Input type="date" value={v.autorisation_date} onChange={set("autorisation_date")} max={today()} /></Field>
+          </div>
+          {v.autorisation_medicaments === "oui" && <Field label="Médicaments autorisés" hint="Laisser vide si tous les médicaments courants sont autorisés."><Input value={v.medicaments_autorises} onChange={set("medicaments_autorises")} placeholder="Paracétamol, sirop contre la toux…" /></Field>}
+          {v.autorisation_medicaments && <Field label="Accord donné par"><Input value={v.autorisation_par} onChange={set("autorisation_par")} placeholder="Mère, père, tuteur… (fiche signée)" /></Field>}
+        </div>
         <Field label="Remarques"><Textarea value={v.remarques} onChange={set("remarques")} rows={2} /></Field>
       </div>
     </Modal>
@@ -195,6 +247,7 @@ export function SanteEleve({ eleve }) {
             <I label="Vaccins">{f.vaccins}</I>
             <I label="Urgence">{[f.urgence_nom, f.urgence_telephone].filter(Boolean).join(" · ")}</I>
             <I label="Médecin">{f.medecin}</I>
+            <I label="Médicaments" fort={f.autorisation_medicaments === "non"}>{f.autorisation_medicaments ? `${f.autorisation_medicaments === "oui" ? "Autorisés" : "Non autorisés"}${f.medicaments_autorises ? ` : ${f.medicaments_autorises}` : ""}${f.autorisation_date ? ` (accord du ${date(f.autorisation_date)}${f.autorisation_par ? `, ${f.autorisation_par}` : ""})` : ""}` : null}</I>
             <I label="Remarques">{f.remarques}</I>
           </dl>
           {data.fiche && <p className="xs muted" style={{ marginTop: 14 }}>Mise à jour le {date(f.updated_at)}{f.maj_par_nom ? ` par ${f.maj_par_nom}` : ""}</p>}
@@ -207,7 +260,7 @@ export function SanteEleve({ eleve }) {
             <thead><tr><th>Date</th><th>Motif</th><th>Suite</th>{peut && <th />}</tr></thead>
             <tbody>{data.passages.map((p) => <tr key={p.id}>
               <td className="num">{date(p.date_passage)}{p.heure && <div className="xs muted">{p.heure}</div>}</td>
-              <td><strong>{p.motif}</strong>{p.soins && <div className="xs muted">{p.soins}</div>}</td>
+              <td><strong>{p.motif}</strong>{p.soins && <div className="xs muted">{p.soins}</div>}{p.produits?.length > 0 && <div className="xs muted"><Pill size={11} /> {p.produits.map((x) => `${x.nom} ×${x.quantite}`).join(", ")}</div>}</td>
               <td><SuiteBadge suite={p.suite} /></td>
               {peut && <td className="r"><button className="btn sm ghost icon" onClick={() => setPassage(p)} aria-label="Modifier"><Pencil size={15} /></button></td>}
             </tr>)}</tbody>
@@ -292,10 +345,12 @@ export default function Infirmerie() {
 
       <div className="tabs" role="tablist" style={{ marginBottom: 18 }}>
         <button role="tab" className={tab === "passages" ? "on" : ""} onClick={() => setTab("passages")}><Stethoscope size={16} />Passages</button>
+        <button role="tab" className={tab === "stock" ? "on" : ""} onClick={() => setTab("stock")}><Pill size={16} />Stock{st && st.stock_bas + st.peremption > 0 ? <span className="count" style={{ background: "var(--coral)", color: "#fff" }}>{st.stock_bas + st.peremption}</span> : null}</button>
+        <button role="tab" className={tab === "rapport" ? "on" : ""} onClick={() => setTab("rapport")}><FileBarChart size={16} />Rapport</button>
         <button role="tab" className={tab === "alertes" ? "on" : ""} onClick={() => setTab("alertes")}><ShieldAlert size={16} />Élèves à surveiller{st ? <span className="count">{st.alertes}</span> : null}</button>
       </div>
 
-      <div className="card">
+      {tab === "stock" ? <Stock /> : tab === "rapport" ? <Rapport /> : <div className="card">
         {tab === "alertes" ? <Alertes /> : <>
           <div className="toolbar">
             <Periode annee={s.annee} du={du} au={au} onChange={(d, x) => { setDu(d); setAu(x); }} />
@@ -317,7 +372,7 @@ export default function Infirmerie() {
                       <div className="xs muted">{p.classe || p.matricule}{p.allergies && <span style={{ color: "var(--coral)", fontWeight: 700 }}> · Allergie : {p.allergies}</span>}</div>
                     </td>
                     <td><strong>{p.motif}</strong>{p.temperature != null && <div className="xs muted"><Thermometer size={12} style={{ verticalAlign: "-2px" }} /> {String(p.temperature).replace(".", ",")} °C</div>}</td>
-                    <td className="hide-m">{p.soins || p.medicaments ? <>{p.soins}{p.medicaments && <div className="xs muted">Médicament : {p.medicaments}</div>}</> : <span className="muted">—</span>}</td>
+                    <td className="hide-m">{p.soins || p.medicaments || p.produits?.length ? <>{p.soins}{p.produits?.length > 0 && <div className="xs muted"><Pill size={11} /> {p.produits.map((x) => `${x.nom} ×${x.quantite}`).join(", ")}</div>}{p.medicaments && <div className="xs muted">Médicament : {p.medicaments}</div>}</> : <span className="muted">—</span>}</td>
                     <td><SuiteBadge suite={p.suite} /></td>
                     <td className="hide-m">{p.parents_prevenus ? <span className="badge green">Prévenus</span> : <span className="muted">Non</span>}</td>
                     <td className="r" style={{ whiteSpace: "nowrap" }}>
@@ -330,7 +385,7 @@ export default function Infirmerie() {
             </div>
           )}
         </>}
-      </div>
+      </div>}
       {edit && <PassageForm passage={edit === "new" ? null : edit} onClose={() => setEdit(null)} />}
       {del && <Confirm danger title="Supprimer ce passage ?" confirmLabel="Supprimer" message={`${del.prenom} ${del.nom} — ${del.motif} (${date(del.date_passage)})`} onConfirm={supprimer} onClose={() => setDel(null)} />}
     </>

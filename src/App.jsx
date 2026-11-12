@@ -36,6 +36,7 @@ import Evenements, { EvenementFiche } from "./pages/Evenements";
 import EvenementSupports from "./pages/EvenementSupports";
 import Archives from "./pages/Archives";
 import Infirmerie from "./pages/Infirmerie";
+import { RapportImpression as RapportInfirmerie } from "./pages/InfirmerieRapport";
 
 export default function App() {
   const s = useSession();
@@ -71,6 +72,7 @@ export default function App() {
         <Route path="fournitures/liste" element={<ListeFournituresImpression />} />
         {s.peut("eleves.ecrire") && <Route path="acces-parents/imprimer" element={<CartesAccesImpression />} />}
         {s.peut("pedagogie.lire") && <Route path="emploi/imprimer" element={<EmploiImpression />} />}
+        {s.peut("infirmerie.lire") && <Route path="infirmerie/rapport" element={<RapportInfirmerie />} />}
         {s.peut("finances.lire") && <Route path="factures/imprimer" element={<FacturesImpression />} />}
         {s.peut("evenements.lire") && <Route path="evenements/:id/imprimer" element={<EvenementSupports />} />}
         {(s.peut("personnel.lire") || s.peut("enseignants.ecrire")) && <Route path="personnel/imprimer" element={<PersonnelImpression />} />}
