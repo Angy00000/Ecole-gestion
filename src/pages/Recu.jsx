@@ -25,7 +25,7 @@ function analyse(sit) {
   return { parCle, cle, reste, frais, retard, courant, avenir, tFrais: somme(frais), tRetard: somme(retard), tCourant: somme(courant), tAvenir: somme(avenir) };
 }
 
-function Ticket({ r, etab, sit, copie, rectifie }) {
+export function Ticket({ r, etab, sit, copie, rectifie }) {
   const a = analyse(sit);
   const enRetard = a.tFrais + a.tRetard + a.tCourant;
   return (

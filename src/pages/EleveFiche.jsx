@@ -491,7 +491,7 @@ export default function EleveFiche() {
       )}
 
       {tab === "sante" && <SanteEleve eleve={{ ...e, classe: courante?.classe }} />}
-      {envoi && <EnvoiDocument eleve={e} inscrit={!!courante} onClose={() => setEnvoi(false)} />}
+      {envoi && <EnvoiDocument eleve={e} inscrit={!!courante} recus={s.peut("finances.lire") ? paiements : []} onClose={() => setEnvoi(false)} />}
       {infirm && <PassageForm eleve={{ ...e, classe: courante?.classe }} onClose={() => setInfirm(false)} />}
       {acces && courante && <AccesParentModal eleve={e} classe={courante.classe} telephone={e.mere_telephone || e.pere_telephone || e.tuteur_telephone} onClose={() => setAcces(false)} />}
       {enc && courante && <Encaissement inscriptionId={courante.id} eleve={e} onClose={() => setEnc(false)} onSaved={(r) => { setEnc(false); nav(`/recus/${r.id}`); }} />}

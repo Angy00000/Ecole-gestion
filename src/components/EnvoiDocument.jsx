@@ -1,12 +1,14 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessageCircle, Upload, FileText, Trash2, Copy, Eye, EyeOff, Paperclip } from "lucide-react";
+import { MessageCircle, Upload, FileText, Trash2, Copy, Eye, EyeOff, Paperclip, Receipt, Check } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
-import { date } from "../lib/format";
+import { date, fcfa } from "../lib/format";
 import { Modal, Field, Select, Textarea, ErrorBox, Confirm, useToast } from "./ui";
-import { useEnvoiLien, TYPES_FICHIERS } from "./Partager";
+import { useEnvoiLien, TYPES_FICHIERS, fabriquerPdf } from "./Partager";
+import { Ticket } from "../pages/Recu";
 
 const taille = (o) => (o > 1024 * 1024 ? `${(o / 1024 / 1024).toFixed(1).replace(".", ",")} Mo` : `${Math.max(1, Math.round(o / 1024))} Ko`);
 const ORIGINE = /^https?:$/.test(location.protocol) ? location.origin : "https://ecole-gestion-eta.vercel.app";
@@ -19,7 +21,7 @@ export const numerosParents = (e) => [
 ].filter(Boolean);
 
 /** Fiche élève → « Envoyer aux parents » : n'importe quel fichier, ou un document de l'école, par WhatsApp. */
-export default function EnvoiDocument({ eleve, inscrit, onClose }) {
+export default function EnvoiDocument({ eleve, inscrit, recus = [], onClose }) {
   const s = useSession();
   const toast = useToast();
   const qc = useQueryClient();
@@ -33,6 +35,30 @@ export default function EnvoiDocument({ eleve, inscrit, onClose }) {
   const [error, setError] = useState(null);
   const [del, setDel] = useState(null);
   const { envoyer, fenetre } = useEnvoiLien();
+  // Reçu dessiné hors de l'écran, le temps d'en faire le PDF
+  const [apercu, setApercu] = useState(null);
+  const [recuEnCours, setRecuEnCours] = useState(null);
+  const [recusFaits, setRecusFaits] = useState({});
+  const pretRef = useRef(null);
+  useEffect(() => {
+    if (!apercu || !pretRef.current) return;
+    const fin = pretRef.current; pretRef.current = null;
+    const img = document.querySelector(".envoi-hors-ecran img");
+    const attendre = img && !img.complete ? new Promise((ok) => { img.onload = img.onerror = ok; }) : Promise.resolve();
+    attendre.then(() => requestAnimationFrame(() => setTimeout(fin, 150)));
+  }, [apercu]);
+  const envoyerRecu = async (r) => {
+    setRecuEnCours(r.id);
+    const ok = await envoyer(async () => {
+      const d = await api.get(`/recus/${r.id}`);
+      await new Promise((ok) => { pretRef.current = ok; setApercu(d); });
+      try { return await fabriquerPdf("A5", `Recu-${d.recu.numero}-${eleve.nom}-${eleve.prenom}`, d.recu.id); }
+      finally { setApercu(null); }
+    }, { telephone: tel, message: `Bonjour, ${s.etablissement?.nom || "l'école"} vous envoie le reçu n° ${r.numero} de ${fcfa(r.montant)} du ${date(r.date_paiement)} pour ${eleve.prenom} ${eleve.nom}. Merci.`, eleveId: eleve.id });
+    setRecuEnCours(null);
+    if (ok) { setRecusFaits((x) => ({ ...x, [r.id]: true })); qc.invalidateQueries({ queryKey: ["partages", eleve.id] }); }
+  };
+  const recusValides = recus.filter((r) => !r.annule);
   const hist = useQuery({ queryKey: ["partages", eleve.id], queryFn: () => api.get(`/eleves/${eleve.id}/partages`) });
 
   const choisir = (f) => {
@@ -83,6 +109,26 @@ export default function EnvoiDocument({ eleve, inscrit, onClose }) {
         </Field>
         <Field label="Message"><Textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} /></Field>
 
+        {recusValides.length > 0 && (
+          <div>
+            <div className="small" style={{ fontWeight: 700, marginBottom: 8 }}>Reçus de paiement</div>
+            <div className="table-wrap" style={{ maxHeight: 230, overflowY: "auto" }}><table className="table">
+              <tbody>{recusValides.map((r) => (
+                <tr key={r.id}>
+                  <td><Receipt size={15} style={{ verticalAlign: "-3px", marginRight: 8, color: "var(--muted)" }} /><strong>N° {r.numero}</strong><div className="xs muted">{date(r.date_paiement)}{r.annee ? ` · ${r.annee}` : ""}</div></td>
+                  <td className="r amount">{fcfa(r.montant)}</td>
+                  <td className="r" style={{ whiteSpace: "nowrap" }}>
+                    {recusFaits[r.id] && <span className="badge green" style={{ marginRight: 8 }}><Check size={13} />Envoyé</span>}
+                    <button className={`btn sm ${recusFaits[r.id] ? "" : "wa"}`} disabled={!!recuEnCours} onClick={() => envoyerRecu(r)}>
+                      <MessageCircle size={15} />{recuEnCours === r.id ? "Préparation…" : recusFaits[r.id] ? "Renvoyer" : "Envoyer"}
+                    </button>
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          </div>
+        )}
+
         <div>
           <div className="small" style={{ fontWeight: 700, marginBottom: 8 }}>Ou un document de l'école</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -111,6 +157,10 @@ export default function EnvoiDocument({ eleve, inscrit, onClose }) {
         </div>
       </div>
       {fenetre}
+      {apercu && createPortal(
+        <div className="print-page envoi-hors-ecran" aria-hidden="true" style={{ position: "fixed", left: -20000, top: 0, width: 900, minHeight: 0, padding: 0, background: "#fff" }}>
+          <div className="tickets"><Ticket r={apercu.recu} etab={s.etablissement} sit={apercu.situation} copie="Exemplaire parent" /></div>
+        </div>, document.body)}
       {del && <Confirm danger title="Supprimer ce lien ?" confirmLabel="Supprimer" message={`${del.nom} : le parent ne pourra plus l'ouvrir.`} onConfirm={supprimer} onClose={() => setDel(null)} />}
     </Modal>
   );
