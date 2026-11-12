@@ -78,7 +78,14 @@ export function enLettres(n) {
   if (r) parts.push(sous1000(r));
   return parts.join(" ");
 }
-export const telWa = (t) => { const d = String(t || "").replace(/\D/g, ""); return d.length === 9 ? "221" + d : d; };
+// Numéro au format WhatsApp (indicatif sans « + ») : 77 123 45 67 → 221771234567 ; +221…, 00221…, 0033… acceptés.
+export const telWa = (t) => {
+  let d = String(t || "").replace(/\D/g, "");
+  if (d.startsWith("00")) d = d.slice(2);          // 00221…, 0033… : indicatif international
+  if (d.length === 9) return "221" + d;            // numéro sénégalais sans indicatif
+  if (/^(33|212)0/.test(d)) d = d.replace(/^(33|212)0/, "$1"); // +33 (0)6…, +212 (0)6… : sans le 0 national
+  return d;
+};
 const MOIS_ABR = ["Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."];
 export const moisAbr = (ym) => (ym ? MOIS_ABR[+String(ym).split("-")[1] - 1] : "");
 export const JOURS = { 1: "Lundi", 2: "Mardi", 3: "Mercredi", 4: "Jeudi", 5: "Vendredi", 6: "Samedi" };
