@@ -11,7 +11,7 @@ function Bulletin({ e, data, etab }) {
   const B = data.classe.bareme;
   const eff = data.stats.classes;
   return (
-    <article className="bulletin">
+    <article className="bulletin" data-dest={e.inscription_id}>
       <header className="b-head">
         <div className="b-rep"><strong>République du Sénégal</strong><span>Un Peuple – Un But – Une Foi</span><span>Ministère de l'Éducation nationale</span></div>
         <div className="b-school"><img src="/logo.png" alt="" /><div><strong>{etab.nom}</strong><span>{etab.adresse} · Tél. {etab.telephones}</span><span>Autorisation {etab.autorisation}</span></div></div>
@@ -81,7 +81,8 @@ export default function Bulletins() {
       <div className="print-bar">
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{eleves.length} bulletin{eleves.length > 1 ? "s" : ""}</strong> — {data.classe.nom}, {TRIMESTRES[data.trimestre]}</span>
-        {eleves.length > 0 && <Partager format="A4" nom={eleves.length === 1 ? `Bulletin-T${data.trimestre}-${eleves[0].nom}-${eleves[0].prenom}` : `Bulletins-${data.classe.nom}-T${data.trimestre}`} telephone={eleves.length === 1 ? eleves[0].telephone : null} message={eleves.length === 1 ? `Bonjour, voici le bulletin du ${TRIMESTRES[data.trimestre]} de ${eleves[0].prenom} ${eleves[0].nom} (${data.classe.nom}). ${s.etablissement?.nom}` : `Bulletins ${data.classe.nom} — ${TRIMESTRES[data.trimestre]}`} />}
+        {eleves.length > 0 && <Partager format="A4" nom={eleves.length === 1 ? `Bulletin-T${data.trimestre}-${eleves[0].nom}-${eleves[0].prenom}` : `Bulletins-${data.classe.nom}-T${data.trimestre}`} telephone={eleves.length === 1 ? eleves[0].telephone : null} eleveId={eleves.length === 1 ? eleves[0].eleve_id : null} message={eleves.length === 1 ? `Bonjour, voici le bulletin du ${TRIMESTRES[data.trimestre]} de ${eleves[0].prenom} ${eleves[0].nom} (${data.classe.nom}). ${s.etablissement?.nom}` : `Bulletins ${data.classe.nom} — ${TRIMESTRES[data.trimestre]}`}
+          destinataires={eleves.map((e) => ({ cle: e.inscription_id, nom: `${e.nom} ${e.prenom}`, telephone: e.telephone, eleve_id: e.eleve_id, fichier: `Bulletin-T${data.trimestre}-${e.nom}-${e.prenom}`, message: `Bonjour, voici le bulletin du ${TRIMESTRES[data.trimestre]} de ${e.prenom} ${e.nom} (${data.classe.nom}). ${s.etablissement?.nom}` }))} />}
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       <div className="tickets">{eleves.map((e) => <Bulletin key={e.inscription_id} e={e} data={data} etab={s.etablissement} />)}</div>

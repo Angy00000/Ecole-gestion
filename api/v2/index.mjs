@@ -1844,6 +1844,63 @@ route("DELETE", "/infirmerie/:id", async (ctx) => {
   return { ok: true };
 });
 
+// ── Documents envoyés aux parents par lien (WhatsApp) ──
+// Le fichier est gardé 180 jours ; le lien contient un jeton secret impossible à deviner.
+const PARTAGE_MAX = 3 * 1024 * 1024; // 3 Mo (limite d'envoi de Vercel : 4,5 Mo encodés)
+const PARTAGE_TYPES = {
+  "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+  "application/msword": "doc", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.ms-excel": "xls", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+};
+route("POST", "/partages", async (ctx) => {
+  exigeUn(ctx, ["eleves.lire", "finances.lire", "finances.encaisser", "pedagogie.lire"]);
+  const m = /^data:([\w.+\/-]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(ctx.body.fichier || ""));
+  if (!m || !PARTAGE_TYPES[m[1]]) fail(400, "Type de fichier non accepté : PDF, photo (JPEG, PNG), Word, Excel ou PowerPoint.");
+  const taille = Math.floor((m[2].length * 3) / 4);
+  if (taille > PARTAGE_MAX) fail(400, "Fichier trop lourd : 3 Mo au maximum.");
+  let nom = String(ctx.body.nom || "document").replace(/[\\/:*?"<>|\r\n]/g, "_").trim().slice(0, 120) || "document";
+  if (!nom.toLowerCase().endsWith("." + PARTAGE_TYPES[m[1]])) nom += "." + PARTAGE_TYPES[m[1]];
+  const jeton = crypto.randomBytes(18).toString("base64url");
+  const eleve = Number(ctx.body.eleve_id) || null;
+  const [, [r]] = await tx([
+    ["delete from app.documents_partages where expire_le < now()"],
+    [`insert into app.documents_partages (jeton, nom, type_mime, taille, contenu, eleve_id, telephone, envoye_par)
+      values ($1,$2,$3,$4,decode($5,'base64'),$6,$7,$8) returning id, jeton, nom, taille, expire_le`,
+      [jeton, nom, m[1], taille, m[2], eleve, ctx.body.telephone ? String(ctx.body.telephone).slice(0, 40) : null, ctx.user.id]],
+  ]);
+  await journal(ctx, "envoi_document", "eleve", eleve, { nom, taille });
+  return r;
+});
+// Historique des documents envoyés pour un élève
+route("GET", "/eleves/:id/partages", async (ctx) => {
+  exige(ctx, "eleves.lire");
+  return q(`select d.id, d.jeton, d.nom, d.type_mime, d.taille, d.telephone, d.vues, d.vu_le, d.expire_le, d.created_at,
+      u.prenom || ' ' || u.nom as envoye_par_nom
+    from app.documents_partages d left join app.utilisateurs u on u.id=d.envoye_par
+    where d.eleve_id=$1 and d.expire_le > now() order by d.created_at desc limit 100`, [ctx.params.id]);
+});
+route("DELETE", "/partages/:id", async (ctx) => {
+  exige(ctx, "eleves.ecrire");
+  const r = await one("delete from app.documents_partages where id=$1 returning id, nom, eleve_id", [ctx.params.id]);
+  if (!r) fail(404, "Document introuvable.");
+  await journal(ctx, "suppression_document", "eleve", r.eleve_id, { nom: r.nom });
+  return { ok: true };
+});
+// Lien public ouvert par le parent : renvoie le fichier lui-même.
+route("GET", "/d/:jeton", async (ctx) => {
+  const r = await one(`update app.documents_partages set vues = vues + 1, vu_le = now()
+    where jeton=$1 and expire_le > now() returning nom, type_mime, encode(contenu,'base64') as b64`, [ctx.params.jeton]);
+  if (!r) return new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body style="font-family:system-ui;padding:32px;text-align:center"><h2>Document introuvable</h2><p>Ce lien a expiré ou a été supprimé. Merci de contacter l'école.</p></body>`,
+    { status: 404, headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'", ...CORS } });
+  const inline = r.type_mime === "application/pdf" || r.type_mime.startsWith("image/");
+  return new Response(Buffer.from(r.b64, "base64"), { status: 200, headers: {
+    "Content-Type": r.type_mime,
+    "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(r.nom)}`,
+    "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox", "Referrer-Policy": "no-referrer",
+  } });
+}, { public: true });
+
 // ── Rapport financier sur une période ──
 route("GET", "/rapport", async (ctx) => {
   exige(ctx, "finances.lire");
@@ -2195,7 +2252,8 @@ const calculerBulletins = async (classe_id, tri) => {
   const [[classe], matieres, eleves, notes, apps, abs] = await tx([
     [`select c.*, a.libelle as annee, a.debut, a.fin, t.prenom || ' ' || t.nom as titulaire from app.classes c join app.annees a on a.id=c.annee_id left join app.enseignants t on t.id=c.titulaire_id where c.id=$1`, [classe_id]],
     [`select m.*, e.prenom || ' ' || e.nom as enseignant from app.matieres m left join app.enseignants e on e.id=m.enseignant_id where m.classe_id=$1 order by m.ordre, m.nom`, [classe_id]],
-    [`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, e.date_naissance, e.lieu_naissance
+    [`select i.id as inscription_id, e.id as eleve_id, e.matricule, e.nom, e.prenom, e.sexe, e.date_naissance, e.lieu_naissance,
+        coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone
       from app.inscriptions i join app.eleves e on e.id=i.eleve_id where i.classe_id=$1 and i.statut='active' order by e.nom, e.prenom`, [classe_id]],
     [`select ev.matiere_id, ev.type, ev.bareme, n.inscription_id, n.note from app.notes n join app.evaluations ev on ev.id=n.evaluation_id
       where ev.classe_id=$1 and ev.trimestre=$2 and n.note is not null`, [classe_id, tri]],
@@ -2533,7 +2591,8 @@ export default {
           if (espaceProf(ctx.user) && !ESPACE_PROF.has(`${r.method} ${r.pattern}`)) fail(403, "L'espace enseignant donne accès seulement à votre classe : élèves, notes, absences et emploi du temps.");
           await verifierClasse(ctx, ctx.query.classe_id ?? ctx.body?.classe_id);
         }
-        return json(await r.handler(ctx));
+        const out = await r.handler(ctx);
+        return out instanceof Response ? out : json(out);
       }
       return json({ error: "Route inconnue." }, 404);
     } catch (e) {

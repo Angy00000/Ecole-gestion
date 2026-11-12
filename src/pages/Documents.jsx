@@ -217,7 +217,7 @@ export default function Documents() {
       <div className="print-bar">
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{type === "service" ? `${SERVICES[p.get("svc")]} — état par classe` : TITRES[type]}</strong></span>
-        <Partager format={format} nom={`${type === "service" ? `Etat-${p.get("svc")}` : TITRES[type]}${nomEleve ? `-${nomEleve}` : ""}`} telephone={telDoc} message={`${type === "service" ? "État par classe" : TITRES[type]}${nomEleve ? ` — ${nomEleve}` : ""} — ${etab.nom}`} />
+        <Partager format={format} nom={`${type === "service" ? `Etat-${p.get("svc")}` : TITRES[type]}${nomEleve ? `-${nomEleve}` : ""}`} telephone={telDoc} eleveId={eleveId || null} message={`${type === "service" ? "État par classe" : TITRES[type]}${nomEleve ? ` — ${nomEleve}` : ""} — ${etab.nom}`} />
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       <div className="tickets">{contenu}</div>

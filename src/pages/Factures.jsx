@@ -97,7 +97,7 @@ export default function Factures() {
 
 function Facture({ r, mois, etab }) {
   return (
-    <article className="ticket facture">
+    <article className="ticket facture" data-dest={r.inscription_id}>
       <header className="t-head">
         <img src="/logo.png" alt="" />
         <div className="t-school"><strong>{etab.nom}</strong><span>{etab.adresse}</span><span>Tél. {etab.telephones}</span>
@@ -148,7 +148,8 @@ export function FacturesImpression() {
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{rows.length} facture{rows.length > 1 ? "s" : ""}</strong> — {moisLong(mois)}</span>
         <ContenuFacture seul={seul} onChange={changerSeul} />
-        {rows.length > 0 && <Partager format="A5" nom={rows.length === 1 ? `Facture-${mois}-${rows[0].nom}-${rows[0].prenom}` : `Factures-${mois}`} telephone={rows.length === 1 ? rows[0].telephone : null} message={rows.length === 1 ? messageFacture(rows[0], s.etablissement, mois) : `Factures ${moisLong(mois)} — ${s.etablissement?.nom}`} />}
+        {rows.length > 0 && <Partager format="A5" nom={rows.length === 1 ? `Facture-${mois}-${rows[0].nom}-${rows[0].prenom}` : `Factures-${mois}`} telephone={rows.length === 1 ? rows[0].telephone : null} eleveId={rows.length === 1 ? rows[0].eleve_id : null} message={rows.length === 1 ? messageFacture(rows[0], s.etablissement, mois) : `Factures ${moisLong(mois)} — ${s.etablissement?.nom}`}
+          destinataires={rows.map((r) => ({ cle: r.inscription_id, nom: `${r.nom} ${r.prenom}`, telephone: r.telephone, eleve_id: r.eleve_id, fichier: `Facture-${mois}-${r.nom}-${r.prenom}`, message: messageFacture(r, s.etablissement, mois) }))} />}
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       <div className="tickets">{rows.map((r) => <Facture key={r.inscription_id} r={r} mois={mois} etab={s.etablissement} />)}</div>

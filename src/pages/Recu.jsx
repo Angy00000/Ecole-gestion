@@ -29,7 +29,7 @@ function Ticket({ r, etab, sit, copie, rectifie }) {
   const a = analyse(sit);
   const enRetard = a.tFrais + a.tRetard + a.tCourant;
   return (
-    <article className={`ticket ${r.annule ? "void" : ""}`}>
+    <article className={`ticket ${r.annule ? "void" : ""}`} data-dest={/^Souche/.test(copie || "") ? undefined : r.id}>
       {r.annule && <div className="void-stamp">ANNULÉ</div>}
       <header className="t-head">
         <img src="/logo.png" alt="" />
@@ -143,7 +143,8 @@ export function RecusLot() {
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{ok.length} reçus</strong> — {fcfa(total)}</span>
         <label className="check small"><input type="checkbox" checked={deux} onChange={(e) => setDeux(e.target.checked)} />Imprimer aussi les souches</label>
-        <Partager format="A5" nom={`Recus-${ok.length}`} message={`${ok.length} reçus — ${fcfa(total)}`} />
+        <Partager format="A5" nom={`Recus-${ok.length}`} message={`${ok.length} reçus — ${fcfa(total)}`}
+          destinataires={ok.filter((d) => !d.recu.annule).map((d) => ({ cle: d.recu.id, nom: `${d.recu.nom} ${d.recu.prenom}`, telephone: d.recu.telephone, eleve_id: d.recu.eleve_id, fichier: `Recu-${d.recu.numero}-${d.recu.nom}-${d.recu.prenom}`, message: `Bonjour, ${etab.nom} vous envoie le reçu n° ${d.recu.numero} de ${fcfa(d.recu.montant)} pour ${d.recu.prenom} ${d.recu.nom}.` }))} />
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       {res.some((x) => x.error) && <div className="alert" style={{ maxWidth: 640, margin: "0 auto 16px" }}>Certains reçus n'ont pas pu être chargés.</div>}
@@ -239,7 +240,7 @@ function RecuServeur({ id }) {
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow" />
         <label className="check small"><input type="checkbox" checked={deux} onChange={(e) => setDeux(e.target.checked)} />Imprimer aussi la souche</label>
-        {!r.annule && <Partager format="A5" nom={`Recu-${r.numero}-${r.nom}-${r.prenom}`} telephone={r.telephone} message={msg} />}
+        {!r.annule && <Partager format="A5" nom={`Recu-${r.numero}-${r.nom}-${r.prenom}`} telephone={r.telephone} eleveId={r.eleve_id} message={msg} />}
         {data.modifiable && <button className="btn" onClick={() => setEdit(true)}><Pencil size={17} />Modifier</button>}
         {data.supprimable && <button className="btn danger" onClick={() => setSuppr(true)}><Trash2 size={17} />Supprimer</button>}
         {s.peut("finances.annuler") && !r.annule && <button className="btn danger" onClick={() => setAnnul(true)}><Ban size={17} />Annuler</button>}
