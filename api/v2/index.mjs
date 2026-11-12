@@ -2099,9 +2099,9 @@ route("GET", "/vie-scolaire/jour", async (ctx) => {
   const annee = await anneeCourante();
   const [classes, absences, sorties, incidents, convocations, exclusions, [perso]] = await tx([
     [`select c.id, c.nom, c.cycle, (select count(*) from app.inscriptions i where i.classe_id=c.id and i.statut='active')::int as effectif,
-        exists (select 1 from app.journal j where j.action='appel' and j.entite='classe' and j.entite_id=c.id and j.details->>'date'=$2) as appel_fait,
-        (select count(*) from app.absences a join app.inscriptions i on i.id=a.inscription_id where i.classe_id=c.id and a.date_absence=$2 and a.type='absence')::int as absents,
-        (select count(*) from app.absences a join app.inscriptions i on i.id=a.inscription_id where i.classe_id=c.id and a.date_absence=$2 and a.type='retard')::int as retards
+        exists (select 1 from app.journal j where j.action='appel' and j.entite='classe' and j.entite_id=c.id and j.details->>'date'=$2::text) as appel_fait,
+        (select count(*) from app.absences a join app.inscriptions i on i.id=a.inscription_id where i.classe_id=c.id and a.date_absence=$2::date and a.type='absence')::int as absents,
+        (select count(*) from app.absences a join app.inscriptions i on i.id=a.inscription_id where i.classe_id=c.id and a.date_absence=$2::date and a.type='retard')::int as retards
       from app.classes c where c.annee_id=$1 order by c.ordre, c.nom`, [annee, jour]],
     [`select a.id, a.type, a.moment, a.justifiee, a.motif, e.id as eleve_id, ${ELEVE_COLS}
       from app.absences a join app.inscriptions i on i.id=a.inscription_id join app.eleves e on e.id=i.eleve_id
