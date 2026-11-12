@@ -29,7 +29,7 @@ export const BoutonParents = ({ p, sm = true }) => {
   return <a className={`btn ${sm ? "sm" : ""} wa`} href={`https://wa.me/${telWa(p.telephone)}?text=${encodeURIComponent(messageParents(s.etablissement, p))}`} target="_blank" rel="noreferrer"><MessageCircle size={15} /><span className="hide-m">Prévenir</span></a>;
 };
 
-function ChoixEleve({ onPick }) {
+export function ChoixEleve({ onPick }) {
   const s = useSession();
   const [q, setQ] = useState("");
   const [res, setRes] = useState([]);

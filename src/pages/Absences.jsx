@@ -13,7 +13,8 @@ function Appel({ classes }) {
   const s = useSession();
   const toast = useToast();
   const qc = useQueryClient();
-  const [classeId, setClasseId] = useState(classes[0]?.id);
+  const [params] = useSearchParams();
+  const [classeId, setClasseId] = useState(() => classes.find((c) => c.id === Number(params.get("classe")))?.id || classes[0]?.id);
   const [jour, setJour] = useState(today());
   const [items, setItems] = useState({});
   const [busy, setBusy] = useState(false);

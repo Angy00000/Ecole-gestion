@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, School, Wallet, Receipt, AlertTriangle, BookOpen, CalendarCheck,
-  GraduationCap, CalendarClock, HandCoins, FileBarChart, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, FileText, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange, FileStack, ListChecks, ShieldCheck, Sparkles, Archive, Stethoscope } from "lucide-react";
+  GraduationCap, CalendarClock, HandCoins, FileBarChart, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, FileText, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange, FileStack, ListChecks, ShieldCheck, Sparkles, Archive, Stethoscope, Shield } from "lucide-react";
 import { useSession } from "../lib/session";
 import { ROLES, initiales } from "../lib/format";
 import MotDePasse from "../pages/MotDePasse";
@@ -36,6 +36,7 @@ const NAV = [
   { to: "/emploi", label: "Emploi du temps", icon: CalendarClock, droit: "pedagogie.lire" },
   { group: "Vie de l'école" },
   { to: "/personnel", label: "Personnel", icon: GraduationCap, droit: ["personnel.lire", "enseignants.ecrire"] },
+  { to: "/vie-scolaire", label: "Vie scolaire", icon: Shield, droit: "surveillance.lire" },
   { to: "/infirmerie", label: "Infirmerie", icon: Stethoscope, droit: "infirmerie.lire" },
   { to: "/evenements", label: "Événements", icon: Sparkles, droit: "evenements.lire" },
   { group: "Administration" },

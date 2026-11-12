@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt, PlusCircle, ArrowRightLeft, KeyRound, RotateCcw, HeartPulse, Stethoscope, MessageCircle } from "lucide-react";
+import { Check, ArrowLeft, Pencil, RefreshCcw, Trash2, Printer, Phone, Utensils, School, Cake, Wallet, CalendarCheck2, User, Users, Receipt, PlusCircle, ArrowRightLeft, KeyRound, RotateCcw, HeartPulse, Stethoscope, MessageCircle, Shield } from "lucide-react";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateLongue, age, initiales } from "../lib/format";
@@ -9,6 +9,7 @@ import { Spinner, ErrorBox, Empty, Modal, Field, Select, Input, Confirm, useToas
 import EleveForm from "./EleveForm";
 import { AccesParentModal } from "./AccesParents";
 import { SanteEleve, PassageForm } from "./Infirmerie";
+import { VieEleve } from "./VieScolaire";
 import EnvoiDocument from "../components/EnvoiDocument";
 import { telWa } from "../lib/format";
 import Encaissement from "../components/Encaissement";
@@ -329,6 +330,7 @@ export default function EleveFiche() {
   const tabs = [["identite", "Identité et parents", null, User], ["scolarite", "Scolarité", inscriptions.length, School],
     ...(s.peut("finances.lire") ? [["paiements", "Paiements", paiements.length, Receipt]] : []),
     ...(s.peut("pedagogie.lire") ? [["absences", "Absences", absences.filter((a) => a.annee_id === s.annee?.id).length, CalendarCheck2]] : []),
+    ...(s.peut("surveillance.lire") ? [["vie", "Vie scolaire", null, Shield]] : []),
     ...(s.peut("infirmerie.lire") ? [["sante", "Santé", null, HeartPulse]] : [])];
 
   return (
@@ -490,6 +492,7 @@ export default function EleveFiche() {
         </div>
       )}
 
+      {tab === "vie" && <VieEleve eleve={{ ...e, classe: courante?.classe }} />}
       {tab === "sante" && <SanteEleve eleve={{ ...e, classe: courante?.classe }} />}
       {envoi && <EnvoiDocument eleve={e} inscrit={!!courante} recus={s.peut("finances.lire") ? paiements : []} onClose={() => setEnvoi(false)} />}
       {infirm && <PassageForm eleve={{ ...e, classe: courante?.classe }} onClose={() => setInfirm(false)} />}

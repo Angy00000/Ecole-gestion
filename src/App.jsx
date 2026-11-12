@@ -36,6 +36,7 @@ import Evenements, { EvenementFiche } from "./pages/Evenements";
 import EvenementSupports from "./pages/EvenementSupports";
 import Archives from "./pages/Archives";
 import Infirmerie from "./pages/Infirmerie";
+import VieScolaire, { VieScolaireImpression } from "./pages/VieScolaire";
 import { RapportImpression as RapportInfirmerie } from "./pages/InfirmerieRapport";
 
 export default function App() {
@@ -73,6 +74,7 @@ export default function App() {
         {s.peut("eleves.ecrire") && <Route path="acces-parents/imprimer" element={<CartesAccesImpression />} />}
         {s.peut("pedagogie.lire") && <Route path="emploi/imprimer" element={<EmploiImpression />} />}
         {s.peut("infirmerie.lire") && <Route path="infirmerie/rapport" element={<RapportInfirmerie />} />}
+        {(s.peut("surveillance.lire") || s.peut("absences.ecrire")) && <Route path="vie-scolaire/imprimer" element={<VieScolaireImpression />} />}
         {s.peut("finances.lire") && <Route path="factures/imprimer" element={<FacturesImpression />} />}
         {s.peut("evenements.lire") && <Route path="evenements/:id/imprimer" element={<EvenementSupports />} />}
         {(s.peut("personnel.lire") || s.peut("enseignants.ecrire")) && <Route path="personnel/imprimer" element={<PersonnelImpression />} />}
@@ -96,6 +98,7 @@ export default function App() {
           {s.peut("evenements.lire") && <Route path="evenements/:id" element={<EvenementFiche />} />}
           {s.peut("depenses.lire") && <Route path="recettes" element={<Recettes />} />}
           {s.peut("infirmerie.lire") && <Route path="infirmerie" element={<Infirmerie />} />}
+          {s.peut("surveillance.lire") && <Route path="vie-scolaire" element={<VieScolaire />} />}
           {s.peut("finances.lire") && <Route path="rapports" element={<Rapports />} />}
           {s.peut("finances.lire") && <Route path="services/:type" element={<Service />} />}
           {s.peut("finances.lire") && <Route path="fournitures" element={<Fournitures />} />}

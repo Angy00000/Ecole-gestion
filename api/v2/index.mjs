@@ -85,16 +85,18 @@ const DROITS = {
   direction:  ["eleves.lire", "eleves.ecrire", "eleves.supprimer", "classes.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire",
                "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire",
                "pedagogie.lire", "pedagogie.ecrire", "enseignants.ecrire", "absences.ecrire", "evenements.lire", "evenements.ecrire", "personnel.lire",
-               "infirmerie.lire", "infirmerie.ecrire"],
+               "infirmerie.lire", "infirmerie.ecrire", "surveillance.lire", "surveillance.ecrire"],
   comptable:  ["eleves.lire", "finances.lire", "finances.encaisser", "depenses.lire", "depenses.ecrire", "evenements.lire", "personnel.lire"],
   secretaire: ["eleves.lire", "eleves.ecrire", "pedagogie.lire", "absences.ecrire", "evenements.lire", "evenements.ecrire", "personnel.lire", "infirmerie.lire", "infirmerie.ecrire"],
   professeur: ["eleves.lire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire"],
   // Infirmerie : passages à l'infirmerie et fiches santé, sans argent ni pédagogie
   infirmier:  ["eleves.lire", "infirmerie.lire", "infirmerie.ecrire"],
+  // Surveillant général : discipline, appel et retards, sorties, présence du personnel
+  surveillant: ["eleves.lire", "pedagogie.lire", "absences.ecrire", "surveillance.lire", "surveillance.ecrire", "personnel.lire", "infirmerie.lire"],
 };
 const CODES_DROITS = ["eleves.lire", "eleves.ecrire", "eleves.supprimer", "classes.ecrire", "pedagogie.lire", "pedagogie.ecrire", "absences.ecrire", "enseignants.ecrire",
-  "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire", "utilisateurs", "evenements.lire", "evenements.ecrire", "personnel.lire", "infirmerie.lire", "infirmerie.ecrire"];
-const LIBELLES_ROLES = { admin: "Administrateur", direction: "Direction", comptable: "Comptable", secretaire: "Secrétariat", professeur: "Enseignant", infirmier: "Infirmerie" };
+  "finances.lire", "finances.encaisser", "finances.annuler", "depenses.lire", "depenses.ecrire", "etablissement.ecrire", "annees.ecrire", "journal.lire", "utilisateurs", "evenements.lire", "evenements.ecrire", "personnel.lire", "infirmerie.lire", "infirmerie.ecrire", "surveillance.lire", "surveillance.ecrire"];
+const LIBELLES_ROLES = { admin: "Administrateur", direction: "Direction", comptable: "Comptable", secretaire: "Secrétariat", professeur: "Enseignant", infirmier: "Infirmerie", surveillant: "Surveillant général" };
 // Rôles créés ou modifiés dans Paramètres (table app.roles), rechargés toutes les 30 s.
 let ROLES_PERSO = {}, ROLES_AT = 0;
 const chargerRoles = async (force) => {
@@ -2078,6 +2080,227 @@ route("GET", "/d/:jeton", async (ctx) => {
     "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox", "Referrer-Policy": "no-referrer",
   } });
 }, { public: true });
+
+// ── Vie scolaire (surveillant général) ──
+const auj = () => new Date().toISOString().slice(0, 10);
+const inscriptionActive = async (eleveId) => {
+  const r = await one(`select i.id, i.annee_id, c.nom as classe from app.inscriptions i join app.annees a on a.id=i.annee_id join app.classes c on c.id=i.classe_id
+    where i.eleve_id=$1 and a.active and i.statut='active'`, [eleveId]);
+  if (!r) fail(400, "Cet élève n'est pas inscrit cette année.");
+  return r;
+};
+const ELEVE_COLS = `e.nom, e.prenom, e.matricule, e.sexe, coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
+  (select c.nom from app.inscriptions i join app.annees a on a.id=i.annee_id and a.active join app.classes c on c.id=i.classe_id where i.eleve_id=e.id limit 1) as classe`;
+
+// Tableau du jour
+route("GET", "/vie-scolaire/jour", async (ctx) => {
+  exige(ctx, "surveillance.lire");
+  const jour = ctx.query.date || auj();
+  const annee = await anneeCourante();
+  const [classes, absences, sorties, incidents, convocations, exclusions, [perso]] = await tx([
+    [`select c.id, c.nom, c.cycle, (select count(*) from app.inscriptions i where i.classe_id=c.id and i.statut='active')::int as effectif,
+        exists (select 1 from app.journal j where j.action='appel' and j.entite='classe' and j.entite_id=c.id and j.details->>'date'=$2) as appel_fait,
+        (select count(*) from app.absences a join app.inscriptions i on i.id=a.inscription_id where i.classe_id=c.id and a.date_absence=$2 and a.type='absence')::int as absents,
+        (select count(*) from app.absences a join app.inscriptions i on i.id=a.inscription_id where i.classe_id=c.id and a.date_absence=$2 and a.type='retard')::int as retards
+      from app.classes c where c.annee_id=$1 order by c.ordre, c.nom`, [annee, jour]],
+    [`select a.id, a.type, a.moment, a.justifiee, a.motif, e.id as eleve_id, ${ELEVE_COLS}
+      from app.absences a join app.inscriptions i on i.id=a.inscription_id join app.eleves e on e.id=i.eleve_id
+      where a.date_absence=$1 order by a.type desc, e.nom`, [jour]],
+    [`select s.*, ${ELEVE_COLS} from app.sorties_eleves s join app.eleves e on e.id=s.eleve_id where s.date_sortie=$1 order by s.heure_sortie nulls last, s.id`, [jour]],
+    [`select d.*, ${ELEVE_COLS} from app.discipline d join app.eleves e on e.id=d.eleve_id where d.date_fait=$1 order by d.id desc`, [jour]],
+    [`select d.*, ${ELEVE_COLS} from app.discipline d join app.eleves e on e.id=d.eleve_id
+      where d.convocation and coalesce(d.convocation_statut,'prevue')='prevue' and d.convocation_date >= $1::date - 7 order by d.convocation_date, d.convocation_heure nulls last limit 30`, [jour]],
+    [`select d.*, ${ELEVE_COLS} from app.discipline d join app.eleves e on e.id=d.eleve_id
+      where d.type='exclusion_temporaire' and $1::date between d.date_debut and coalesce(d.date_fin, d.date_debut) order by e.nom`, [jour]],
+    [`select count(*) filter (where e.statut='actif')::int as total,
+        count(p.id) filter (where p.statut='present')::int as presents, count(p.id) filter (where p.statut='retard')::int as retards,
+        count(p.id) filter (where p.statut='absent')::int as absents, count(*) filter (where e.statut='actif' and p.id is null)::int as non_pointes
+      from app.enseignants e left join app.personnel_pointage p on p.personnel_id=e.id and p.date_jour=$1 where e.statut='actif'`, [jour]],
+  ]);
+  return { date: jour, classes, absences, sorties, incidents, convocations, exclusions, personnel: perso };
+});
+
+// Retard au portail : l'élève arrive en retard, on note l'heure et on imprime un billet d'entrée.
+route("POST", "/vie-scolaire/retards", async (ctx) => {
+  exigeUn(ctx, ["surveillance.ecrire", "absences.ecrire"]);
+  const b = ctx.body;
+  const ins = await inscriptionActive(b.eleve_id);
+  const jour = b.date || auj();
+  const heure = /^\d{2}:\d{2}$/.test(b.heure || "") ? b.heure : new Date().toTimeString().slice(0, 5);
+  const moment = heure < "12:00" ? "matin" : "apres_midi";
+  const motif = `Arrivé(e) à ${heure.replace(":", "h")}${b.motif ? ` · ${String(b.motif).slice(0, 200)}` : ""}`;
+  const [, [r]] = await tx([
+    ["delete from app.absences where inscription_id=$1 and date_absence=$2 and moment in ($3,'journee')", [ins.id, jour, moment]],
+    [`insert into app.absences (inscription_id, date_absence, moment, type, justifiee, motif, saisi_par) values ($1,$2,$3,'retard',$4,$5,$6) returning *`,
+      [ins.id, jour, moment, !!b.justifiee, motif, ctx.user.id]],
+  ]);
+  const e = await one(`select e.id as eleve_id, ${ELEVE_COLS} from app.eleves e where e.id=$1`, [b.eleve_id]);
+  const n = await one(`select count(*)::int as n from app.absences a where a.inscription_id=$1 and a.type='retard'`, [ins.id]);
+  await journal(ctx, "retard", "eleve", Number(b.eleve_id), { date: jour, heure });
+  return { ...r, ...e, heure, retards_annee: n.n };
+});
+
+// Discipline
+const TYPES_DISC = ["observation", "avertissement", "blame", "retenue", "exclusion_temporaire", "exclusion_definitive", "felicitation"];
+const COLS_DISC = ["eleve_id", "date_fait", "heure", "categorie", "type", "description", "sanction", "date_debut", "date_fin", "signale_par",
+  "convocation", "convocation_date", "convocation_heure", "convocation_statut", "parents_prevenus"];
+const verifierDisc = (d) => {
+  if (d.type && !TYPES_DISC.includes(d.type)) fail(400, "Type de mesure inconnu.");
+  if (d.convocation_statut && !["prevue", "venue", "absente"].includes(d.convocation_statut)) fail(400, "Statut de convocation inconnu.");
+  if (d.type === "exclusion_temporaire" && !d.date_debut) fail(400, "Indiquez la date de début de l'exclusion.");
+  if (d.date_fin && d.date_debut && d.date_fin < d.date_debut) fail(400, "La date de fin est avant la date de début.");
+  if (d.convocation === false) { d.convocation_date = null; d.convocation_heure = null; d.convocation_statut = null; }
+  else if (d.convocation && !d.convocation_statut) d.convocation_statut = "prevue";
+};
+route("GET", "/discipline", async (ctx) => {
+  exige(ctx, "surveillance.lire");
+  const { du, au, eleve_id, type, classe_id } = ctx.query;
+  const w = ["1=1"]; const p = [];
+  if (du) { p.push(du); w.push(`d.date_fait >= $${p.length}`); }
+  if (au) { p.push(au); w.push(`d.date_fait <= $${p.length}`); }
+  if (eleve_id) { p.push(eleve_id); w.push(`d.eleve_id = $${p.length}`); }
+  if (type) { p.push(type); w.push(`d.type = $${p.length}`); }
+  if (classe_id) { p.push(classe_id); w.push(`exists (select 1 from app.inscriptions i where i.eleve_id=d.eleve_id and i.classe_id=$${p.length})`); }
+  const [rows, parEleve] = await tx([
+    [`select d.*, e.id as eleve_id, ${ELEVE_COLS}, u.prenom || ' ' || u.nom as saisi_par_nom
+      from app.discipline d join app.eleves e on e.id=d.eleve_id left join app.utilisateurs u on u.id=d.saisi_par
+      where ${w.join(" and ")} order by d.date_fait desc, d.id desc limit 500`, p],
+    [`select e.id as eleve_id, ${ELEVE_COLS}, count(*) filter (where d.type<>'felicitation')::int as n,
+        count(*) filter (where d.type in ('blame','exclusion_temporaire','exclusion_definitive'))::int as graves
+      from app.discipline d join app.eleves e on e.id=d.eleve_id where ${w.join(" and ")}
+      group by e.id having count(*) filter (where d.type<>'felicitation') >= 2 order by n desc, graves desc limit 15`, p],
+  ]);
+  return { rows, par_eleve: parEleve };
+});
+route("POST", "/discipline", async (ctx) => {
+  exige(ctx, "surveillance.ecrire");
+  const d = pick(ctx.body, COLS_DISC);
+  requis(d, [["eleve_id", "L'élève"], ["categorie", "Le motif"]]);
+  verifierDisc(d);
+  d.annee_id = (await inscriptionActive(d.eleve_id)).annee_id;
+  d.saisi_par = ctx.user.id;
+  const r = await one(...insertSql("app.discipline", d));
+  await journal(ctx, "creation", "discipline", r.id, { eleve_id: r.eleve_id, type: r.type, categorie: r.categorie });
+  return r;
+});
+route("PUT", "/discipline/:id", async (ctx) => {
+  exige(ctx, "surveillance.ecrire");
+  const d = pick(ctx.body, COLS_DISC.filter((k) => k !== "eleve_id"));
+  verifierDisc(d);
+  const r = await one(...updateSql("app.discipline", ctx.params.id, d));
+  if (!r) fail(404, "Fiche introuvable.");
+  await journal(ctx, "modification", "discipline", r.id, { eleve_id: r.eleve_id, type: r.type });
+  return r;
+});
+route("DELETE", "/discipline/:id", async (ctx) => {
+  exige(ctx, "surveillance.ecrire");
+  const r = await one("delete from app.discipline where id=$1 returning id, eleve_id, type, categorie", [ctx.params.id]);
+  if (!r) fail(404, "Fiche introuvable.");
+  await journal(ctx, "suppression", "discipline", r.id, r);
+  return { ok: true };
+});
+
+// Sorties pendant les heures de cours
+const COLS_SORTIE = ["eleve_id", "date_sortie", "heure_sortie", "motif", "accompagnant", "lien", "piece", "autorise_par", "retour", "heure_retour", "note"];
+route("GET", "/sorties", async (ctx) => {
+  exige(ctx, "surveillance.lire");
+  const { du, au, eleve_id } = ctx.query;
+  const w = ["1=1"]; const p = [];
+  if (du) { p.push(du); w.push(`s.date_sortie >= $${p.length}`); }
+  if (au) { p.push(au); w.push(`s.date_sortie <= $${p.length}`); }
+  if (eleve_id) { p.push(eleve_id); w.push(`s.eleve_id = $${p.length}`); }
+  return q(`select s.*, e.id as eleve_id, ${ELEVE_COLS}, u.prenom || ' ' || u.nom as saisi_par_nom
+    from app.sorties_eleves s join app.eleves e on e.id=s.eleve_id left join app.utilisateurs u on u.id=s.saisi_par
+    where ${w.join(" and ")} order by s.date_sortie desc, s.heure_sortie desc nulls last, s.id desc limit 500`, p);
+});
+route("POST", "/sorties", async (ctx) => {
+  exige(ctx, "surveillance.ecrire");
+  const d = pick(ctx.body, COLS_SORTIE);
+  requis(d, [["eleve_id", "L'élève"], ["motif", "Le motif"]]);
+  d.annee_id = (await inscriptionActive(d.eleve_id)).annee_id;
+  d.saisi_par = ctx.user.id;
+  const r = await one(...insertSql("app.sorties_eleves", d));
+  await journal(ctx, "creation", "sortie", r.id, { eleve_id: r.eleve_id, motif: r.motif });
+  return { ...r, ...(await one(`select ${ELEVE_COLS} from app.eleves e where e.id=$1`, [r.eleve_id])) };
+});
+route("PUT", "/sorties/:id", async (ctx) => {
+  exige(ctx, "surveillance.ecrire");
+  const r = await one(...updateSql("app.sorties_eleves", ctx.params.id, pick(ctx.body, COLS_SORTIE.filter((k) => k !== "eleve_id"))));
+  if (!r) fail(404, "Sortie introuvable.");
+  await journal(ctx, "modification", "sortie", r.id, { eleve_id: r.eleve_id, retour: r.retour });
+  return r;
+});
+route("DELETE", "/sorties/:id", async (ctx) => {
+  exige(ctx, "surveillance.ecrire");
+  const r = await one("delete from app.sorties_eleves where id=$1 returning id, eleve_id, motif", [ctx.params.id]);
+  if (!r) fail(404, "Sortie introuvable.");
+  await journal(ctx, "suppression", "sortie", r.id, r);
+  return { ok: true };
+});
+
+// Documents à imprimer : billet d'entrée (retard), bon de sortie, convocation des parents
+route("GET", "/vie-scolaire/document/:doc/:id", async (ctx) => {
+  exigeUn(ctx, ["surveillance.lire", "absences.ecrire"]);
+  const { doc, id } = ctx.params;
+  const sql = {
+    billet: `select a.*, a.date_absence as date_doc, e.id as eleve_id, ${ELEVE_COLS},
+        (select count(*) from app.absences x where x.inscription_id=a.inscription_id and x.type='retard')::int as retards_annee
+      from app.absences a join app.inscriptions i on i.id=a.inscription_id join app.eleves e on e.id=i.eleve_id where a.id=$1 and a.type='retard'`,
+    sortie: `select s.*, s.date_sortie as date_doc, e.id as eleve_id, ${ELEVE_COLS} from app.sorties_eleves s join app.eleves e on e.id=s.eleve_id where s.id=$1`,
+    convocation: `select d.*, d.date_fait as date_doc, e.id as eleve_id, ${ELEVE_COLS},
+        nullif(trim(coalesce(e.pere_prenom,'') || ' ' || coalesce(e.pere_nom,'')), '') as pere, nullif(trim(coalesce(e.mere_prenom,'') || ' ' || coalesce(e.mere_nom,'')), '') as mere, e.tuteur_nom
+      from app.discipline d join app.eleves e on e.id=d.eleve_id where d.id=$1`,
+  }[doc];
+  if (!sql) fail(404, "Document inconnu.");
+  const r = await one(sql, [id]);
+  if (!r) fail(404, "Document introuvable.");
+  return r;
+});
+
+// Présence du personnel (pointage du jour). Les retards et absences vont aussi dans les absences du personnel.
+route("GET", "/pointage", async (ctx) => {
+  exigeUn(ctx, ["surveillance.lire", "enseignants.ecrire"]);
+  const jour = ctx.query.date || auj();
+  const rows = await q(`select e.id, e.nom, e.prenom, e.sexe, e.service, e.poste, e.telephone, e.horaires,
+      p.statut, p.heure_arrivee, p.remplacant_id, p.note,
+      (select string_agg(c.nom, ', ' order by c.ordre) from app.classes c join app.annees a on a.id=c.annee_id and a.active where c.titulaire_id=e.id) as classes,
+      (select a.type from app.personnel_absences a where a.personnel_id=e.id and not a.pointage and a.type<>'retard'
+        and $1::date between a.date_debut and coalesce(a.date_fin, a.date_debut) limit 1) as absence_prevue
+    from app.enseignants e left join app.personnel_pointage p on p.personnel_id=e.id and p.date_jour=$1
+    where e.statut='actif' order by (coalesce(e.service,'autre')='enseignant') desc, e.nom, e.prenom`, [jour]);
+  return { date: jour, rows };
+});
+route("PUT", "/pointage", async (ctx) => {
+  exigeUn(ctx, ["surveillance.ecrire", "enseignants.ecrire"]);
+  const jour = ctx.body.date || auj();
+  const items = (ctx.body.items || []).filter((x) => x.personnel_id && ["present", "retard", "absent"].includes(x.statut));
+  const ids = items.map((x) => Number(x.personnel_id));
+  if (!ids.length) fail(400, "Aucune présence à enregistrer.");
+  const list = [
+    [`delete from app.personnel_pointage where date_jour=$1 and personnel_id = any($2::int[])`, [jour, `{${ids.join(",")}}`]],
+    [`delete from app.personnel_absences where pointage and date_debut=$1 and personnel_id = any($2::int[])`, [jour, `{${ids.join(",")}}`]],
+  ];
+  for (const x of items) {
+    const h = /^\d{2}:\d{2}$/.test(x.heure_arrivee || "") ? x.heure_arrivee : null;
+    list.push([`insert into app.personnel_pointage (date_jour, personnel_id, statut, heure_arrivee, remplacant_id, note, saisi_par) values ($1,$2,$3,$4,$5,$6,$7)`,
+      [jour, x.personnel_id, x.statut, h, x.remplacant_id || null, x.note || null, ctx.user.id]]);
+    if (x.statut !== "present") list.push([`insert into app.personnel_absences (personnel_id, date_debut, type, justifiee, motif, saisi_par, pointage) values ($1,$2,$3,$4,$5,$6,true)`,
+      [x.personnel_id, jour, x.statut === "retard" ? "retard" : "absence", !!x.justifiee,
+        [x.statut === "retard" && h ? `Arrivé(e) à ${h.replace(":", "h")}` : null, x.note].filter(Boolean).join(" · ") || null, ctx.user.id]]);
+  }
+  await tx(list);
+  await journal(ctx, "pointage", "personnel", null, { date: jour, presents: items.filter((x) => x.statut === "present").length, retards: items.filter((x) => x.statut === "retard").length, absents: items.filter((x) => x.statut === "absent").length });
+  return { ok: true };
+});
+route("GET", "/pointage/bilan", async (ctx) => {
+  exigeUn(ctx, ["surveillance.lire", "enseignants.ecrire"]);
+  const mois = /^\d{4}-\d{2}$/.test(ctx.query.mois || "") ? ctx.query.mois : auj().slice(0, 7);
+  return q(`select e.id, e.nom, e.prenom, e.service,
+      count(p.id) filter (where p.statut='present')::int as presents, count(p.id) filter (where p.statut='retard')::int as retards,
+      count(p.id) filter (where p.statut='absent')::int as absents, count(p.id)::int as jours_pointes
+    from app.enseignants e left join app.personnel_pointage p on p.personnel_id=e.id and to_char(p.date_jour,'YYYY-MM')=$1
+    where e.statut='actif' group by e.id order by (coalesce(e.service,'autre')='enseignant') desc, e.nom`, [mois]);
+});
 
 // ── Rapport financier sur une période ──
 route("GET", "/rapport", async (ctx) => {

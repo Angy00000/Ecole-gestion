@@ -144,6 +144,7 @@ const GROUPES_DROITS = [
   ["Élèves", [["eleves.lire", "Voir les élèves"], ["eleves.ecrire", "Inscrire et modifier les élèves"], ["eleves.supprimer", "Supprimer / archiver un élève"], ["classes.ecrire", "Gérer les classes et matières"]]],
   ["Pédagogie", [["pedagogie.lire", "Voir notes, bulletins, emploi du temps"], ["pedagogie.ecrire", "Saisir les notes et appréciations"], ["absences.ecrire", "Faire l'appel / absences"], ["enseignants.ecrire", "Gérer le personnel (enseignants compris)"]]],
   ["Personnel", [["personnel.lire", "Voir le personnel, ses absences et congés"]]],
+  ["Vie scolaire", [["surveillance.lire", "Voir la vie scolaire : discipline, sorties, présence du personnel"], ["surveillance.ecrire", "Noter retards, discipline, sorties et présence du personnel"]]],
   ["Infirmerie", [["infirmerie.lire", "Voir les passages à l'infirmerie et les fiches santé"], ["infirmerie.ecrire", "Enregistrer les passages et remplir les fiches santé"]]],
   ["Argent", [["finances.lire", "Voir les paiements, factures, impayés, tarifs"], ["finances.encaisser", "Encaisser et vendre (sans voir les montants encaissés)"], ["finances.annuler", "Annuler et corriger les reçus des autres"], ["depenses.lire", "Voir dépenses et recettes"], ["depenses.ecrire", "Saisir dépenses, recettes et stock"]]],
   ["Événements", [["evenements.lire", "Voir les événements, cartes de soutien et invités"], ["evenements.ecrire", "Organiser les événements : cartes, invités, budget, supports"]]],

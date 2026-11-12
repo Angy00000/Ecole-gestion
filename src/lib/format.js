@@ -30,6 +30,7 @@ export const ROLES = {
   secretaire: "Secrétariat",
   professeur: "Enseignant",
   infirmier: "Infirmerie",
+  surveillant: "Surveillant général",
 };
 export const CYCLES = { garderie: "Garderie", prescolaire: "Préscolaire", elementaire: "Élémentaire" };
 
