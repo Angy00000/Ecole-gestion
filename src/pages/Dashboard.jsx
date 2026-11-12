@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { UserPlus, Users, Wallet, CalendarDays, ArrowUpRight, TrendingUp, Utensils, Sparkles, School, ChevronRight, AlertTriangle, PenLine, CalendarCheck } from "lucide-react";
+import { UserPlus, Users, Wallet, CalendarDays, ArrowUpRight, TrendingUp, Utensils, Sparkles, School, ChevronRight, AlertTriangle, PenLine, CalendarCheck, Eye, EyeOff } from "lucide-react";
 import { TYPES_COURTS } from "../lib/format";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
@@ -21,6 +22,11 @@ function progression(annee) {
   return { pct: p, big: `${Math.round(p * 100)} %`, label: "de l'année écoulée" };
 }
 
+// Mode discret : les montants sont masqués (choix gardé sur l'appareil).
+const CLE_DISCRET = "eg2_discret";
+const lireDiscret = () => { try { return localStorage.getItem(CLE_DISCRET) === "1"; } catch { return false; } };
+const MASQUE = "• • • • •";
+
 function Kpi({ icon: Icon, tone, label, value, unit, sub }) {
   return (
     <div className="card kpi c3">
@@ -34,6 +40,9 @@ function Kpi({ icon: Icon, tone, label, value, unit, sub }) {
 export default function Dashboard() {
   const s = useSession();
   const nav = useNavigate();
+  const [discret, setDiscretState] = useState(lireDiscret);
+  const setDiscret = (v) => { setDiscretState(v); try { localStorage.setItem(CLE_DISCRET, v ? "1" : "0"); } catch { /* rien */ } };
+  const F = (n) => (discret ? MASQUE : n);
   const { data, isLoading, error } = useQuery({
     queryKey: ["dashboard", s.annee?.id],
     queryFn: () => api.get("/dashboard", { annee_id: s.annee?.id }),
@@ -55,6 +64,9 @@ export default function Dashboard() {
       <section className="hero lattice c12">
         <div className="grow">
           <span className="date"><CalendarDays size={15} />{JOURS[now.getDay()]} {now.getDate()} {MOIS[now.getMonth()]} {now.getFullYear()}</span>
+          {f && <button className="btn sm glass" style={{ float: "right", marginTop: -4 }} onClick={() => setDiscret(!discret)} aria-pressed={discret} title={discret ? "Afficher les montants" : "Masquer les montants (discrétion)"}>
+            {discret ? <Eye size={15} /> : <EyeOff size={15} />}<span className="hide-m">{discret ? "Afficher les chiffres" : "Masquer les chiffres"}</span>
+          </button>}
           <h2>{salut} {s.user.prenom}</h2>
           <p>Année scolaire {s.annee?.libelle} · {nombre(e.total)} élève{e.total > 1 ? "s" : ""} inscrit{e.total > 1 ? "s" : ""} dans {data.classes.length} classes{capa ? ` pour ${capa} places` : ""}.</p>
           <div className="actions">
@@ -74,9 +86,9 @@ export default function Dashboard() {
 
       <Kpi icon={Users} tone="teal" label="Élèves inscrits" value={nombre(e.total)} sub={<><Sparkles size={14} />{e.nouveaux} nouveaux · {e.reinscrits} réinscrits</>} />
       {f ? <>
-        <Kpi icon={AlertTriangle} tone="coral" label="Reste à recouvrer" value={nombre(f.impayes?.total || 0)} unit="F" sub={<Link to="/impayes" style={{ color: "inherit" }}>{f.impayes?.eleves || 0} élève{f.impayes?.eleves > 1 ? "s" : ""} en retard →</Link>} />
-        <Kpi icon={Wallet} tone="green" label="Encaissé aujourd'hui" value={nombre(f.jour)} unit="F" sub={`${f.nb_jour} paiement${f.nb_jour > 1 ? "s" : ""} enregistré${f.nb_jour > 1 ? "s" : ""}`} />
-        <Kpi icon={TrendingUp} tone="gold" label="Encaissé ce mois" value={nombre(f.mois)} unit="F" sub={`${fcfa(f.annee)} depuis le début de l'année`} />
+        <Kpi icon={AlertTriangle} tone="coral" label="Reste à recouvrer" value={F(nombre(f.impayes?.total || 0))} unit={discret ? null : "F"} sub={<Link to="/impayes" style={{ color: "inherit" }}>{f.impayes?.eleves || 0} élève{f.impayes?.eleves > 1 ? "s" : ""} en retard →</Link>} />
+        <Kpi icon={Wallet} tone="green" label="Encaissé aujourd'hui" value={F(nombre(f.jour))} unit={discret ? null : "F"} sub={discret ? "Montants masqués" : `${f.nb_jour} paiement${f.nb_jour > 1 ? "s" : ""} enregistré${f.nb_jour > 1 ? "s" : ""}`} />
+        <Kpi icon={TrendingUp} tone="gold" label="Encaissé ce mois" value={F(nombre(f.mois))} unit={discret ? null : "F"} sub={discret ? "Montants masqués" : `${fcfa(f.annee)} depuis le début de l'année`} />
       </> : <>
         <Kpi icon={Utensils} tone="coral" label="Demi-pensionnaires" value={nombre(e.cantine)} sub={`${e.total ? Math.round((e.cantine / e.total) * 100) : 0} % des élèves`} />
         <Kpi icon={School} tone="gold" label="Classes ouvertes" value={data.classes.length} sub="pour l'année en cours" />
@@ -106,7 +118,10 @@ export default function Dashboard() {
       {f && (
         <div className="card c7">
           <div className="card-head"><h3>Encaissements</h3><span className="badge teal">6 derniers mois</span><Link className="link" to="/paiements">Voir les reçus <ChevronRight size={15} /></Link></div>
-          <div className="card-body"><AreaChart data={f.evolution} /></div>
+          <div className="card-body" style={discret ? { position: "relative" } : undefined}>
+            <div style={discret ? { filter: "blur(14px)", pointerEvents: "none", userSelect: "none" } : undefined} aria-hidden={discret}><AreaChart data={f.evolution} /></div>
+            {discret && <button className="btn sm" style={{ position: "absolute", inset: 0, margin: "auto", width: "fit-content", height: "fit-content" }} onClick={() => setDiscret(false)}><Eye size={15} />Afficher les chiffres</button>}
+          </div>
         </div>
       )}
 
@@ -119,7 +134,7 @@ export default function Dashboard() {
                 <li key={p.id} onClick={() => nav(`/recus/${p.id}`)}>
                   <span className="ic green" style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center" }}><ArrowUpRight size={18} /></span>
                   <div className="grow"><strong>{p.prenom} {p.nom}</strong><span>{(p.types || "").split(",").map((t) => TYPES_COURTS[t]).join(", ")} · {date(p.date_paiement)}</span></div>
-                  <span className="amount plus">+{fcfa(p.montant)}</span>
+                  <span className="amount plus">{discret ? MASQUE : `+${fcfa(p.montant)}`}</span>
                 </li>
               ))}
             </ul>
