@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MessageCircle, FileDown, Share2, Link2, Users, Check, Copy } from "lucide-react";
+import { MessageCircle, FileDown, Share2, Link2, Users, Check, Copy, FileText } from "lucide-react";
 import { telWa } from "../lib/format";
 import { api } from "../lib/api";
 import { useToast, Modal } from "./ui";
@@ -79,7 +79,6 @@ const telecharger = (file) => {
   const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = file.name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 };
-const estMobile = () => typeof navigator !== "undefined" && (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)));
 const lireDataUrl = (file) => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ko(new Error("Lecture du fichier impossible.")); r.readAsDataURL(file); });
 // Adresse publique des liens : celle du site (ou du site en ligne depuis l'application Windows).
 const ORIGINE = typeof location !== "undefined" && /^https?:$/.test(location.protocol) ? location.origin : "https://ecole-gestion-eta.vercel.app";
@@ -95,65 +94,126 @@ export async function deposerFichier(file, { eleveId, telephone } = {}) {
 export const messageAvecLien = (message, nom, url) => `${message ? `${message}\n\n` : ""}📄 ${nom.replace(/_/g, " ")} : ${url}`;
 export const lienWa = (telephone, texte) => `https://wa.me/${telephone ? telWa(telephone) : ""}?text=${encodeURIComponent(texte)}`;
 
-// Fenêtre de secours si le navigateur a bloqué l'ouverture de WhatsApp.
-export function LienPret({ lien, onClose }) {
-  const toast = useToast();
+// Le navigateur sait-il donner un fichier à WhatsApp (feuille de partage du téléphone, de l'iPad ou de Windows) ?
+export const partageFichiers = () => {
+  try { return !!navigator.canShare?.({ files: [new File(["x"], "test.pdf", { type: "application/pdf" })] }); } catch { return false; }
+};
+
+// Mode d'envoi choisi : le document PDF lui-même (par défaut) ou un lien. Retenu sur l'appareil.
+const CLE_MODE = "eg2_envoi_mode";
+const lireMode = () => { try { return localStorage.getItem(CLE_MODE) === "lien" ? "lien" : "document"; } catch { return "document"; } };
+export function ChoixMode({ mode, onChange }) {
   return (
+    <div className="seg" role="radiogroup" aria-label="Forme de l'envoi" style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 12, background: "var(--surface-2)" }}>
+      {[["document", "Document PDF", FileText], ["lien", "Lien", Link2]].map(([k, l, I]) => (
+        <button key={k} type="button" role="radio" aria-checked={mode === k} className={`btn sm ${mode === k ? "primary" : "ghost"}`} onClick={() => onChange(k)}><I size={14} />{l}</button>
+      ))}
+    </div>
+  );
+}
+
+// Fenêtres de secours : le navigateur a bloqué WhatsApp, ou le partage demande un nouveau clic.
+function Pret({ pret, onClose }) {
+  const toast = useToast();
+  if (pret.type === "lien") return (
     <Modal title="Lien prêt" onClose={onClose} footer={<>
-      <button className="btn" onClick={() => { navigator.clipboard?.writeText(lien.texte); toast("Message copié"); }}><Copy size={16} />Copier le message</button>
-      <a className="btn wa" href={lien.wa} target="_blank" rel="noreferrer" onClick={onClose}><MessageCircle size={16} />Ouvrir WhatsApp</a>
+      <button className="btn" onClick={() => { navigator.clipboard?.writeText(pret.texte); toast("Message copié"); }}><Copy size={16} />Copier le message</button>
+      <a className="btn wa" href={pret.wa} target="_blank" rel="noreferrer" onClick={onClose}><MessageCircle size={16} />Ouvrir WhatsApp</a>
     </>}>
       <p className="small">Le document est en ligne. Cliquez sur « Ouvrir WhatsApp » pour l'envoyer au parent.</p>
-      <p className="xs muted" style={{ wordBreak: "break-all" }}>{lien.url}</p>
+      <p className="xs muted" style={{ wordBreak: "break-all" }}>{pret.url}</p>
+    </Modal>
+  );
+  const partager = async () => {
+    try { await navigator.share({ files: [pret.file], text: pret.message }); onClose(); }
+    catch (e) { if (e.name !== "AbortError") { telecharger(pret.file); window.open(lienWa(pret.telephone, pret.message), "_blank"); onClose(); } }
+  };
+  return (
+    <Modal title="Document prêt" icon={<FileText size={20} />} onClose={onClose} footer={<>
+      <button className="btn" onClick={() => { telecharger(pret.file); toast("PDF téléchargé"); }}><FileDown size={16} />Télécharger</button>
+      <button className="btn wa" onClick={partager}><MessageCircle size={16} />Envoyer sur WhatsApp</button>
+    </>}>
+      <p className="small"><strong>{pret.file.name}</strong> est prêt. Cliquez sur « Envoyer sur WhatsApp », choisissez WhatsApp puis {pret.nom ? <strong>{pret.nom}</strong> : "le parent"}{pret.telephone ? ` (${pret.telephone})` : ""}.</p>
     </Modal>
   );
 }
 
-/** Ouvre WhatsApp vers le parent avec un lien vers le document (le parent n'a rien à télécharger d'avance). */
-export function useEnvoiLien() {
+/** Envoi d'un document à un parent par WhatsApp.
+ *  - « document » : le PDF lui-même. Téléphone, iPad et Windows : la feuille de partage s'ouvre, on choisit WhatsApp puis le parent.
+ *    Sinon : le PDF est téléchargé et la discussion du parent s'ouvre ; on le joint avec le trombone.
+ *  - « lien » : le parent reçoit un message avec un lien vers le document (discussion du parent ouverte directement). */
+export function useEnvoi() {
   const toast = useToast();
   const [pret, setPret] = useState(null);
-  const envoyer = async (fabriquer, { telephone, message, eleveId }) => {
+  const [mode, setModeState] = useState(lireMode);
+  const setMode = (m) => { setModeState(m); try { localStorage.setItem(CLE_MODE, m); } catch { /* rien */ } };
+  const envoyer = async (fabriquer, { telephone, message, eleveId, nom, force } = {}) => {
+    const m = force || mode;
+    const partage = m === "document" && partageFichiers();
     // Onglet ouvert tout de suite, sinon le navigateur le bloque après la préparation du document.
-    const onglet = window.open("about:blank", "_blank");
+    const onglet = partage ? null : window.open("about:blank", "_blank");
     try {
       const file = await fabriquer();
-      const url = await deposerFichier(file, { eleveId, telephone });
-      const texte = messageAvecLien(message, file.name.replace(/\.\w+$/, ""), url);
-      const wa = lienWa(telephone, texte);
-      if (onglet && !onglet.closed) onglet.location.href = wa; else setPret({ url, wa, texte });
+      if (m === "lien") {
+        const url = await deposerFichier(file, { eleveId, telephone });
+        const texte = messageAvecLien(message, file.name.replace(/\.\w+$/, ""), url);
+        const wa = lienWa(telephone, texte);
+        if (onglet && !onglet.closed) onglet.location.href = wa; else setPret({ type: "lien", url, wa, texte });
+        return true;
+      }
+      if (partage) {
+        try { await navigator.share({ files: [file], text: message }); return true; }
+        catch (e) {
+          if (e.name === "AbortError") return false;
+          setPret({ type: "document", file, message, telephone, nom }); // il faut un nouveau clic pour partager
+          return true;
+        }
+      }
+      telecharger(file);
+      const wa = lienWa(telephone, message);
+      if (onglet && !onglet.closed) onglet.location.href = wa; else window.open(wa, "_blank");
+      toast("PDF téléchargé : dans WhatsApp, cliquez sur le trombone 📎 puis choisissez le fichier dans « Téléchargements ».");
       return true;
     } catch (e) {
       onglet?.close();
-      toast(e.message || "Envoi impossible", "error");
+      const maj = /dynamically imported module|Importing a module script failed|Loading chunk/i.test(e?.message || "");
+      toast(maj ? (navigator.onLine ? "Le logiciel vient d'être mis à jour : la page se recharge, puis recommencez." : "Le PDF a besoin d'internet la première fois sur cet appareil.") : e.message || "Envoi impossible", "error");
+      if (maj && navigator.onLine) setTimeout(() => window.location.reload(), 1500);
       return false;
     }
   };
-  return { envoyer, fenetre: pret && <LienPret lien={pret} onClose={() => setPret(null)} /> };
+  return { envoyer, mode, setMode, fenetre: pret && <Pret pret={pret} onClose={() => setPret(null)} /> };
 }
+export const useEnvoiLien = useEnvoi;
 
 /** Un document de la page par parent : bulletins de la classe, factures du mois, reçus d'un encaissement groupé. */
 function EnvoiParParent({ format, destinataires, onClose }) {
-  const { envoyer, fenetre } = useEnvoiLien();
+  const { envoyer, mode, setMode, fenetre } = useEnvoi();
   const [fait, setFait] = useState({});
   const [encours, setEncours] = useState(null);
   const avecTel = destinataires.filter((d) => d.telephone).length;
   const go = async (d) => {
     setEncours(d.cle);
-    const ok = await envoyer(() => fabriquerPdf(format, d.fichier, d.cle), { telephone: d.telephone, message: d.message, eleveId: d.eleve_id });
+    const ok = await envoyer(() => fabriquerPdf(format, d.fichier, d.cle), { telephone: d.telephone, message: d.message, eleveId: d.eleve_id, nom: d.nom });
     if (ok) setFait((x) => ({ ...x, [d.cle]: true }));
     setEncours(null);
   };
   return (
     <Modal title="Envoyer à chaque parent" icon={<Users size={20} />} wide onClose={onClose} footer={<button className="btn" onClick={onClose}>Fermer</button>}>
-      <p className="small muted" style={{ marginBottom: 14 }}>Chaque parent reçoit sur WhatsApp un message avec le lien vers <strong>son</strong> document. {avecTel < destinataires.length && `${destinataires.length - avecTel} élève(s) sans numéro de téléphone.`}</p>
+      <div className="between" style={{ gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <p className="small muted" style={{ margin: 0, flex: "1 1 260px" }}>
+          {mode === "document" ? "Chaque parent reçoit le PDF de son enfant. Après « Envoyer », choisissez WhatsApp puis le parent indiqué." : "Chaque parent reçoit un message avec le lien vers le document de son enfant."}
+          {avecTel < destinataires.length && ` ${destinataires.length - avecTel} élève(s) sans numéro.`}
+        </p>
+        <ChoixMode mode={mode} onChange={setMode} />
+      </div>
       <div className="table-wrap"><table className="table">
         <tbody>{destinataires.map((d) => (
           <tr key={d.cle}>
             <td><strong>{d.nom}</strong><div className="xs muted">{d.telephone || "Aucun numéro"}</div></td>
             <td className="r" style={{ whiteSpace: "nowrap" }}>
               {fait[d.cle] && <span className="badge green" style={{ marginRight: 8 }}><Check size={13} />Envoyé</span>}
-              <button className={`btn sm ${fait[d.cle] ? "" : "wa"}`} disabled={!d.telephone || !!encours} onClick={() => go(d)}>
+              <button className={`btn sm ${fait[d.cle] ? "" : "wa"}`} disabled={(mode === "lien" && !d.telephone) || !!encours} onClick={() => go(d)}>
                 <MessageCircle size={15} />{encours === d.cle ? "Préparation…" : fait[d.cle] ? "Renvoyer" : "Envoyer"}
               </button>
             </td>
@@ -166,42 +226,24 @@ function EnvoiParParent({ format, destinataires, onClose }) {
 }
 
 /** Boutons d'envoi pour la barre d'impression.
- *  - « Lien WhatsApp » : le parent reçoit un lien vers le PDF (rien à joindre à la main).
- *  - « PDF WhatsApp » : le fichier lui-même (partage du téléphone, ou téléchargement + WhatsApp sur ordinateur).
+ *  - « WhatsApp » : le document PDF lui-même.
+ *  - « Lien » : le parent reçoit un lien vers le PDF dans sa discussion.
  *  - destinataires : [{ cle, nom, telephone, eleve_id, message, fichier }] pour envoyer à chaque parent son document. */
 export default function Partager({ format = "A4", nom, telephone, message = "", eleveId, destinataires }) {
   const toast = useToast();
   const [busy, setBusy] = useState(null);
   const [parParent, setParParent] = useState(false);
-  const { envoyer, fenetre } = useEnvoiLien();
-  const mobile = estMobile();
+  const { envoyer, fenetre } = useEnvoi();
   const lancer = async (action) => {
     setBusy(action);
-    if (action === "lien") {
-      await envoyer(() => fabriquerPdf(format, nom), { telephone, message, eleveId });
-      setBusy(null);
-      return;
-    }
-    // Sur ordinateur, on ouvre l'onglet WhatsApp tout de suite (sinon le navigateur le bloque après la création du PDF).
-    const onglet = action === "wa" && !mobile ? window.open("about:blank", "_blank") : null;
     try {
+      if (action === "document" || action === "lien") { await envoyer(() => fabriquerPdf(format, nom), { telephone, message, eleveId, force: action }); return; }
       const file = await fabriquerPdf(format, nom);
       if (action === "pdf") { telecharger(file); toast(`${file.name} téléchargé`); return; }
-      if ((action === "partager" || mobile) && navigator.canShare?.({ files: [file] })) {
-        try { await navigator.share({ files: [file], title: nom, text: message }); return; }
-        catch (e) { if (e.name === "AbortError") return; }
+      if (action === "partager" && navigator.canShare?.({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: nom, text: message }); } catch { /* annulé */ }
       }
-      // Ordinateur : on télécharge le PDF et on ouvre la conversation WhatsApp du parent.
-      telecharger(file);
-      const url = lienWa(telephone, message);
-      if (onglet) onglet.location.href = url; else window.open(url, "_blank");
-      toast("PDF téléchargé : dans WhatsApp, cliquez sur le trombone 📎 puis choisissez le fichier dans « Téléchargements ».");
-    } catch (e) {
-      onglet?.close();
-      const maj = /dynamically imported module|Importing a module script failed|Loading chunk/i.test(e?.message || "");
-      toast(maj ? (navigator.onLine ? "Le logiciel vient d'être mis à jour : la page se recharge, puis recommencez." : "Le PDF a besoin d'internet la première fois sur cet appareil.") : e.message || "Export impossible", "error");
-      if (maj && navigator.onLine) setTimeout(() => window.location.reload(), 1500);
-    }
+    } catch (e) { toast(e.message || "Export impossible", "error"); }
     finally { setBusy(null); }
   };
   const peutPartager = typeof navigator !== "undefined" && !!navigator.share;
@@ -209,12 +251,12 @@ export default function Partager({ format = "A4", nom, telephone, message = "", 
   return (
     <>
       {plusieurs && <button className="btn wa" onClick={() => setParParent(true)} title="Envoyer à chaque parent le document de son enfant"><Users size={17} />Envoyer à chaque parent</button>}
-      {!plusieurs && <button className="btn wa" onClick={() => lancer("lien")} disabled={!!busy} title="Le parent reçoit un message WhatsApp avec le lien du document">
-        <Link2 size={17} />{busy === "lien" ? "Préparation…" : "Lien WhatsApp"}
-      </button>}
-      <button className="btn" onClick={() => lancer("wa")} disabled={!!busy} title="Envoyer le fichier PDF lui-même par WhatsApp">
-        <MessageCircle size={17} /><span className="hide-m">{busy === "wa" ? "Préparation…" : "PDF WhatsApp"}</span>
+      <button className={`btn ${plusieurs ? "" : "wa"}`} onClick={() => lancer("document")} disabled={!!busy} title="Envoyer le document PDF par WhatsApp">
+        <MessageCircle size={17} />{busy === "document" ? "Préparation…" : "WhatsApp"}
       </button>
+      {!plusieurs && <button className="btn" onClick={() => lancer("lien")} disabled={!!busy} title="Envoyer un lien vers le document dans la discussion du parent">
+        <Link2 size={17} /><span className="hide-m">{busy === "lien" ? "Préparation…" : "Lien"}</span>
+      </button>}
       {peutPartager && <button className="btn" onClick={() => lancer("partager")} disabled={!!busy} title="E-mail, Messages, Telegram…"><Share2 size={17} /><span className="hide-m">{busy === "partager" ? "Préparation…" : "Partager"}</span></button>}
       <button className="btn" onClick={() => lancer("pdf")} disabled={!!busy} title="Télécharger le PDF"><FileDown size={17} /><span className="hide-m">{busy === "pdf" ? "Préparation…" : "PDF"}</span></button>
       {parParent && <EnvoiParParent format={format} destinataires={destinataires} onClose={() => setParParent(false)} />}

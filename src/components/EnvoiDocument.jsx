@@ -7,7 +7,7 @@ import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { date, fcfa } from "../lib/format";
 import { Modal, Field, Select, Textarea, ErrorBox, Confirm, useToast } from "./ui";
-import { useEnvoiLien, TYPES_FICHIERS, fabriquerPdf } from "./Partager";
+import { useEnvoi, ChoixMode, TYPES_FICHIERS, fabriquerPdf } from "./Partager";
 import { Ticket } from "../pages/Recu";
 
 const taille = (o) => (o > 1024 * 1024 ? `${(o / 1024 / 1024).toFixed(1).replace(".", ",")} Mo` : `${Math.max(1, Math.round(o / 1024))} Ko`);
@@ -34,7 +34,8 @@ export default function EnvoiDocument({ eleve, inscrit, recus = [], onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [del, setDel] = useState(null);
-  const { envoyer, fenetre } = useEnvoiLien();
+  const { envoyer, mode, setMode, fenetre } = useEnvoi();
+  const nomParent = numeros.find((n) => n.tel === tel)?.label;
   // Reçu dessiné hors de l'écran, le temps d'en faire le PDF
   const [apercu, setApercu] = useState(null);
   const [recuEnCours, setRecuEnCours] = useState(null);
@@ -54,7 +55,7 @@ export default function EnvoiDocument({ eleve, inscrit, recus = [], onClose }) {
       await new Promise((ok) => { pretRef.current = ok; setApercu(d); });
       try { return await fabriquerPdf("A5", `Recu-${d.recu.numero}-${eleve.nom}-${eleve.prenom}`, d.recu.id); }
       finally { setApercu(null); }
-    }, { telephone: tel, message: `Bonjour, ${s.etablissement?.nom || "l'école"} vous envoie le reçu n° ${r.numero} de ${fcfa(r.montant)} du ${date(r.date_paiement)} pour ${eleve.prenom} ${eleve.nom}. Merci.`, eleveId: eleve.id });
+    }, { nom: nomParent, telephone: tel, message: `Bonjour, ${s.etablissement?.nom || "l'école"} vous envoie le reçu n° ${r.numero} de ${fcfa(r.montant)} du ${date(r.date_paiement)} pour ${eleve.prenom} ${eleve.nom}. Merci.`, eleveId: eleve.id });
     setRecuEnCours(null);
     if (ok) { setRecusFaits((x) => ({ ...x, [r.id]: true })); qc.invalidateQueries({ queryKey: ["partages", eleve.id] }); }
   };
@@ -69,9 +70,9 @@ export default function EnvoiDocument({ eleve, inscrit, recus = [], onClose }) {
   };
   const go = async () => {
     setBusy(true);
-    const ok = await envoyer(async () => file, { telephone: tel, message, eleveId: eleve.id });
+    const ok = await envoyer(async () => file, { nom: nomParent, telephone: tel, message, eleveId: eleve.id });
     setBusy(false);
-    if (ok) { toast("Lien prêt : envoyez le message dans WhatsApp"); setFile(null); qc.invalidateQueries({ queryKey: ["partages", eleve.id] }); }
+    if (ok) { setFile(null); qc.invalidateQueries({ queryKey: ["partages", eleve.id] }); }
   };
   const supprimer = async () => {
     try { await api.del(`/partages/${del.id}`); toast("Lien supprimé : le parent ne peut plus ouvrir ce document"); qc.invalidateQueries({ queryKey: ["partages", eleve.id] }); }
@@ -91,13 +92,19 @@ export default function EnvoiDocument({ eleve, inscrit, recus = [], onClose }) {
     </>}>
       <div className="stack" style={{ gap: 16 }}>
         <ErrorBox error={error} />
+        <div className="between" style={{ gap: 12, flexWrap: "wrap" }}>
+          <span className="small muted" style={{ flex: "1 1 240px" }}>{mode === "document"
+            ? "Le parent reçoit le fichier lui-même. Après « Envoyer », choisissez WhatsApp puis le parent."
+            : "Le parent reçoit un message avec un lien vers le document, directement dans sa discussion."}</span>
+          <ChoixMode mode={mode} onChange={setMode} />
+        </div>
         {numeros.length ? (
           <Field label="Destinataire">
             <Select value={tel} onChange={(e) => setTel(e.target.value)}>{numeros.map((n) => <option key={n.tel} value={n.tel}>{n.label} — {n.tel}</option>)}</Select>
           </Field>
         ) : <div className="alert info" style={{ margin: 0 }}>Aucun numéro de parent n'est enregistré : WhatsApp s'ouvrira et vous choisirez le contact vous-même.</div>}
 
-        <Field label="Document" hint="PDF, photo, Word, Excel ou PowerPoint — 3 Mo au maximum. Le parent reçoit un lien pour l'ouvrir.">
+        <Field label="Document" hint="PDF, photo, Word, Excel ou PowerPoint — 3 Mo au maximum.">
           <input ref={input} type="file" accept={TYPES_FICHIERS} hidden onChange={(e) => { choisir(e.target.files?.[0]); e.target.value = ""; }} />
           {file ? (
             <div className="pick" style={{ cursor: "default" }}>
@@ -134,12 +141,12 @@ export default function EnvoiDocument({ eleve, inscrit, recus = [], onClose }) {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {ecole.map(([t, l]) => <button key={t} className="btn sm" onClick={() => nav(`/documents?type=${t}&eleve=${eleve.id}`)}><Paperclip size={14} />{l}</button>)}
           </div>
-          <p className="xs muted" style={{ marginTop: 6 }}>Le document s'ouvre : cliquez ensuite sur « Lien WhatsApp ». Pour les reçus, factures et bulletins, utilisez le même bouton sur chaque document.</p>
+          <p className="xs muted" style={{ marginTop: 6 }}>Le document s'ouvre : cliquez ensuite sur « WhatsApp ». Pour les reçus, factures et bulletins, utilisez le même bouton sur chaque document.</p>
         </div>
 
         <div>
-          <div className="small" style={{ fontWeight: 700, marginBottom: 8 }}>Documents déjà envoyés</div>
-          {hist.isLoading ? <p className="small muted">Chargement…</p> : !hist.data?.length ? <p className="small muted">Aucun document envoyé pour cet élève.</p> : (
+          <div className="small" style={{ fontWeight: 700, marginBottom: 8 }}>Liens déjà envoyés</div>
+          {hist.isLoading ? <p className="small muted">Chargement…</p> : !hist.data?.length ? <p className="small muted">Aucun lien envoyé pour cet élève (les documents PDF envoyés directement n'apparaissent pas ici).</p> : (
             <div className="table-wrap"><table className="table">
               <tbody>{hist.data.map((d) => (
                 <tr key={d.id}>
