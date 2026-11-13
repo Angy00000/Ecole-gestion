@@ -2097,7 +2097,8 @@ route("GET", "/vie-scolaire/jour", async (ctx) => {
   exige(ctx, "surveillance.lire");
   const jour = ctx.query.date || auj();
   const annee = await anneeCourante();
-  const [classes, absences, sorties, incidents, convocations, exclusions, [perso]] = await tx([
+  await schemaSortiesPerso();
+  const [classes, absences, sorties, incidents, convocations, exclusions, [perso], sortiesPerso] = await tx([
     [`select c.id, c.nom, c.cycle, (select count(*) from app.inscriptions i where i.classe_id=c.id and i.statut='active')::int as effectif,
         exists (select 1 from app.journal j where j.action='appel' and j.entite='classe' and j.entite_id=c.id and j.details->>'date'=$2::text) as appel_fait,
         (select count(*) from app.absences a join app.inscriptions i on i.id=a.inscription_id where i.classe_id=c.id and a.date_absence=$2::date and a.type='absence')::int as absents,
@@ -2116,8 +2117,9 @@ route("GET", "/vie-scolaire/jour", async (ctx) => {
         count(p.id) filter (where p.statut='present')::int as presents, count(p.id) filter (where p.statut='retard')::int as retards,
         count(p.id) filter (where p.statut='absent')::int as absents, count(*) filter (where e.statut='actif' and p.id is null)::int as non_pointes
       from app.enseignants e left join app.personnel_pointage p on p.personnel_id=e.id and p.date_jour=$1 where e.statut='actif'`, [jour]],
+    [`${SQL_SORTIES_PERSO} where s.date_sortie=$1::date order by s.heure_sortie nulls last, s.id`, [jour]],
   ]);
-  return { date: jour, classes, absences, sorties, incidents, convocations, exclusions, personnel: perso };
+  return { date: jour, classes, absences, sorties, incidents, convocations, exclusions, personnel: perso, sorties_personnel: sortiesPerso };
 });
 
 // Retard au portail : l'élève arrive en retard, on note l'heure et on imprime un billet d'entrée.
@@ -2250,11 +2252,66 @@ route("GET", "/vie-scolaire/document/:doc/:id", async (ctx) => {
     convocation: `select d.*, d.date_fait as date_doc, e.id as eleve_id, ${ELEVE_COLS},
         nullif(trim(coalesce(e.pere_prenom,'') || ' ' || coalesce(e.pere_nom,'')), '') as pere, nullif(trim(coalesce(e.mere_prenom,'') || ' ' || coalesce(e.mere_nom,'')), '') as mere, e.tuteur_nom
       from app.discipline d join app.eleves e on e.id=d.eleve_id where d.id=$1`,
+    sortie_personnel: `${SQL_SORTIES_PERSO} where s.id=$1`,
   }[doc];
   if (!sql) fail(404, "Document inconnu.");
+  if (doc === "sortie_personnel") await schemaSortiesPerso();
   const r = await one(sql, [id]);
   if (!r) fail(404, "Document introuvable.");
   return r;
+});
+
+// Sorties du personnel pendant les heures de travail (bon de sortie, remplaçant, retour)
+let tableSortiesPerso = null; // la table est créée au premier usage
+const schemaSortiesPerso = () => (tableSortiesPerso ||= q(`create table if not exists app.sorties_personnel (
+    id serial primary key, personnel_id integer not null references app.enseignants(id) on delete cascade,
+    date_sortie date not null default current_date, heure_sortie text, heure_retour_prevue text, motif text not null,
+    autorise_par text, remplacant_id integer references app.enseignants(id) on delete set null,
+    retour boolean not null default false, heure_retour text, note text,
+    saisi_par integer references app.utilisateurs(id), created_at timestamptz not null default now())`).catch((e) => { tableSortiesPerso = null; throw e; }));
+const COLS_SORTIE_PERSO = ["personnel_id", "date_sortie", "heure_sortie", "heure_retour_prevue", "motif", "autorise_par", "remplacant_id", "retour", "heure_retour", "note"];
+const SQL_SORTIES_PERSO = `select s.*, e.nom, e.prenom, e.service, e.poste, e.telephone,
+    (select string_agg(c.nom, ', ' order by c.ordre) from app.classes c join app.annees a on a.id=c.annee_id and a.active where c.titulaire_id=e.id) as classes,
+    r.prenom || ' ' || r.nom as remplacant, u.prenom || ' ' || u.nom as saisi_par_nom
+  from app.sorties_personnel s join app.enseignants e on e.id=s.personnel_id
+  left join app.enseignants r on r.id=s.remplacant_id left join app.utilisateurs u on u.id=s.saisi_par`;
+route("GET", "/sorties-personnel", async (ctx) => {
+  exigeUn(ctx, ["surveillance.lire", "enseignants.ecrire"]);
+  await schemaSortiesPerso();
+  const { du, au, personnel_id } = ctx.query;
+  const w = ["1=1"]; const p = [];
+  if (du) { p.push(du); w.push(`s.date_sortie >= $${p.length}::date`); }
+  if (au) { p.push(au); w.push(`s.date_sortie <= $${p.length}::date`); }
+  if (personnel_id) { p.push(personnel_id); w.push(`s.personnel_id = $${p.length}::int`); }
+  return q(`${SQL_SORTIES_PERSO} where ${w.join(" and ")} order by s.date_sortie desc, s.heure_sortie desc nulls last, s.id desc limit 500`, p);
+});
+route("POST", "/sorties-personnel", async (ctx) => {
+  exigeUn(ctx, ["surveillance.ecrire", "enseignants.ecrire"]);
+  await schemaSortiesPerso();
+  const d = pick(ctx.body, COLS_SORTIE_PERSO);
+  requis(d, [["personnel_id", "La personne"], ["motif", "Le motif"]]);
+  if (d.remplacant_id && Number(d.remplacant_id) === Number(d.personnel_id)) fail(400, "Le remplaçant doit être une autre personne.");
+  d.saisi_par = ctx.user.id;
+  const r = await one(...insertSql("app.sorties_personnel", d));
+  await journal(ctx, "creation", "sortie_personnel", r.id, { personnel_id: r.personnel_id, motif: r.motif });
+  return r;
+});
+route("PUT", "/sorties-personnel/:id", async (ctx) => {
+  exigeUn(ctx, ["surveillance.ecrire", "enseignants.ecrire"]);
+  await schemaSortiesPerso();
+  const d = pick(ctx.body, COLS_SORTIE_PERSO.filter((k) => k !== "personnel_id"));
+  const r = await one(...updateSql("app.sorties_personnel", ctx.params.id, d));
+  if (!r) fail(404, "Sortie introuvable.");
+  await journal(ctx, "modification", "sortie_personnel", r.id, { personnel_id: r.personnel_id, retour: r.retour });
+  return r;
+});
+route("DELETE", "/sorties-personnel/:id", async (ctx) => {
+  exigeUn(ctx, ["surveillance.ecrire", "enseignants.ecrire"]);
+  await schemaSortiesPerso();
+  const r = await one("delete from app.sorties_personnel where id=$1 returning id, personnel_id, motif", [ctx.params.id]);
+  if (!r) fail(404, "Sortie introuvable.");
+  await journal(ctx, "suppression", "sortie_personnel", r.id, r);
+  return { ok: true };
 });
 
 // Présence du personnel (pointage du jour). Les retards et absences vont aussi dans les absences du personnel.
@@ -2295,7 +2352,9 @@ route("PUT", "/pointage", async (ctx) => {
 route("GET", "/pointage/bilan", async (ctx) => {
   exigeUn(ctx, ["surveillance.lire", "enseignants.ecrire"]);
   const mois = /^\d{4}-\d{2}$/.test(ctx.query.mois || "") ? ctx.query.mois : auj().slice(0, 7);
+  await schemaSortiesPerso();
   return q(`select e.id, e.nom, e.prenom, e.service,
+      (select count(*) from app.sorties_personnel s where s.personnel_id=e.id and to_char(s.date_sortie,'YYYY-MM')=$1)::int as sorties,
       count(p.id) filter (where p.statut='present')::int as presents, count(p.id) filter (where p.statut='retard')::int as retards,
       count(p.id) filter (where p.statut='absent')::int as absents, count(p.id)::int as jours_pointes
     from app.enseignants e left join app.personnel_pointage p on p.personnel_id=e.id and to_char(p.date_jour,'YYYY-MM')=$1

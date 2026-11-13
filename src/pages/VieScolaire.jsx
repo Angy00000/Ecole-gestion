@@ -263,7 +263,127 @@ export function SortieForm({ sortie, eleve: eleveInit, onClose }) {
   );
 }
 
+const MOTIFS_SORTIE_PERSO = ["Rendez-vous médical", "Malade", "Raison familiale", "Démarche administrative", "Cérémonie / décès", "Mission pour l'école", "Autre"];
+
+function SortiePersoForm({ sortie, onClose }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const nav = useNavigate();
+  const perso = useQuery({ queryKey: ["pointage", today()], queryFn: () => api.get("/pointage", { date: today() }) });
+  const gens = perso.data?.rows || [];
+  const [v, setV] = useState(() => sortie
+    ? { ...sortie, date_sortie: sortie.date_sortie?.slice(0, 10), remplacant_id: sortie.remplacant_id || "" }
+    : { personnel_id: "", date_sortie: today(), heure_sortie: heure(), heure_retour_prevue: "", motif: "", autorise_par: "", remplacant_id: "", note: "" });
+  const [error, setError] = useState(null);
+  const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
+  const choisi = gens.find((g) => String(g.id) === String(v.personnel_id));
+  const save = async () => {
+    setError(null);
+    try {
+      const d = { date_sortie: v.date_sortie, heure_sortie: v.heure_sortie, heure_retour_prevue: v.heure_retour_prevue || null, motif: v.motif, autorise_par: v.autorise_par,
+        remplacant_id: Number(v.remplacant_id) || null, note: v.note };
+      const r = sortie ? await api.put(`/sorties-personnel/${sortie.id}`, d) : await api.post("/sorties-personnel", { ...d, personnel_id: Number(v.personnel_id) });
+      toast(sortie ? "Sortie modifiée" : "Sortie enregistrée");
+      INV.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      qc.invalidateQueries({ queryKey: ["sorties-personnel"] });
+      if (!sortie) nav(`/vie-scolaire/imprimer?doc=sortie_personnel&id=${r.id}`); else onClose();
+    } catch (e) { setError(e); }
+  };
+  return (
+    <Modal title={sortie ? "Modifier la sortie" : "Sortie d'un membre du personnel"} icon={<DoorOpen size={20} />} onClose={onClose} footer={<>
+      <button className="btn" onClick={onClose}>Annuler</button>
+      <button className="btn primary" onClick={save} disabled={!v.motif?.trim() || !v.personnel_id}>{sortie ? "Enregistrer" : <><Printer size={16} />Enregistrer et imprimer le bon</>}</button>
+    </>}>
+      <div className="stack" style={{ gap: 14 }}>
+        <ErrorBox error={error} />
+        <Field label="Personne" required>
+          <Select value={v.personnel_id} onChange={set("personnel_id")} disabled={!!sortie}>
+            <option value="">{perso.isLoading ? "Chargement…" : "Choisir…"}</option>
+            {gens.map((g) => <option key={g.id} value={g.id}>{g.nom} {g.prenom}{g.classes ? ` — ${g.classes}` : g.poste ? ` — ${g.poste}` : ""}</option>)}
+          </Select>
+        </Field>
+        <div className="grid g2">
+          <Field label="Date"><Input type="date" value={v.date_sortie} onChange={set("date_sortie")} /></Field>
+          <Field label="Heure de sortie"><Input type="time" value={v.heure_sortie || ""} onChange={set("heure_sortie")} /></Field>
+          <Field label="Retour prévu à"><Input type="time" value={v.heure_retour_prevue || ""} onChange={set("heure_retour_prevue")} /></Field>
+          <Field label="Autorisé par"><Input value={v.autorise_par || ""} onChange={set("autorise_par")} placeholder="Directeur, surveillant général…" /></Field>
+        </div>
+        <Field label="Motif" required>
+          <Input value={v.motif} onChange={set("motif")} list="motifs-sortie-perso" autoFocus={!!sortie} />
+          <datalist id="motifs-sortie-perso">{MOTIFS_SORTIE_PERSO.map((m) => <option key={m} value={m} />)}</datalist>
+        </Field>
+        {(choisi?.service === "enseignant" || sortie?.service === "enseignant") && (
+          <Field label="Qui garde sa classe ?" hint={choisi?.classes ? `Classe : ${choisi.classes}` : null}>
+            <Select value={v.remplacant_id} onChange={set("remplacant_id")}><option value="">Personne</option>
+              {gens.filter((g) => String(g.id) !== String(v.personnel_id)).map((g) => <option key={g.id} value={g.id}>{g.prenom} {g.nom}</option>)}</Select>
+          </Field>
+        )}
+        <Field label="Remarque"><Input value={v.note || ""} onChange={set("note")} /></Field>
+      </div>
+    </Modal>
+  );
+}
+
+function SortiesPersonnel() {
+  const s = useSession();
+  const nav = useNavigate();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const peut = s.peut("surveillance.ecrire") || s.peut("enseignants.ecrire");
+  const [du, setDu] = useState(() => periodes(s.annee).mois.du);
+  const [au, setAu] = useState(() => periodes(s.annee).mois.au);
+  const [edit, setEdit] = useState(null);
+  const [del, setDel] = useState(null);
+  const { data, isLoading, error } = useQuery({ queryKey: ["sorties-personnel", du, au], queryFn: () => api.get("/sorties-personnel", { du, au }), placeholderData: keepPreviousData });
+  const inv = () => { INV.forEach((k) => qc.invalidateQueries({ queryKey: [k] })); qc.invalidateQueries({ queryKey: ["sorties-personnel"] }); };
+  const retour = async (x) => { try { await api.put(`/sorties-personnel/${x.id}`, { retour: true, heure_retour: heure() }); toast(`${x.prenom} est revenu(e)`); inv(); } catch (e) { toast(e.message, "error"); } };
+  const supprimer = async () => { try { await api.del(`/sorties-personnel/${del.id}`); toast("Sortie supprimée"); inv(); } catch (e) { toast(e.message, "error"); } setDel(null); };
+  return (
+    <>
+      <div className="toolbar">
+        <Periode annee={s.annee} du={du} au={au} onChange={(d, x) => { setDu(d); setAu(x); }} />
+        {peut && <button className="btn primary" style={{ marginLeft: "auto" }} onClick={() => setEdit("new")}><Plus size={17} />Nouvelle sortie</button>}
+      </div>
+      {isLoading ? <Spinner /> : error ? <div style={{ padding: 18 }}><ErrorBox error={error} /></div> : !data.length ? (
+        <Empty icon={DoorOpen} title="Aucune sortie du personnel">Aucun enseignant ni membre du personnel n'est sorti sur cette période.</Empty>
+      ) : (
+        <div className="table-wrap"><table className="table">
+          <thead><tr><th>Date</th><th>Personne</th><th>Motif</th><th className="hide-m">Remplacé(e) par</th><th>Retour</th><th /></tr></thead>
+          <tbody>{data.map((x) => (
+            <tr key={x.id}>
+              <td className="num">{date(x.date_sortie)}{x.heure_sortie && <div className="xs muted">{x.heure_sortie}{x.heure_retour_prevue ? ` → ${x.heure_retour_prevue}` : ""}</div>}</td>
+              <td><strong>{x.nom} {x.prenom}</strong><div className="xs muted">{x.classes ? `Classe : ${x.classes}` : x.poste || x.service || ""}</div></td>
+              <td><strong>{x.motif}</strong>{x.autorise_par && <div className="xs muted">Autorisé par {x.autorise_par}</div>}</td>
+              <td className="hide-m">{x.remplacant || <span className="muted">—</span>}</td>
+              <td>{x.retour ? <span className="badge green">Revenu{x.heure_retour ? ` à ${x.heure_retour}` : ""}</span> : peut ? <button className="btn sm" onClick={() => retour(x)}><Undo2 size={14} />Revenu</button> : <span className="badge gold">Dehors</span>}</td>
+              <td className="r" style={{ whiteSpace: "nowrap" }}>
+                <button className="btn sm ghost icon" title="Bon de sortie" aria-label="Bon de sortie" onClick={() => nav(`/vie-scolaire/imprimer?doc=sortie_personnel&id=${x.id}`)}><Printer size={15} /></button>
+                {peut && <button className="btn sm ghost icon" onClick={() => setEdit(x)} aria-label="Modifier"><Pencil size={15} /></button>}
+                {peut && <button className="btn sm ghost icon" onClick={() => setDel(x)} aria-label="Supprimer"><Trash2 size={15} /></button>}
+              </td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {edit && <SortiePersoForm sortie={edit === "new" ? null : edit} onClose={() => setEdit(null)} />}
+      {del && <Confirm danger title="Supprimer cette sortie ?" confirmLabel="Supprimer" message={`${del.prenom} ${del.nom} — ${del.motif} (${date(del.date_sortie)})`} onConfirm={supprimer} onClose={() => setDel(null)} />}
+    </>
+  );
+}
+
 function Sorties() {
+  const [qui, setQui] = useState("eleves");
+  return (
+    <div className="card">
+      <div className="toolbar" style={{ paddingBottom: 0 }}>
+        <div className="seg"><button className={qui === "eleves" ? "on" : ""} onClick={() => setQui("eleves")}>Élèves</button><button className={qui === "personnel" ? "on" : ""} onClick={() => setQui("personnel")}>Enseignants et personnel</button></div>
+      </div>
+      {qui === "personnel" ? <SortiesPersonnel /> : <SortiesEleves />}
+    </div>
+  );
+}
+
+function SortiesEleves() {
   const s = useSession();
   const nav = useNavigate();
   const toast = useToast();
@@ -282,7 +402,7 @@ function Sorties() {
     setDel(null);
   };
   return (
-    <div className="card">
+    <>
       <div className="toolbar">
         <Periode annee={s.annee} du={du} au={au} onChange={(d, x) => { setDu(d); setAu(x); }} />
         {peut && <button className="btn primary" style={{ marginLeft: "auto" }} onClick={() => setEdit("new")}><Plus size={17} />Nouvelle sortie</button>}
@@ -310,7 +430,7 @@ function Sorties() {
       )}
       {edit && <SortieForm sortie={edit === "new" ? null : edit} onClose={() => setEdit(null)} />}
       {del && <Confirm danger title="Supprimer cette sortie ?" confirmLabel="Supprimer" message={`${del.prenom} ${del.nom} — ${del.motif} (${date(del.date_sortie)})`} onConfirm={supprimer} onClose={() => setDel(null)} />}
-    </div>
+    </>
   );
 }
 
@@ -362,10 +482,10 @@ function Presence() {
       </div>
       {vue === "mois" ? (bilan.isLoading ? <Spinner /> : bilan.error ? <ErrorBox error={bilan.error} /> : (
         <div className="table-wrap"><table className="table">
-          <thead><tr><th>Personne</th><th className="r">Présent</th><th className="r">Retards</th><th className="r">Absences</th><th className="r hide-m">Jours notés</th></tr></thead>
+          <thead><tr><th>Personne</th><th className="r">Présent</th><th className="r">Retards</th><th className="r">Absences</th><th className="r">Sorties</th><th className="r hide-m">Jours notés</th></tr></thead>
           <tbody>{bilan.data.map((r) => <tr key={r.id}><td><strong>{r.nom} {r.prenom}</strong></td><td className="r num">{r.presents}</td>
             <td className="r num" style={{ color: r.retards ? "var(--gold-600)" : undefined, fontWeight: r.retards ? 700 : 400 }}>{r.retards}</td>
-            <td className="r num" style={{ color: r.absents ? "var(--coral)" : undefined, fontWeight: r.absents ? 700 : 400 }}>{r.absents}</td><td className="r num hide-m">{r.jours_pointes}</td></tr>)}</tbody>
+            <td className="r num" style={{ color: r.absents ? "var(--coral)" : undefined, fontWeight: r.absents ? 700 : 400 }}>{r.absents}</td><td className="r num">{r.sorties || 0}</td><td className="r num hide-m">{r.jours_pointes}</td></tr>)}</tbody>
         </table></div>
       )) : isLoading ? <Spinner /> : error ? <ErrorBox error={error} /> : <>
         <div className="legend" style={{ padding: "0 18px 12px" }}>{Object.entries(STATUTS).map(([k, [l, c]]) => <span key={k} className={`badge ${c}`}>{l} : {nb(k)}</span>)}<span className="badge">Non noté : {rows.length - nb("present") - nb("retard") - nb("absent")}</span></div>
@@ -447,6 +567,13 @@ function Jour({ ouvrir }) {
       <Liste titre="Convocations de parents" icon={Gavel} rows={data.convocations} vide="Aucune convocation prévue."
         rendu={(d) => <li key={d.id}><div className="grow"><strong>{d.nom} {d.prenom}</strong><span>{d.classe} · {d.convocation_date ? date(d.convocation_date) : "date à fixer"}{d.convocation_heure ? ` à ${d.convocation_heure}` : ""} · {d.categorie}</span></div>
           {s.peut("surveillance.ecrire") && <><button className="btn sm" onClick={() => statutConvoc(d, "venue")} title="Parents venus"><Check size={14} /></button><button className="btn sm ghost" onClick={() => statutConvoc(d, "absente")} title="Parents absents"><X size={14} /></button></>}</li>} />
+      {data.sorties_personnel?.length > 0 && (
+        <div className="card c12">
+          <div className="card-head"><h3><DoorOpen size={16} style={{ verticalAlign: "-3px", marginRight: 6 }} />Personnel sorti aujourd'hui</h3><span className="badge">{data.sorties_personnel.length}</span></div>
+          <ul className="feed">{data.sorties_personnel.map((x) => <li key={x.id} onClick={() => nav(`/vie-scolaire/imprimer?doc=sortie_personnel&id=${x.id}`)}><div className="grow"><strong>{x.nom} {x.prenom}</strong>
+            <span>{x.heure_sortie || ""}{x.heure_retour_prevue ? ` → ${x.heure_retour_prevue}` : ""} · {x.motif}{x.remplacant ? ` · remplacé(e) par ${x.remplacant}` : ""}</span></div>{x.retour ? <span className="badge green">Revenu</span> : <span className="badge gold">Dehors</span>}</li>)}</ul>
+        </div>
+      )}
       {(data.exclusions.length > 0 || data.incidents.length > 0) && (
         <div className="card c12">
           <div className="card-head"><h3><AlertTriangle size={16} style={{ verticalAlign: "-3px", marginRight: 6 }} />Discipline</h3></div>
@@ -497,7 +624,7 @@ export function VieScolaireImpression() {
   if (isLoading) return <Spinner />;
   if (error) return <div style={{ padding: 32 }}><ErrorBox error={error} /></div>;
   const etab = s.etablissement;
-  const titre = { billet: "Billet d'entrée", sortie: "Bon de sortie", convocation: "Convocation des parents" }[doc];
+  const titre = { billet: "Billet d'entrée", sortie: "Bon de sortie", convocation: "Convocation des parents", sortie_personnel: "Autorisation de sortie du personnel" }[doc];
   const L = ({ l, v }) => <div style={{ display: "flex", gap: 10, padding: "7px 0", borderBottom: "1px dashed #d6e2e5" }}><span style={{ width: 150, color: "#4a6168" }}>{l}</span><strong style={{ flex: 1 }}>{v || "—"}</strong></div>;
   let corps, msg;
   if (doc === "billet") {
@@ -507,6 +634,15 @@ export function VieScolaireImpression() {
       <p style={{ marginTop: 18 }}>L'élève est autorisé(e) à entrer en classe.</p>
     </>;
     msg = `Bonjour, ${etab.nom} vous informe que ${d.prenom} ${d.nom} (${d.classe}) est arrivé(e) en retard le ${date(d.date_absence)}.`;
+  } else if (doc === "sortie_personnel") {
+    corps = <>
+      <L l="Nom" v={`${d.prenom} ${d.nom}`} /><L l="Fonction" v={d.classes ? `Enseignant(e) — ${d.classes}` : d.poste || d.service} /><L l="Date" v={dateLongue(d.date_sortie)} />
+      <L l="Heure de sortie" v={d.heure_sortie} /><L l="Retour prévu" v={d.heure_retour_prevue} /><L l="Motif" v={d.motif} />
+      {d.remplacant && <L l="Classe gardée par" v={d.remplacant} />}<L l="Autorisé par" v={d.autorise_par} />
+      {d.retour && <L l="Retour" v={d.heure_retour ? `Revenu(e) à ${d.heure_retour}` : "Revenu(e)"} />}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 30 }}><div>Signature de l'intéressé(e)</div><div style={{ textAlign: "right" }}>La direction</div></div>
+    </>;
+    msg = `Autorisation de sortie : ${d.prenom} ${d.nom}, le ${date(d.date_sortie)}${d.heure_sortie ? ` à ${d.heure_sortie}` : ""} (${d.motif}).`;
   } else if (doc === "sortie") {
     corps = <>
       <L l="Élève" v={`${d.prenom} ${d.nom}`} /><L l="Classe" v={d.classe} /><L l="Date" v={dateLongue(d.date_sortie)} /><L l="Heure de sortie" v={d.heure_sortie} />
@@ -531,7 +667,7 @@ export function VieScolaireImpression() {
       <div className="print-bar">
         <button className="btn" onClick={() => nav(-1)}><ArrowLeft size={17} />Retour</button>
         <span className="grow"><strong>{titre}</strong> — {d.prenom} {d.nom}</span>
-        <Partager format="A5" nom={`${titre}-${d.nom}-${d.prenom}`} telephone={d.telephone} eleveId={d.eleve_id} message={msg} />
+        <Partager format="A5" nom={`${titre}-${d.nom}-${d.prenom}`} telephone={d.telephone} eleveId={doc === "sortie_personnel" ? null : d.eleve_id} message={msg} />
         <button className="btn primary" onClick={() => window.print()}><Printer size={17} />Imprimer</button>
       </div>
       <div className="tickets">
