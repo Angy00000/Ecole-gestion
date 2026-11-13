@@ -11,6 +11,7 @@ import EleveFiche from "./pages/EleveFiche";
 import Classes from "./pages/Classes";
 import Parametres from "./pages/Parametres";
 import Encaissements from "./pages/Encaissements";
+import Caisse from "./pages/Caisse";
 import EncaissementGroupe from "./pages/EncaissementGroupe";
 import Impayes from "./pages/Impayes";
 import Depenses from "./pages/Depenses";
@@ -90,6 +91,7 @@ export default function App() {
           {s.gardien && <Route path="gardien" element={<Gardien />} />}
           {s.peut("etablissement.ecrire") && <Route path="archives" element={<Archives />} />}
           {(s.peut("finances.lire") || s.peut("finances.encaisser")) && <Route path="paiements" element={<Encaissements />} />}
+          {s.peut("finances.lire") && <Route path="caisse" element={<Caisse />} />}
           {s.peut("finances.encaisser") && <Route path="paiements/groupe" element={<EncaissementGroupe />} />}
           {s.peut("finances.lire") && <Route path="impayes" element={<Impayes />} />}
           {s.peut("finances.lire") && <Route path="factures" element={<Factures />} />}

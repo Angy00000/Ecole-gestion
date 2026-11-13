@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, School, Wallet, Receipt, AlertTriangle, BookOpen, CalendarCheck,
-  GraduationCap, CalendarClock, HandCoins, FileBarChart, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, FileText, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange, FileStack, ListChecks, ShieldCheck, Sparkles, Archive, Stethoscope, Shield } from "lucide-react";
+  GraduationCap, CalendarClock, HandCoins, FileBarChart, Utensils, Shirt, PencilRuler, MoonStar, PartyPopper, FileText, Settings, Menu, LogOut, KeyRound, Moon, Sun, Search, CalendarRange, FileStack, ListChecks, ShieldCheck, Sparkles, Archive, Stethoscope, Shield, Landmark } from "lucide-react";
 import { useSession } from "../lib/session";
 import { ROLES, initiales } from "../lib/format";
 import MotDePasse from "../pages/MotDePasse";
@@ -19,6 +19,7 @@ const NAV = [
   { to: "/imprimes", label: "Imprimés vierges", icon: FileStack },
   { group: "Finances" },
   { to: "/paiements", label: "Encaissements", icon: Wallet, droit: ["finances.lire", "finances.encaisser"] },
+  { to: "/caisse", label: "Caisse", icon: Landmark, droit: "finances.lire" },
   { to: "/factures", label: "Factures mensuelles", icon: FileText, droit: "finances.lire" },
   { to: "/impayes", label: "Impayés", icon: AlertTriangle, droit: "finances.lire" },
   { to: "/recettes", label: "Recettes diverses", icon: HandCoins, droit: "depenses.lire" },

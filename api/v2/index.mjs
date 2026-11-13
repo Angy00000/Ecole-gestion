@@ -1173,6 +1173,35 @@ route("GET", "/caisse", async (ctx) => {
   return { date: jour, recus, depenses, recettes, modes, entrees, sorties, solde: entrees - sorties };
 });
 
+// Combien il y a en caisse : total des entrées (reçus non annulés + recettes diverses) − total des sorties (dépenses).
+// Calculé depuis le début, et sur la période choisie, par mode de paiement.
+route("GET", "/caisse/solde", async (ctx) => {
+  exige(ctx, "finances.lire");
+  const du = /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.du || "") ? ctx.query.du : "1900-01-01";
+  const au = /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.au || "") ? ctx.query.au : "2999-12-31";
+  const sql = (cond) => `
+    select m.mode,
+      coalesce((select sum(r.montant) from app.recus r where not r.annule and r.mode=m.mode ${cond("r.date_paiement")}), 0)::bigint as encaissements,
+      coalesce((select sum(x.montant) from app.recettes x where x.mode=m.mode ${cond("x.date_recette")}), 0)::bigint as recettes,
+      coalesce((select sum(d.montant) from app.depenses d where d.mode=m.mode ${cond("d.date_depense")}), 0)::bigint as depenses
+    from unnest($1::text[]) as m(mode)`;
+  const modes = `{${MODES.join(",")}}`;
+  const [total, periode, [premier]] = await tx([
+    [sql(() => ""), [modes]],
+    [sql((c) => `and ${c} between $2::date and $3::date`), [modes, du, au]],
+    ["select least((select min(date_paiement) from app.recus), (select min(date_recette) from app.recettes), (select min(date_depense) from app.depenses)) as depuis"],
+  ]);
+  const calc = (rows) => {
+    const par_mode = rows.map((r) => {
+      const entrees = Number(r.encaissements) + Number(r.recettes), sorties = Number(r.depenses);
+      return { mode: r.mode, encaissements: Number(r.encaissements), recettes: Number(r.recettes), entrees, sorties, solde: entrees - sorties };
+    });
+    const sum = (k) => par_mode.reduce((t, x) => t + x[k], 0);
+    return { par_mode, encaissements: sum("encaissements"), recettes: sum("recettes"), entrees: sum("entrees"), sorties: sum("sorties"), solde: sum("solde") };
+  };
+  return { total: calc(total), periode: { du: ctx.query.du || null, au: ctx.query.au || null, ...calc(periode) }, depuis: premier?.depuis || null };
+});
+
 // ── Dépenses ──
 const COLS_DEP = ["date_depense", "categorie", "libelle", "montant", "mode", "beneficiaire", "reference", "note"];
 route("GET", "/depenses", async (ctx) => {
