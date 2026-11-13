@@ -32,5 +32,11 @@
         }
       ]
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/v2/sauvegarde-auto",
+      "schedule": "0 2 * * *"
+    }
   ]
 }

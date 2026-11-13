@@ -1,3 +1,4 @@
+import zlib from "node:zlib";
 // ═══════════════════════════════════════════════════════════════════════════
 //  Ecole-gestion — API v2
 //  Fonction Vercel (déployée avec le site). Aucune dépendance : SQL via l'endpoint HTTP Neon.
@@ -1143,12 +1144,25 @@ route("GET", "/impayes", async (ctx) => {
   if (ctx.query.q) { p.push(`%${ctx.query.q.toLowerCase()}%`); where.push(`(lower(e.nom||' '||e.prenom) like $${p.length} or lower(e.prenom||' '||e.nom) like $${p.length} or lower(e.matricule) like $${p.length})`); }
   const rows = await q(`select x.*, e.matricule, e.nom, e.prenom, e.sexe, c.nom as classe, c.cycle,
       coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
-      coalesce(nullif(trim(coalesce(e.mere_prenom,'')||' '||coalesce(e.mere_nom,'')),''), nullif(trim(coalesce(e.pere_prenom,'')||' '||coalesce(e.pere_nom,'')),'')) as parent
+      coalesce(nullif(trim(coalesce(e.mere_prenom,'')||' '||coalesce(e.mere_nom,'')),''), nullif(trim(coalesce(e.pere_prenom,'')||' '||coalesce(e.pere_nom,'')),'')) as parent,
+      (select max(rl.created_at) from app.relances rl where rl.inscription_id=x.inscription_id) as derniere_relance,
+      (select count(*) from app.relances rl where rl.inscription_id=x.inscription_id)::int as nb_relances
     from (${SQL_IMPAYES}) x join app.eleves e on e.id=x.eleve_id join app.classes c on c.id=x.classe_id
     where ${where.join(" and ")} order by x.reste desc, e.nom`, p);
   const parClasse = {};
   rows.forEach((r) => { parClasse[r.classe] = (parClasse[r.classe] || 0) + r.reste; });
   return { rows, total: rows.reduce((t, r) => t + r.reste, 0), jusqua, par_classe: parClasse };
+});
+
+// Relance d'un parent pour un impayé (message WhatsApp envoyé) : on garde la trace pour ne pas relancer deux fois.
+route("POST", "/relances", async (ctx) => {
+  exige(ctx, "finances.lire");
+  const b = ctx.body;
+  if (!b.inscription_id) fail(400, "Élève manquant.");
+  const r = await one(`insert into app.relances (inscription_id, montant, jusqua, telephone, saisi_par) values ($1,$2,$3,$4,$5) returning *`,
+    [b.inscription_id, Math.round(Number(b.montant)) || null, /^\d{4}-\d{2}/.test(b.jusqua || "") ? `${String(b.jusqua).slice(0, 7)}-01` : null, b.telephone || null, ctx.user.id]);
+  await journal(ctx, "relance", "inscription", Number(b.inscription_id), { montant: r.montant });
+  return r;
 });
 
 route("GET", "/caisse", async (ctx) => {
@@ -1491,8 +1505,7 @@ route("DELETE", "/archives/:id", async (ctx) => {
 });
 
 // ── Sauvegarde complète des données ──
-route("GET", "/sauvegarde", async (ctx) => {
-  exige(ctx, "etablissement.ecrire");
+const construireSauvegarde = async () => {
   const T = {
     eleves: "select * from app.eleves order by nom, prenom",
     inscriptions: `select i.*, a.libelle as annee, c.nom as classe, e.matricule, e.nom, e.prenom from app.inscriptions i join app.annees a on a.id=i.annee_id join app.classes c on c.id=i.classe_id join app.eleves e on e.id=i.eleve_id order by a.debut, c.ordre, e.nom`,
@@ -1521,12 +1534,52 @@ route("GET", "/sauvegarde", async (ctx) => {
     etablissement: "select * from app.etablissement",
     utilisateurs: "select id, nom, prenom, email, role, actif, dernier_login, created_at from app.utilisateurs order by id",
     types_paiement: "select * from app.types_paiement",
+    sante_eleves: "select * from app.sante_eleves order by eleve_id",
+    infirmerie_passages: "select * from app.infirmerie_passages order by date_passage, id",
+    infirmerie_produits: "select * from app.infirmerie_produits order by id",
+    infirmerie_mouvements: "select * from app.infirmerie_mouvements order by date_mvt, id",
+    discipline: "select * from app.discipline order by date_fait, id",
+    sorties_eleves: "select * from app.sorties_eleves order by date_sortie, id",
+    sorties_personnel: "select * from app.sorties_personnel order by date_sortie, id",
+    personnel_pointage: "select * from app.personnel_pointage order by date_jour, personnel_id",
+    relances: "select * from app.relances order by id",
   };
   const noms = Object.keys(T);
   const res = await tx(noms.map((n) => [T[n]]));
+  return { date: new Date().toISOString(), tables: Object.fromEntries(noms.map((n, i) => [n, res[i]])) };
+};
+route("GET", "/sauvegarde", async (ctx) => {
+  exige(ctx, "etablissement.ecrire");
+  const d = await construireSauvegarde();
   await q("update app.etablissement set derniere_sauvegarde=now() where id=1");
   await journal(ctx, "sauvegarde", "etablissement", 1);
-  return { date: new Date().toISOString(), tables: Object.fromEntries(noms.map((n, i) => [n, res[i]])) };
+  return d;
+});
+
+// Sauvegarde automatique de nuit (appelée par Vercel Cron). Gardée 30 jours, compressée, dans la base.
+// Sans risque si quelqu'un l'appelle : elle ne renvoie aucune donnée et ne tourne qu'une fois toutes les 20 heures.
+route("GET", "/sauvegarde-auto", async (ctx) => {
+  const derniere = await one("select max(created_at) as d from app.sauvegardes where auto");
+  if (derniere?.d && Date.now() - new Date(derniere.d).getTime() < 20 * 3600e3) return { ok: true, deja: true };
+  const d = await construireSauvegarde();
+  const json = JSON.stringify(d);
+  const gz = zlib.gzipSync(Buffer.from(json), { level: 9 });
+  const lignes = Object.values(d.tables).reduce((t, x) => t + x.length, 0);
+  await tx([
+    ["insert into app.sauvegardes (auto, taille, lignes, contenu) values (true, $1, $2, decode($3,'base64'))", [gz.length, lignes, gz.toString("base64")]],
+    ["delete from app.sauvegardes where created_at < now() - interval '30 days'"],
+  ]);
+  return { ok: true, taille: gz.length, lignes };
+}, { public: true });
+route("GET", "/sauvegardes", async (ctx) => {
+  exige(ctx, "etablissement.ecrire");
+  return q("select id, auto, taille, lignes, created_at from app.sauvegardes order by created_at desc limit 60");
+});
+route("GET", "/sauvegardes/:id", async (ctx) => {
+  exige(ctx, "etablissement.ecrire");
+  const r = await one("select encode(contenu,'base64') as b64, created_at from app.sauvegardes where id=$1", [ctx.params.id]);
+  if (!r) fail(404, "Sauvegarde introuvable.");
+  return JSON.parse(zlib.gunzipSync(Buffer.from(r.b64, "base64")).toString());
 });
 
 // ── Types de paiement personnalisés ──

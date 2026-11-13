@@ -453,10 +453,11 @@ function Sauvegarde() {
   const [busy, setBusy] = useState(null);
   const derniere = s.etablissement?.derniere_sauvegarde;
   const jours = derniere ? Math.floor((Date.now() - new Date(derniere)) / 864e5) : null;
-  const telecharger = async (format) => {
-    setBusy(format);
+  const auto = useQuery({ queryKey: ["sauvegardes"], queryFn: () => api.get("/sauvegardes") });
+  const telecharger = async (format, id) => {
+    setBusy(id ? `${format}-${id}` : format);
     try {
-      const d = await api.get("/sauvegarde");
+      const d = await api.get(id ? `/sauvegardes/${id}` : "/sauvegarde");
       const jour = d.date.slice(0, 10);
       let blob, nom;
       if (format === "json") { blob = new Blob([JSON.stringify(d, null, 1)], { type: "application/json" }); nom = `sauvegarde-esjbm-${jour}.json`; }
@@ -471,7 +472,7 @@ function Sauvegarde() {
         nom = `sauvegarde-esjbm-${jour}.xlsx`;
       }
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom; a.click();
-      toast("Sauvegarde téléchargée : " + nom); s.refresh();
+      toast("Sauvegarde téléchargée : " + nom); if (!id) s.refresh();
     } catch (e) { toast(e.message, "error"); }
     setBusy(null);
   };
@@ -493,6 +494,23 @@ function Sauvegarde() {
           <button className="btn" onClick={() => telecharger("json")} disabled={!!busy}><FileJson size={17} />{busy === "json" ? "Préparation…" : "Format technique (JSON)"}</button>
         </div>
         <p className="xs muted">Le fichier Excel contient une feuille par type de données. Le format technique permet une restauration complète en cas de problème.</p>
+        <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>
+          <h3 style={{ fontSize: 16 }}>Sauvegardes automatiques</h3>
+          <p className="small muted" style={{ margin: "4px 0 12px" }}>Chaque nuit vers 2 h, le logiciel fait seul une sauvegarde complète et la garde 30 jours. En cas d'erreur (élève supprimé, reçu modifié…), on peut retrouver les données d'un jour précis. Continuez quand même à télécharger une copie chaque semaine sur une clé USB.</p>
+          {auto.isLoading ? <p className="small muted">Chargement…</p> : !auto.data?.length ? <div className="alert info" style={{ margin: 0 }}>La première sauvegarde automatique sera faite cette nuit.</div> : (
+            <div className="table-wrap" style={{ maxHeight: 300, overflowY: "auto" }}><table className="table">
+              <tbody>{auto.data.map((b) => (
+                <tr key={b.id}>
+                  <td><strong>{dateHeure(b.created_at)}</strong><div className="xs muted">{b.lignes ? `${b.lignes.toLocaleString("fr-FR")} lignes · ` : ""}{Math.max(1, Math.round(b.taille / 1024))} Ko{b.auto ? "" : " · manuelle"}</div></td>
+                  <td className="r" style={{ whiteSpace: "nowrap" }}>
+                    <button className="btn sm" onClick={() => telecharger("xlsx", b.id)} disabled={!!busy}><Download size={14} />{busy === `xlsx-${b.id}` ? "…" : "Excel"}</button>
+                    <button className="btn sm ghost" onClick={() => telecharger("json", b.id)} disabled={!!busy}><FileJson size={14} />{busy === `json-${b.id}` ? "…" : "JSON"}</button>
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+        </div>
       </div>
     </div>
   );
