@@ -389,7 +389,7 @@ route("GET", "/parents/enfant", async (ctx) => {
     [`select date_absence::text as date, moment, type, justifiee, motif from app.absences where inscription_id=$1 order by date_absence desc`, [ins.id]],
     [`select t.jour, to_char(t.heure_debut,'HH24:MI') as heure_debut, to_char(t.heure_fin,'HH24:MI') as heure_fin, t.libelle, m.nom as matiere
       from app.emploi_temps t left join app.matieres m on m.id=t.matiere_id where t.classe_id=$1 order by t.jour, t.heure_debut, t.id`, [ins.classe_id]],
-    ["select libelle, quantite, remarque from app.fournitures_classe where classe_id=$1 order by ordre, id", [ins.classe_id]],
+    ["select libelle, quantite, remarque, prix from app.fournitures_classe where classe_id=$1 order by ordre, id", [ins.classe_id]],
   ]);
   const sit = await situation(ins.id);
   const bulletins = [];
@@ -1736,8 +1736,8 @@ route("PUT", "/classes/:id/fournitures", async (ctx) => {
   exige(ctx, "classes.ecrire");
   const items = (ctx.body.items || []).filter((x) => String(x.libelle || "").trim());
   const list = [["delete from app.fournitures_classe where classe_id=$1", [ctx.params.id]]];
-  items.forEach((x, i) => list.push(["insert into app.fournitures_classe (classe_id, article_id, libelle, quantite, remarque, ordre) values ($1,$2,$3,$4,$5,$6)",
-    [ctx.params.id, x.article_id || null, String(x.libelle).trim(), Math.max(1, Number(x.quantite) || 1), x.remarque || null, i + 1]]));
+  items.forEach((x, i) => list.push(["insert into app.fournitures_classe (classe_id, article_id, libelle, quantite, remarque, ordre, prix) values ($1,$2,$3,$4,$5,$6,$7)",
+    [ctx.params.id, x.article_id || null, String(x.libelle).trim(), Math.max(1, Number(x.quantite) || 1), x.remarque || null, i + 1, Number(x.prix) > 0 ? Math.round(Number(x.prix)) : null]]));
   await tx(list);
   await journal(ctx, "modification", "fournitures_classe", Number(ctx.params.id), { articles: items.length });
   return { ok: true, nombre: items.length };

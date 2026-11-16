@@ -26,7 +26,7 @@ export function ListesParClasse() {
   const classe = classes.data?.find((c) => c.id === classeId) || classes.data?.[0];
   useEffect(() => {
     if (!classe || !fc.data) return;
-    setItems(fc.data.filter((f) => f.classe_id === classe.id).map(({ article_id, libelle, quantite, remarque }) => ({ article_id, libelle, quantite, remarque })));
+    setItems(fc.data.filter((f) => f.classe_id === classe.id).map(({ article_id, libelle, quantite, remarque, prix }) => ({ article_id, libelle, quantite, remarque, prix })));
     setModif(false);
   }, [classe?.id, fc.data]);
   if (classes.isLoading || fc.isLoading) return <Spinner />;
@@ -37,7 +37,7 @@ export function ListesParClasse() {
     catch (e) { toast(e.message, "error"); }
   };
   const copier = (id) => {
-    const src = fc.data.filter((f) => f.classe_id === Number(id)).map(({ article_id, libelle, quantite, remarque }) => ({ article_id, libelle, quantite, remarque }));
+    const src = fc.data.filter((f) => f.classe_id === Number(id)).map(({ article_id, libelle, quantite, remarque, prix }) => ({ article_id, libelle, quantite, remarque, prix }));
     if (!src.length) return toast("Cette classe n'a pas encore de liste.", "error");
     setItems(src); setModif(true); toast("Liste copiée : vérifiez-la puis enregistrez.");
   };
@@ -92,22 +92,24 @@ export function ListesParClasse() {
             </div>
             {!items.length && !peut ? <Empty icon={ClipboardList} title="Pas encore de liste">La direction n'a pas encore fixé la liste de cette classe.</Empty> : (
               <table className="table fc-table">
-                <thead><tr><th style={{ width: 40 }}>N°</th><th>Fourniture</th><th style={{ width: 110 }} className="r">Quantité</th><th>Remarque</th>{arts.data && <th className="hide-m">Article du stock</th>}{peut && <th />}</tr></thead>
+                <thead><tr><th style={{ width: 40 }}>N°</th><th>Fourniture</th><th style={{ width: 110 }} className="r">Quantité</th><th style={{ width: 130 }} className="r">Prix unitaire</th><th>Remarque</th>{arts.data && <th className="hide-m">Article du stock</th>}{peut && <th />}</tr></thead>
                 <tbody>
                   {items.map((x, i) => (
                     <tr key={i}>
                       <td className="num muted">{i + 1}</td>
                       <td>{peut ? <input className="input" value={x.libelle} onChange={(e) => maj(i, { libelle: e.target.value })} placeholder="Cahier 100 pages, ardoise…" /> : x.libelle}</td>
                       <td className="r">{peut ? <input className="input num" inputMode="numeric" value={x.quantite} onChange={(e) => maj(i, { quantite: e.target.value.replace(/\D/g, "") })} /> : x.quantite}</td>
+                      <td className="r">{peut ? <input className="input num" inputMode="numeric" value={x.prix ?? ""} onChange={(e) => maj(i, { prix: e.target.value.replace(/\D/g, "") || null })} placeholder="F" /> : x.prix ? fcfa(x.prix) : ""}</td>
                       <td>{peut ? <input className="input" value={x.remarque || ""} onChange={(e) => maj(i, { remarque: e.target.value })} placeholder="Couleur, format, marque…" /> : x.remarque}</td>
                       {arts.data && <td className="hide-m">{peut ? <Select value={x.article_id || ""} onChange={(e) => { const a = arts.data.find((y) => y.id === Number(e.target.value)); maj(i, { article_id: a?.id || null, libelle: x.libelle || a?.nom || "" }); }}><option value="">— non suivi —</option>{arts.data.filter((a) => a.actif).map((a) => <option key={a.id} value={a.id}>{a.nom}</option>)}</Select> : (arts.data.find((a) => a.id === x.article_id)?.nom || "—")}</td>}
                       {peut && <td className="r"><button className="btn sm ghost icon" onClick={() => { setItems(items.filter((_, j) => j !== i)); setModif(true); }} aria-label="Retirer"><Trash2 size={15} /></button></td>}
                     </tr>
                   ))}
                 </tbody>
+                {items.some((x) => Number(x.prix) > 0) && <tfoot><tr><th colSpan={3}>Total du kit</th><th className="r">{fcfa(items.reduce((t, x) => t + (Number(x.prix) || 0) * (Number(x.quantite) || 1), 0))}</th><th colSpan={peut ? 3 : 2} /></tr></tfoot>}
               </table>
             )}
-            {peut && <button className="btn" style={{ marginTop: 10 }} onClick={() => { setItems([...items, { libelle: "", quantite: 1, remarque: "", article_id: null }]); setModif(true); }}><Plus size={16} />Ajouter une fourniture</button>}
+            {peut && <button className="btn" style={{ marginTop: 10 }} onClick={() => { setItems([...items, { libelle: "", quantite: 1, remarque: "", article_id: null, prix: null }]); setModif(true); }}><Plus size={16} />Ajouter une fourniture</button>}
             {modif && <p className="xs" style={{ color: "var(--coral)", marginTop: 8 }}>Modifications non enregistrées.</p>}
           </div>}
         </div>
@@ -147,10 +149,18 @@ export function ListeFournituresImpression() {
             <h1 className="d-title" style={{ marginTop: 18 }}>Liste des fournitures — {g.nom}</h1>
             <p className="d-num">Année scolaire {s.annee?.libelle}</p>
             <p style={{ marginBottom: 8 }}>Élève : ……………………………………………………………</p>
-            <table className="b-table d-list fc-print">
-              <thead><tr><th>N°</th><th>Fourniture</th><th>Quantité</th><th>Remarque</th><th>Reçu ✓</th></tr></thead>
-              <tbody>{g.rows.map((f, i) => <tr key={f.id}><td>{i + 1}</td><td><strong>{f.libelle}</strong></td><td style={{ textAlign: "center" }}>{f.quantite}</td><td>{f.remarque || ""}</td><td /></tr>)}</tbody>
-            </table>
+            {(() => {
+              const prix = g.rows.some((f) => f.prix > 0);
+              const total = g.rows.reduce((t, f) => t + (f.prix || 0) * f.quantite, 0);
+              return (
+                <table className="b-table d-list fc-print">
+                  <thead><tr><th>N°</th><th>Fourniture</th><th>Quantité</th><th>Remarque</th>{prix && <th style={{ textAlign: "right" }}>Prix</th>}<th>Reçu ✓</th></tr></thead>
+                  <tbody>{g.rows.map((f, i) => <tr key={f.id}><td>{i + 1}</td><td><strong>{f.libelle}</strong></td><td style={{ textAlign: "center" }}>{f.quantite}</td><td>{f.remarque || ""}</td>
+                    {prix && <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{f.prix ? fcfa(f.prix * f.quantite) : ""}</td>}<td /></tr>)}</tbody>
+                  {prix && <tfoot><tr><th colSpan={4} style={{ textAlign: "right" }}>Total du kit</th><th style={{ textAlign: "right", whiteSpace: "nowrap" }}>{fcfa(total)}</th><th /></tr></tfoot>}
+                </table>
+              );
+            })()}
             <p style={{ marginTop: 12, fontWeight: 700 }}>🛒 Toutes les fournitures scolaires sont disponibles à l'école.</p>
             <p className="xs" style={{ marginTop: 6 }}><strong>NB :</strong> Les fournitures doivent être complètes dès la rentrée. Éviter les articles de mauvaise qualité. Tout le matériel doit être marqué au nom de l'enfant. Merci pour votre collaboration.</p>
             <div className="d-sign" style={{ marginTop: "auto" }}><p>Fait à {etab.ville || "Malika"}, le {date(new Date().toISOString())}</p><p className="d-sign-t">La Direction</p></div>
