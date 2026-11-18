@@ -30,7 +30,7 @@ export default function Matieres({ classe, onClose }) {
                 <tr key={m.id}>
                   <td><Input defaultValue={m.nom} onBlur={(e) => e.target.value !== m.nom && maj(m, { nom: e.target.value })} /></td>
                   <td><Input type="number" min="0.5" step="0.5" defaultValue={m.coefficient} onBlur={(e) => Number(e.target.value) !== Number(m.coefficient) && maj(m, { coefficient: e.target.value })} /></td>
-                  <td><Select value={m.bareme} onChange={(e) => maj(m, { bareme: Number(e.target.value) })}><option value={10}>10</option><option value={20}>20</option></Select></td>
+                  <td><Input type="number" min="1" max="200" step="1" defaultValue={m.bareme} onBlur={(e) => { const b = Math.round(Number(e.target.value)); if (b >= 1 && b <= 200 && b !== m.bareme) maj(m, { bareme: b }); else e.target.value = m.bareme; }} /></td>
                   <td><Select value={m.enseignant_id || ""} onChange={(e) => maj(m, { enseignant_id: e.target.value || null })}>
                     <option value="">—</option>{ens.data?.filter((x) => x.statut === "actif").map((x) => <option key={x.id} value={x.id}>{x.prenom} {x.nom}</option>)}
                   </Select></td>
@@ -40,7 +40,7 @@ export default function Matieres({ classe, onClose }) {
               <tr style={{ background: "var(--surface-2)" }}>
                 <td><Input value={nouv.nom} onChange={(e) => setNouv({ ...nouv, nom: e.target.value })} placeholder="Nouvelle matière…" onKeyDown={(e) => e.key === "Enter" && nouv.nom && ajouter()} /></td>
                 <td><Input type="number" min="0.5" step="0.5" value={nouv.coefficient} onChange={(e) => setNouv({ ...nouv, coefficient: e.target.value })} /></td>
-                <td><Select value={nouv.bareme} onChange={(e) => setNouv({ ...nouv, bareme: Number(e.target.value) })}><option value={10}>10</option><option value={20}>20</option></Select></td>
+                <td><Input type="number" min="1" max="200" step="1" value={nouv.bareme} onChange={(e) => setNouv({ ...nouv, bareme: e.target.value })} /></td>
                 <td colSpan={2}><button className="btn primary sm" onClick={ajouter} disabled={!nouv.nom}><Plus size={15} />Ajouter</button></td>
               </tr>
             </tbody>

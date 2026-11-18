@@ -2684,15 +2684,25 @@ route("GET", "/classes/:id/matieres", async (ctx) => {
   return q(`select m.*, e.prenom || ' ' || e.nom as enseignant from app.matieres m left join app.enseignants e on e.id=m.enseignant_id
     where m.classe_id=$1 order by m.ordre, m.nom`, [ctx.params.id]);
 });
+// Barème d'une matière : la note maximale (10, 20, ou le total de points d'un domaine, ex. 40, 60, 24…).
+const baremeMatiere = (d) => {
+  if (d.bareme === undefined || d.bareme === null || d.bareme === "") { delete d.bareme; return; }
+  const b = Number(d.bareme);
+  if (!Number.isInteger(b) || b < 1 || b > 200) fail(400, "Le barème d'une matière doit être un nombre entier entre 1 et 200.");
+  d.bareme = b;
+};
 route("POST", "/matieres", async (ctx) => {
   exige(ctx, "classes.ecrire");
   const d = pick(ctx.body, ["classe_id", "nom", "coefficient", "bareme", "ordre", "enseignant_id"]);
   requis(d, [["classe_id", "La classe"], ["nom", "Le nom de la matière"]]);
+  baremeMatiere(d);
   return one(...insertSql("app.matieres", d));
 });
 route("PUT", "/matieres/:id", async (ctx) => {
   exige(ctx, "classes.ecrire");
-  return one(...updateSql("app.matieres", ctx.params.id, pick(ctx.body, ["nom", "coefficient", "bareme", "ordre", "enseignant_id"])));
+  const d = pick(ctx.body, ["nom", "coefficient", "bareme", "ordre", "enseignant_id"]);
+  baremeMatiere(d);
+  return one(...updateSql("app.matieres", ctx.params.id, d));
 });
 route("DELETE", "/matieres/:id", async (ctx) => {
   exige(ctx, "classes.ecrire");
