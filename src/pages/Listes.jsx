@@ -19,6 +19,8 @@ const LISTES = {
   classes: { titre: "Listes de classe", sub: "Tous les élèves, classe par classe", icon: ListOrdered, src: ["eleves"],
     build: ({ eleves }) => parClasse(eleves, ["N°", "Matricule", "Nom", "Prénom(s)", "Sexe", "Né(e) le", "Âge", "Téléphone parent"],
       (r) => [r.matricule, r.nom, r.prenom, sexe(r.sexe), r.date_naissance ? date(r.date_naissance) : "", age(r.date_naissance), r.telephone || ""]) },
+  filles_garcons: { titre: "Filles et garçons", sub: "Chaque classe avec les filles puis les garçons, séparés", icon: Users, src: ["eleves"],
+    build: ({ eleves }) => parSexe(eleves) },
   annuaire: { titre: "Annuaire des parents", sub: "Père, mère, tuteur et téléphones de chaque élève", icon: Phone, src: ["eleves"],
     build: ({ eleves }) => parClasse(eleves, ["N°", "Élève", "Père", "Tél. père", "Mère", "Tél. mère", "Tuteur / tél."],
       (r) => [`${r.nom} ${r.prenom}`, r.pere || "", r.pere_telephone || "", r.mere || "", r.mere_telephone || "", [r.tuteur_nom, r.tuteur_telephone].filter(Boolean).join(" — ")]) },
@@ -82,6 +84,23 @@ function parClasse(rows, cols, ligne, resume, champ = "classe_id") {
   rows.forEach((r) => { const k = r[champ] ?? r.classe; if (!g.has(k)) g.set(k, { nom: r.classe, ordre: r.ordre ?? 0, rows: [] }); g.get(k).rows.push(r); });
   return { groupes: [...g.values()].map((x) => ({ nom: x.nom, info: resume ? resume(x.rows) : `${x.rows.length} élève${x.rows.length > 1 ? "s" : ""} (${x.rows.filter((r) => r.sexe === "F").length} F, ${x.rows.filter((r) => r.sexe === "M").length} G)`,
     cols, lignes: x.rows.map((r, i) => [i + 1, ...ligne(r)]) })) };
+}
+
+// Pour chaque classe : un tableau des filles, puis un tableau des garçons.
+function parSexe(rows) {
+  const cols = ["N°", "Matricule", "Nom", "Prénom(s)", "Né(e) le", "Âge", "Téléphone parent"];
+  const ligne = (r, i) => [i + 1, r.matricule, r.nom, r.prenom, r.date_naissance ? date(r.date_naissance) : "", age(r.date_naissance), r.telephone || ""];
+  const tri = (a, b) => `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`, "fr");
+  const g = new Map();
+  rows.forEach((r) => { const k = r.classe_id ?? r.classe; if (!g.has(k)) g.set(k, { nom: r.classe, ordre: r.ordre ?? 0, rows: [] }); g.get(k).rows.push(r); });
+  const groupes = [];
+  [...g.values()].sort((a, b) => a.ordre - b.ordre).forEach((c) => {
+    const f = c.rows.filter((r) => r.sexe === "F").sort(tri), m = c.rows.filter((r) => r.sexe === "M").sort(tri);
+    const total = `${c.rows.length} élève${c.rows.length > 1 ? "s" : ""}`;
+    groupes.push({ nom: `${c.nom} — Filles`, info: `${f.length} fille${f.length > 1 ? "s" : ""} sur ${total}`, cols, lignes: f.map(ligne) });
+    groupes.push({ nom: `${c.nom} — Garçons`, info: `${m.length} garçon${m.length > 1 ? "s" : ""} sur ${total}`, cols, lignes: m.map(ligne) });
+  });
+  return { groupes };
 }
 
 export default function Listes() {
