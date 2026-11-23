@@ -17,11 +17,13 @@ const VIDE = {
   nom: "", prenom: "", sexe: "", date_naissance: "", lieu_naissance: "", adresse: "",
   pere_prenom: "", pere_nom: "", pere_profession: "", pere_telephone: "",
   mere_prenom: "", mere_nom: "", mere_profession: "", mere_telephone: "",
-  tuteur_nom: "", tuteur_telephone: "", observations: "",
+  tuteur_nom: "", tuteur_telephone: "", observations: "", prescolaire: false,
 };
 
 // Création (avec inscription) ou modification d'un élève.
-export default function EleveForm({ eleve, onClose, onSaved }) {
+export const estCI = (nom) => /^CI[A-Z0-9]?$/.test(String(nom || "").toUpperCase().replace(/[\s\-_.]/g, ""));
+
+export default function EleveForm({ eleve, classeActuelle, onClose, onSaved }) {
   const s = useSession();
   const toast = useToast();
   const qc = useQueryClient();
@@ -115,6 +117,7 @@ export default function EleveForm({ eleve, onClose, onSaved }) {
             </Field>
             <Field label="Date de naissance"><Input type="date" value={v.date_naissance} onChange={set("date_naissance")} /></Field>
             <Field label="Lieu de naissance"><Input value={v.lieu_naissance || ""} onChange={set("lieu_naissance")} /></Field>
+            {estCI(edition ? classeActuelle : classe?.nom) && <Field label="Préscolaire"><label className="check" style={{ minHeight: 40, alignItems: "center" }}><input type="checkbox" checked={!!v.prescolaire} onChange={(e) => setV({ ...v, prescolaire: e.target.checked })} />A fait le préscolaire</label></Field>}
             <Field label="Matricule" hint={edition ? "Non modifiable" : "Généré automatiquement, modifiable"}>
               <Input value={v.matricule || ""} onChange={set("matricule")} disabled={edition} />
             </Field>

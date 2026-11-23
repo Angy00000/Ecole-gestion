@@ -283,7 +283,7 @@ async function bilanVeille() {
 
 // ── Validation ────────────────────────────────────────────────────────────
 const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in obj).map((k) => [k, obj[k] === "" ? null : obj[k]]));
-const COLS_ELEVE = ["nom","prenom","sexe","date_naissance","lieu_naissance","adresse","pere_nom","pere_prenom","pere_profession","pere_telephone","mere_nom","mere_prenom","mere_profession","mere_telephone","tuteur_nom","tuteur_telephone","observations","statut"];
+const COLS_ELEVE = ["nom","prenom","sexe","date_naissance","lieu_naissance","adresse","pere_nom","pere_prenom","pere_profession","pere_telephone","mere_nom","mere_prenom","mere_profession","mere_telephone","tuteur_nom","tuteur_telephone","observations","statut","prescolaire"];
 const COLS_CLASSE = ["nom","cycle","ordre","capacite","titulaire_id","bareme","frais_inscription","uniforme","tenue_sport","cours_soir","mensualite","mensualite_jan_fev","mensualite_cantine","mensualite_cantine_jan_fev","frais_cantine"];
 const COLS_INSC = ["classe_id","cantine","cours_soir","uniforme","tenue_sport","reduction_inscription","statut","mensualite_speciale","gratuit","inscription_offerte","date_inscription","type","cantine_debut","cantine_fin","cours_soir_debut","cours_soir_fin"];
 const COLS_ETAB = ["nom","slogan","adresse","telephones","email","site_web","ninea","bp","autorisation","logo","directeur","ville","fiche_infos","textes"];
@@ -590,7 +590,7 @@ route("GET", "/eleves", async (ctx) => {
     [`select e.id, e.matricule, e.nom, e.prenom, e.sexe, e.date_naissance, e.statut,
         coalesce(e.mere_telephone, e.pere_telephone, e.tuteur_telephone) as telephone,
         nullif(trim(coalesce(e.pere_prenom,'') || ' ' || coalesce(e.pere_nom,'')), '') as pere, e.pere_telephone,
-        nullif(trim(coalesce(e.mere_prenom,'') || ' ' || coalesce(e.mere_nom,'')), '') as mere, e.mere_telephone, e.tuteur_nom, e.tuteur_telephone, e.lieu_naissance, e.adresse,
+        nullif(trim(coalesce(e.mere_prenom,'') || ' ' || coalesce(e.mere_nom,'')), '') as mere, e.mere_telephone, e.tuteur_nom, e.tuteur_telephone, e.lieu_naissance, e.adresse, e.prescolaire,
         i.date_inscription, 
         i.id as inscription_id, i.cantine, i.cours_soir, i.type as type_inscription, i.statut as statut_inscription, i.gratuit, i.mensualite_speciale, i.inscription_offerte, i.reduction_inscription, i.uniforme as a_uniforme, i.tenue_sport as a_tenue,
         case when i.id is null then null else (case when i.inscription_offerte then 0 else greatest(c.frais_inscription - i.reduction_inscription, 0) end + case when i.uniforme then c.uniforme else 0 end + case when i.tenue_sport then c.tenue_sport else 0 end + case when i.cantine then c.frais_cantine else 0 end)

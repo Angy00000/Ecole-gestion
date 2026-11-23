@@ -6,7 +6,7 @@ import { api } from "../lib/api";
 import { useSession } from "../lib/session";
 import { fcfa, date, dateLongue, age, initiales } from "../lib/format";
 import { Spinner, ErrorBox, Empty, Modal, Field, Select, Input, Confirm, useToast } from "../components/ui";
-import EleveForm from "./EleveForm";
+import EleveForm, { estCI } from "./EleveForm";
 import { AccesParentModal } from "./AccesParents";
 import { SanteEleve, PassageForm } from "./Infirmerie";
 import { VieEleve } from "./VieScolaire";
@@ -402,6 +402,7 @@ export default function EleveFiche() {
                 <Info label="Sexe">{e.sexe === "F" ? "Féminin" : e.sexe === "M" ? "Masculin" : null}</Info>
                 <Info label="Date de naissance">{e.date_naissance && `${dateLongue(e.date_naissance)}${a != null ? ` (${a} ans)` : ""}`}</Info>
                 <Info label="Lieu de naissance">{e.lieu_naissance}</Info>
+                {estCI(courante?.classe) && <Info label="Préscolaire">{e.prescolaire ? <span className="badge green">A fait le préscolaire</span> : <span className="badge coral">N'a pas fait le préscolaire</span>}</Info>}
                 <Info label="Adresse">{e.adresse}</Info>
                 <Info label="Observations">{e.observations}</Info>
               </dl>
@@ -498,7 +499,7 @@ export default function EleveFiche() {
       {infirm && <PassageForm eleve={{ ...e, classe: courante?.classe }} onClose={() => setInfirm(false)} />}
       {acces && courante && <AccesParentModal eleve={e} classe={courante.classe} telephone={e.mere_telephone || e.pere_telephone || e.tuteur_telephone} onClose={() => setAcces(false)} />}
       {enc && courante && <Encaissement inscriptionId={courante.id} eleve={e} onClose={() => setEnc(false)} onSaved={(r) => { setEnc(false); nav(`/recus/${r.id}`); }} />}
-      {edit && <EleveForm eleve={e} onClose={() => setEdit(false)} onSaved={() => setEdit(false)} />}
+      {edit && <EleveForm eleve={e} classeActuelle={courante?.classe} onClose={() => setEdit(false)} onSaved={() => setEdit(false)} />}
       {chClasse && courante && <ChangerClasseModal eleve={e} inscription={courante} onClose={() => setChClasse(false)} />}
       {insc && <InscriptionModal eleve={e} inscription={insc === "new" ? null : insc} onClose={() => setInsc(null)} />}
       {del && <Confirm danger title="Supprimer cet élève ?" confirmLabel="Supprimer"

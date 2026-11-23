@@ -8,6 +8,7 @@ import { date, fcfa, nombre, moisLong } from "../lib/format";
 import { Spinner, ErrorBox, PageHead, Select, useToast } from "../components/ui";
 import Partager from "../components/Partager";
 import { EnTete } from "./Documents";
+import { estCI } from "./EleveForm";
 
 const MOIS_N = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const age = (d) => { if (!d) return ""; const n = new Date(d), t = new Date(); let a = t.getFullYear() - n.getFullYear(); if (t < new Date(t.getFullYear(), n.getMonth(), n.getDate())) a--; return a; };
@@ -21,6 +22,8 @@ const LISTES = {
       (r) => [r.matricule, r.nom, r.prenom, sexe(r.sexe), r.date_naissance ? date(r.date_naissance) : "", age(r.date_naissance), r.telephone || ""]) },
   filles_garcons: { titre: "Filles et garçons", sub: "Chaque classe avec les filles puis les garçons, séparés", icon: Users, src: ["eleves"],
     build: ({ eleves }) => parSexe(eleves) },
+  prescolaire: { titre: "Préscolaire (CI)", sub: "Élèves de CI qui ont fait ou non le préscolaire", icon: Sparkles, src: ["eleves"],
+    build: ({ eleves }) => parPrescolaire(eleves.filter((r) => estCI(r.classe))) },
   annuaire: { titre: "Annuaire des parents", sub: "Père, mère, tuteur et téléphones de chaque élève", icon: Phone, src: ["eleves"],
     build: ({ eleves }) => parClasse(eleves, ["N°", "Élève", "Père", "Tél. père", "Mère", "Tél. mère", "Tuteur / tél."],
       (r) => [`${r.nom} ${r.prenom}`, r.pere || "", r.pere_telephone || "", r.mere || "", r.mere_telephone || "", [r.tuteur_nom, r.tuteur_telephone].filter(Boolean).join(" — ")]) },
@@ -99,6 +102,23 @@ function parSexe(rows) {
     const total = `${c.rows.length} élève${c.rows.length > 1 ? "s" : ""}`;
     groupes.push({ nom: `${c.nom} — Filles`, info: `${f.length} fille${f.length > 1 ? "s" : ""} sur ${total}`, cols, lignes: f.map(ligne) });
     groupes.push({ nom: `${c.nom} — Garçons`, info: `${m.length} garçon${m.length > 1 ? "s" : ""} sur ${total}`, cols, lignes: m.map(ligne) });
+  });
+  return { groupes };
+}
+
+// Pour chaque classe de CI : ceux qui ont fait le préscolaire, puis ceux qui ne l'ont pas fait.
+function parPrescolaire(rows) {
+  const cols = ["N°", "Matricule", "Nom", "Prénom(s)", "Sexe", "Né(e) le", "Téléphone parent"];
+  const ligne = (r, i) => [i + 1, r.matricule, r.nom, r.prenom, sexe(r.sexe), r.date_naissance ? date(r.date_naissance) : "", r.telephone || ""];
+  const tri = (a, b) => `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`, "fr");
+  const g = new Map();
+  rows.forEach((r) => { const k = r.classe_id ?? r.classe; if (!g.has(k)) g.set(k, { nom: r.classe, ordre: r.ordre ?? 0, rows: [] }); g.get(k).rows.push(r); });
+  const groupes = [];
+  [...g.values()].sort((a, b) => a.ordre - b.ordre).forEach((c) => {
+    const oui = c.rows.filter((r) => r.prescolaire).sort(tri), non = c.rows.filter((r) => !r.prescolaire).sort(tri);
+    const total = `${c.rows.length} élève${c.rows.length > 1 ? "s" : ""}`;
+    groupes.push({ nom: `${c.nom} — A fait le préscolaire`, info: `${oui.length} sur ${total}`, cols, lignes: oui.map(ligne) });
+    groupes.push({ nom: `${c.nom} — N'a pas fait le préscolaire`, info: `${non.length} sur ${total}`, cols, lignes: non.map(ligne) });
   });
   return { groupes };
 }
